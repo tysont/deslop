@@ -76,3 +76,24 @@ def load_config(path: Path | None) -> Config:
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: top level must be a mapping")
     return Config(data, path)
+
+
+VOICE_RESOLUTION = (
+    "a voice is resolved in this order: --voice, the DESLOP_VOICE environment variable, "
+    "then `default_voice` in the config file (deslop.yaml in the working directory or "
+    "$DESLOP_HOME/config.yaml)"
+)
+
+
+def resolve_voice(cfg: Config, command: str, explicit: Path | None) -> Path:
+    """The voice directory for `command`: the --voice flag, else DESLOP_VOICE, else the
+    config file's `default_voice` (command section first, then top level)."""
+    if explicit is not None:
+        return explicit
+    env = os.environ.get("DESLOP_VOICE", "").strip()
+    if env:
+        return Path(env)
+    configured = cfg.get(command, "default_voice", None)
+    if configured:
+        return Path(str(configured))
+    raise ConfigError("no voice given; " + VOICE_RESOLUTION)

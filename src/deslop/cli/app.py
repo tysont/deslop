@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from deslop import __version__
-from deslop.cli.config import Config, ConfigError, load_config
+from deslop.cli.config import Config, ConfigError, load_config, resolve_voice
 from deslop.corpus import Corpus, DuplicateError
 from deslop.corpus.ingest import IngestError
 
@@ -35,7 +35,7 @@ def print_json(payload: str) -> None:
     sys.stdout.write(payload if payload.endswith("\n") else payload + "\n")
 
 
-def fail(message: str, code: int = 1) -> None:
+def fail(message: str, code: int = 1) -> NoReturn:
     err.print(f"[red]error:[/] {message}")
     raise typer.Exit(code)
 
@@ -65,10 +65,10 @@ class Settings:
         return tuple(str(p) for p in _as_list(got))
 
     def voice(self, value: Path | None) -> Path:
-        got = self.path("voice", value)
-        if got is None:
-            fail("no voice given: pass --voice or set `voice:` in deslop.yaml")
-        return got
+        try:
+            return resolve_voice(self.cfg, self.command, value)
+        except ConfigError as exc:
+            fail(str(exc))
 
     def progress(self, json_out: bool):
         return None if json_out else (lambda msg: err.print(f"[dim]{msg}[/]"))
@@ -781,6 +781,26 @@ def blind_cmd(
         console.print(
             "most frequent reasons: " + "; ".join(f"{r} ({c})" for r, c in summary.top_reasons)
         )
+
+
+# ------------------------------------------------------------------ doctor
+
+
+@app.command("doctor")
+def doctor_cmd(ctx: typer.Context, json_out: bool = typer.Option(False, "--json")) -> None:
+    """Check the installation: spaCy model, providers, pricing age, cache dir, default voice."""
+    from deslop import doctor
+
+    s = Settings(ctx, "doctor")
+    checks = doctor.run(s.cfg)
+    ok = all(c.status != "fail" for c in checks)
+    if json_out:
+        print_json(json.dumps({"ok": ok, "checks": [c.model_dump() for c in checks]}))
+    else:
+        colors = {"ok": "green", "warn": "yellow", "fail": "red"}
+        for c in checks:
+            console.print(f"[{colors[c.status]}]{c.status:4s}[/] {c.name:10s} {c.detail}")
+    raise typer.Exit(0 if ok else 1)
 
 
 # ------------------------------------------------------------------ providers

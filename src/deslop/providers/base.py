@@ -14,7 +14,14 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)  # a project .env beats stale shell exports
 
-CACHE_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "cache"
+
+def default_cache_dir() -> Path:
+    """Where responses are cached: $DESLOP_CACHE_DIR, else $DESLOP_HOME/cache."""
+    explicit = os.environ.get("DESLOP_CACHE_DIR")
+    if explicit:
+        return Path(explicit)
+    return Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "cache"
+
 
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-5-5",
@@ -76,7 +83,7 @@ class CachingProvider:
     def __init__(
         self, *, cache_dir: Path | None = None, use_cache: bool = True, max_retries: int = 4
     ):
-        self.cache_dir = cache_dir or CACHE_DIR
+        self.cache_dir = cache_dir or default_cache_dir()
         self.use_cache = use_cache
         self.max_retries = max_retries
         self.usage = Usage()

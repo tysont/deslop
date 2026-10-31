@@ -1,7 +1,9 @@
 # ABOUTME: Tests for CLI configuration: deslop.yaml discovery, per-command sections, and
 # ABOUTME: the precedence CLI flag > command section > top-level key > built-in default.
 import json
+import pathlib
 
+import pytest
 from typer.testing import CliRunner
 
 from deslop.cli import config
@@ -49,7 +51,7 @@ def test_cli_reads_voice_and_options_from_config(
     fixture_voice.save(voice_dir)
     monkeypatch.chdir(tmp_path)
     heldout = str(fixtures_dir / "heldout_bradley.md")
-    (tmp_path / "deslop.yaml").write_text(f"voice: {voice_dir}\nscore:\n  sigma: 0.01\n")
+    (tmp_path / "deslop.yaml").write_text(f"default_voice: {voice_dir}\nscore:\n  sigma: 0.01\n")
     r = runner.invoke(app, ["score", heldout, "--json"])
     assert r.exit_code == 2, r.output  # config sigma makes everything fail
     assert json.loads(r.stdout)["options"]["sigma"] == 0.01
@@ -62,5 +64,23 @@ def test_cli_reads_voice_and_options_from_config(
 def test_cli_requires_voice_when_absent_everywhere(fixtures_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DESLOP_HOME", str(tmp_path))
+    monkeypatch.delenv("DESLOP_VOICE", raising=False)
     r = runner.invoke(app, ["score", str(fixtures_dir / "heldout_bradley.md")])
-    assert r.exit_code == 1 and "--voice" in r.output
+    assert r.exit_code == 1
+    for marker in ("--voice", "DESLOP_VOICE", "default_voice"):
+        assert marker in r.output
+
+
+def test_voice_resolution_order(tmp_path, monkeypatch):
+    monkeypatch.delenv("DESLOP_VOICE", raising=False)
+    cfg = config.Config({"default_voice": "cfg.voice", "blind": {"default_voice": "blind.voice"}})
+    assert config.resolve_voice(cfg, "score", tmp_path / "flag.voice") == tmp_path / "flag.voice"
+    assert config.resolve_voice(cfg, "score", None) == pathlib.Path("cfg.voice")
+    assert config.resolve_voice(cfg, "blind", None) == pathlib.Path("blind.voice")
+    monkeypatch.setenv("DESLOP_VOICE", "env.voice")
+    assert config.resolve_voice(cfg, "score", None) == pathlib.Path("env.voice")
+    assert config.resolve_voice(cfg, "score", tmp_path / "flag.voice") == tmp_path / "flag.voice"
+    monkeypatch.setenv("DESLOP_VOICE", "")
+    with pytest.raises(config.ConfigError) as exc:
+        config.resolve_voice(config.Config(), "score", None)
+    assert "DESLOP_VOICE" in str(exc.value) and "default_voice" in str(exc.value)

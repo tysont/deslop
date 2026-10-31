@@ -1,0 +1,131 @@
+# ABOUTME: `deslop doctor` checks: spaCy model, provider reachability, pricing table age,
+# ABOUTME: cache directory writability, and that the default voice resolves and validates.
+from __future__ import annotations
+
+import datetime as dt
+from collections.abc import Callable
+
+from pydantic import BaseModel
+
+from deslop.cli.config import Config, ConfigError, resolve_voice
+from deslop.pricing import home, load_pricing
+
+PRICING_MAX_AGE_DAYS = 90
+
+
+class Check(BaseModel):
+    name: str
+    status: str  # ok | warn | fail
+    detail: str = ""
+
+
+def check_spacy() -> Check:
+    from deslop.nlp import SPACY_MODEL, load_nlp
+
+    try:
+        nlp = load_nlp()
+    except OSError as exc:
+        return Check(name="spacy", status="fail", detail=str(exc).splitlines()[0][:200])
+    return Check(name="spacy", status="ok", detail=f"{SPACY_MODEL} {nlp.meta.get('version', '')}")
+
+
+def _ping(name: str) -> str:
+    from deslop.providers.base import get_provider
+
+    provider = get_provider(name, use_cache=False)
+    return provider.complete("Reply with the single word OK.", "ping", temperature=0.0).model
+
+
+def check_providers(ping: Callable[[str], str] = _ping) -> list[Check]:
+    from deslop.providers.base import list_providers
+
+    configured = [name for name, ok in list_providers().items() if ok]
+    if not configured:
+        return [
+            Check(
+                name="providers",
+                status="warn",
+                detail="no credentials found (ANTHROPIC_API_KEY, OPENAI_API_KEY or "
+                "DESLOP_COMPATIBLE_BASE_URL); convert, draft and calibrate need one",
+            )
+        ]
+    checks = []
+    for name in configured:
+        try:
+            model = ping(name)
+        except Exception as exc:  # noqa: BLE001 - any failure is the finding
+            checks.append(Check(name="providers", status="fail", detail=f"{name}: {exc}"[:200]))
+        else:
+            checks.append(Check(name="providers", status="ok", detail=f"{name}: {model}"))
+    return checks
+
+
+def check_pricing(today: dt.date | None = None) -> Check:
+    table = load_pricing()
+    today = today or dt.date.today()
+    try:
+        fetched = dt.date.fromisoformat(table.fetched)
+    except ValueError:
+        return Check(name="pricing", status="warn", detail="pricing.yaml has no fetched date")
+    age = (today - fetched).days
+    override = home() / "pricing.yaml"
+    extra = f"; override {override} in use" if override.is_file() else ""
+    if age > PRICING_MAX_AGE_DAYS:
+        return Check(
+            name="pricing",
+            status="warn",
+            detail=f"prices fetched {table.fetched}, {age} days ago; "
+            f"check {', '.join(table.sources.values())}{extra}",
+        )
+    return Check(
+        name="pricing", status="ok", detail=f"fetched {table.fetched}, {age} days old{extra}"
+    )
+
+
+def check_cache() -> Check:
+    from deslop.providers.base import default_cache_dir
+
+    target = default_cache_dir()
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / ".doctor"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        return Check(name="cache", status="fail", detail=f"{target} is not writable: {exc}")
+    entries = sum(1 for p in target.rglob("*.json"))
+    return Check(name="cache", status="ok", detail=f"{target} ({entries} cached responses)")
+
+
+def check_voice(cfg: Config) -> Check:
+    from deslop.voice.validate import validate
+
+    try:
+        voice_dir = resolve_voice(cfg, "doctor", None)
+    except ConfigError as exc:
+        return Check(name="voice", status="warn", detail=str(exc))
+    if not voice_dir.is_dir():
+        return Check(name="voice", status="fail", detail=f"{voice_dir} is not a directory")
+    result = validate(voice_dir)
+    failed = [f"{c.name}: {c.detail}" for c in result.checks if not c.ok]
+    if failed:
+        return Check(name="voice", status="fail", detail=f"{voice_dir}: " + "; ".join(failed))
+    return Check(name="voice", status="ok", detail=f"{voice_dir} validates")
+
+
+def run(cfg: Config | None = None, *, ping: Callable[[str], str] = _ping) -> list[Check]:
+    cfg = cfg or Config()
+    checks = [check_spacy(), *check_providers(ping), check_pricing(), check_cache()]
+    checks.append(check_voice(cfg))
+    return checks
+
+
+__all__ = [
+    "Check",
+    "check_cache",
+    "check_pricing",
+    "check_providers",
+    "check_spacy",
+    "check_voice",
+    "run",
+]

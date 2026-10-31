@@ -12,12 +12,23 @@ from spacy.tokens import Doc, Span
 
 WORD_RE = re.compile(r"[A-Za-z][A-Za-z'\-]*")
 PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n")
+SPACY_MODEL = "en_core_web_sm"
+SPACY_MODEL_URL = (
+    "https://github.com/explosion/spacy-models/releases/download/"
+    "en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+)
 
 
 @lru_cache(maxsize=1)
 def load_nlp() -> Language:
     """Load the small English pipeline once per process."""
-    return spacy.load("en_core_web_sm", disable=["ner"])
+    try:
+        return spacy.load(SPACY_MODEL, disable=["ner"])
+    except OSError as exc:
+        raise OSError(
+            f"spaCy model {SPACY_MODEL} is not installed. Install it with "
+            f"`pip install {SPACY_MODEL_URL}` (pipx: `pipx inject deslop {SPACY_MODEL_URL}`)."
+        ) from exc
 
 
 def split_paragraphs(text: str) -> list[tuple[int, int]]:
