@@ -22,6 +22,7 @@ class VoiceMeta(BaseModel):
     )
     corpus_name: str
     corpus_hash: str
+    corpus_path: str | None = None
     total_words: int
     author_shares: dict[str, float] = Field(default_factory=dict)
     max_share: float = 0.25

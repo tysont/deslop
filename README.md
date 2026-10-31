@@ -28,6 +28,12 @@ deslop score draft.md --voice writer.voice --json
 deslop score draft.md --voice writer.voice --annotate draft.annotated.md
 deslop voice show writer.voice
 deslop convert draft.md --voice writer.voice --out draft.voiced.md --diff
+deslop draft brief.yaml --voice writer.voice --out piece.md
+deslop voice update writer.voice --accept piece.md
+deslop voice diff writer.voice@prev writer.voice
+deslop voice validate writer.voice
+deslop voice export writer.voice --format openai-ft --out train.jsonl
+deslop blind --voice writer.voice --candidates drafts/ --n 10
 ```
 
 `convert` rewrites only the flagged sentences (`--mode edit`) or paragraphs
@@ -39,6 +45,25 @@ or `--budget`, returns the best iteration by distance, and appends every
 (before, after, tells, accepted) pair to `~/.deslop/pairs/<voice>.jsonl`.
 Responses are cached under `~/.deslop/cache`, so a rerun with the same inputs
 is free and reproducible.
+
+`draft` writes a piece from a brief (see `tests/fixtures/brief_sample.yaml`):
+one claim per section, and each section must use its listed references and
+quotations verbatim. Any citation or quotation the brief did not list is
+stripped before the draft is run through `convert` in rewrite mode.
+
+`voice update` folds accepted texts into the voice's corpus at weight 0.5 and
+rewrites `metrics.json` and `lexicon.json`; `profile.md`, `rules.md` and
+`exemplars.md` stay as they are unless you pass `--regenerate`. The previous
+voice is saved under `<voice>/history/<timestamp>/`, which `voice diff` can
+address as `<voice>@prev` or `<voice>@<timestamp>`. `voice validate` checks
+the files, the corpus hash and that the voice's own exemplars score PASS, and
+exits nonzero otherwise. `voice export` writes fine-tuning data (accepted
+convert pairs plus 300-600 word corpus chunks with a model-written summary as
+the prompt) and prints a token count and a training-cost estimate from
+`pricing.yaml`; it never launches a job. `blind` pairs each candidate paragraph
+with a corpus paragraph of similar length and highest lexical overlap, asks you
+to pick the machine-written one, and logs accuracy and reasons to
+`~/.deslop/blind/<voice>.jsonl`.
 
 `calibrate` without `--no-llm` asks a configured provider (ANTHROPIC_API_KEY,
 OPENAI_API_KEY, or DESLOP_COMPATIBLE_BASE_URL in the environment or `.env`) to
@@ -100,6 +125,11 @@ from deslop import convert
 result = convert(open("draft.md").read(), Voice.load("writer.voice"), mode="edit")
 print(result.report_after.verdict, result.cost.usd)
 print(result.diff)
+
+from deslop import draft, load_brief
+piece = draft(load_brief("brief.yaml"), Voice.load("writer.voice"))
+print(piece.report.verdict, piece.cost.usd)
+print(piece.text)
 ```
 
 ## Development

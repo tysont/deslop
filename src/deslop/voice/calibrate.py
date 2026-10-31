@@ -91,6 +91,7 @@ def calibrate(
         deslop_version=__version__,
         corpus_name=corpus.name,
         corpus_hash=corpus.content_hash(),
+        corpus_path=str(corpus.root.resolve()),
         total_words=total,
         author_shares={a: round(s.words / total, 4) for a, s in per_author.items()},
         max_share=max_share,

@@ -515,6 +515,255 @@ def voice_edit(voice: Path) -> None:
     subprocess.run([editor, *files], check=False)
 
 
+@voice_app.command("update")
+def voice_update(
+    ctx: typer.Context,
+    voice: Path,
+    accept: list[Path] = typer.Option(..., "--accept", help="Accepted texts to fold in"),
+    corpus: Path | None = typer.Option(None, "--corpus", help="Corpus dir (default: recorded)"),
+    weight: float | None = typer.Option(None, "--weight", help="Weight for accepted docs (0.5)"),
+    regenerate: bool = typer.Option(
+        False, "--regenerate", help="Also rewrite profile.md, rules.md and exemplars.md"
+    ),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Template profile when regenerating"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    from deslop.voice.update import update
+
+    s = Settings(ctx, "voice_update")
+    try:
+        res = update(
+            voice,
+            accept,
+            corpus=s.path("corpus", corpus),
+            weight=float(s.get("weight", weight, 0.5)),
+            regenerate=bool(s.get("regenerate", regenerate or None, False)),
+            use_llm=not s.get("no_llm", no_llm or None, False),
+            progress=s.progress(json_out),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        fail(str(exc))
+    if json_out:
+        print_json(res.model_dump_json())
+        return
+    console.print(
+        f"updated [bold]{res.voice}[/]: added {len(res.added)}, skipped {len(res.skipped)}, "
+        f"now {res.total_words} words; previous voice saved to {res.snapshot}"
+    )
+
+
+@voice_app.command("diff")
+def voice_diff(
+    a: str = typer.Argument(..., help="Voice dir, or dir@prev, or dir@<snapshot stamp>"),
+    b: str = typer.Argument(...),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    from deslop.voice import Voice
+    from deslop.voice.diff import diff_voices
+    from deslop.voice.update import resolve_ref
+
+    try:
+        va, vb = Voice.load(resolve_ref(a)), Voice.load(resolve_ref(b))
+    except FileNotFoundError as exc:
+        fail(str(exc))
+    d = diff_voices(va, vb)
+    if json_out:
+        print_json(d.to_json())
+        return
+    console.print(f"[bold]{a}[/] ({d.words_before} words) -> [bold]{b}[/] ({d.words_after} words)")
+    table = Table(title="Metric means")
+    for col in ("metric", "before", "after", "delta", "z", "direction"):
+        table.add_column(col, justify="left" if col in ("metric", "direction") else "right")
+    for m in d.metrics:
+        if m.delta == 0:
+            continue
+        color = {"toward_slop": "red", "away_from_slop": "green"}.get(m.direction, "")
+        table.add_row(
+            m.name,
+            f"{m.before:.2f}",
+            f"{m.after:.2f}",
+            f"{m.delta:+.2f}",
+            f"{m.z:+.2f}",
+            f"[{color}]{m.direction}[/]" if color else m.direction,
+        )
+    console.print(table)
+    changed_tells = [t for t in d.tells if t.before != t.after or t.banned_before != t.banned_after]
+    if changed_tells:
+        tt = Table(title="Tell rates (/1k)")
+        for col in ("id", "pattern", "before", "after", "banned"):
+            tt.add_column(col)
+        for t in changed_tells:
+            ban = (
+                ("yes" if t.banned_before else "no") + " -> " + ("yes" if t.banned_after else "no")
+            )
+            tt.add_row(t.id, t.name, f"{t.before:.2f}", f"{t.after:.2f}", ban)
+        console.print(tt)
+    for label, items in (
+        ("encouraged +", d.encouraged_added),
+        ("encouraged -", d.encouraged_removed),
+        ("discouraged +", d.discouraged_added),
+        ("discouraged -", d.discouraged_removed),
+        ("banned +", d.banned_added),
+        ("banned -", d.banned_removed),
+    ):
+        if items:
+            console.print(f"[bold]{label}[/] " + ", ".join(items[:40]))
+    shares = {k: v for k, v in d.author_shares.items() if v[0] != v[1]}
+    if shares:
+        console.print(
+            "[bold]author shares:[/] "
+            + ", ".join(f"{k} {100 * v[0]:.0f}% -> {100 * v[1]:.0f}%" for k, v in shares.items())
+        )
+    if d.rules_diff:
+        console.print(d.rules_diff, markup=False, highlight=False)
+    for name, flag in (("profile.md", d.profile_changed), ("exemplars.md", d.exemplars_changed)):
+        if flag:
+            console.print(f"{name} changed")
+    if not d.changed:
+        console.print("no differences")
+
+
+@voice_app.command("validate")
+def voice_validate(
+    ctx: typer.Context,
+    voice: Path,
+    corpus: Path | None = typer.Option(None, "--corpus", help="Corpus dir (default: recorded)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    from deslop.voice.validate import validate
+
+    s = Settings(ctx, "voice_validate")
+    result = validate(voice, corpus=s.path("corpus", corpus))
+    if json_out:
+        print_json(result.to_json())
+    else:
+        for c in result.checks:
+            mark = "[green]ok[/]" if c.ok else "[red]FAIL[/]"
+            console.print(f"{c.name:22s} {mark}  {c.detail}")
+    raise typer.Exit(0 if result.ok else 1)
+
+
+@voice_app.command("export")
+def voice_export(
+    ctx: typer.Context,
+    voice: Path,
+    out: Path | None = typer.Option(None, "--out", "-o", help="JSONL file to write"),
+    fmt: str | None = typer.Option(None, "--format", help="openai-ft (default) or jsonl"),
+    corpus: Path | None = typer.Option(None, "--corpus"),
+    no_pairs: bool = typer.Option(False, "--no-pairs", help="Skip accepted convert pairs"),
+    no_chunks: bool = typer.Option(False, "--no-chunks", help="Skip summarized corpus chunks"),
+    max_chunks: int | None = typer.Option(None, "--max-chunks"),
+    cost_model: str | None = typer.Option(
+        None, "--cost-model", help="Model whose training price to estimate with (gpt-4.1)"
+    ),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    from deslop.voice import Voice
+    from deslop.voice.export import export, write_jsonl
+
+    s = Settings(ctx, "voice_export")
+    out = s.path("out", out)
+    if out is None:
+        fail("--out is required")
+    v = Voice.load(voice)
+    try:
+        res = export(
+            v,
+            fmt=s.get("format", fmt, "openai-ft"),
+            corpus=s.path("corpus", corpus),
+            include_pairs=not s.get("no_pairs", no_pairs or None, False),
+            include_chunks=not s.get("no_chunks", no_chunks or None, False),
+            max_chunks=s.get("max_chunks", max_chunks),
+            cost_model=s.get("cost_model", cost_model, "gpt-4.1"),
+            progress=s.progress(json_out),
+        )
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        fail(str(exc))
+    n = write_jsonl(res, v, out)
+    if json_out:
+        print_json(res.to_json())
+        return
+    cost = (
+        f"${res.estimated_training_cost:.2f} to train {res.cost_model}"
+        if res.estimated_training_cost is not None
+        else f"no training price for {res.cost_model} in pricing.yaml"
+    )
+    console.print(
+        f"wrote {n} record(s) to {out} ({res.pairs} pairs, {res.chunks} chunks); "
+        f"about {res.tokens:,} tokens, estimated {cost}; "
+        f"summaries cost ${res.summary_cost:.3f}. No job was launched."
+    )
+
+
+# ------------------------------------------------------------------ blind
+
+
+@app.command("blind")
+def blind_cmd(
+    ctx: typer.Context,
+    voice: Path | None = typer.Option(None, "--voice", "-v"),
+    candidates: Path | None = typer.Option(None, "--candidates", help="Dir of .md/.txt drafts"),
+    n: int | None = typer.Option(None, "--n", help="Pairs to judge (5)"),
+    corpus: Path | None = typer.Option(None, "--corpus"),
+    seed: int | None = typer.Option(None, "--seed"),
+    json_out: bool = typer.Option(False, "--json", help="Print the summary as JSON at the end"),
+) -> None:
+    from deslop import blind
+    from deslop.voice import Voice
+    from deslop.voice.update import corpus_for
+
+    s = Settings(ctx, "blind")
+    v = Voice.load(s.voice(voice))
+    candidates = s.path("candidates", candidates)
+    if candidates is None or not candidates.is_dir():
+        fail("--candidates must be a directory of .md or .txt files")
+    try:
+        corp = corpus_for(v, s.path("corpus", corpus))
+    except FileNotFoundError as exc:
+        fail(str(exc))
+    cands = blind.candidates_from_dir(candidates)
+    if not cands:
+        fail(f"no paragraphs of {blind.MIN_WORDS}+ words under {candidates}")
+    pairs = blind.make_pairs(
+        cands, blind.corpus_pool(corp), int(s.get("n", n, 5)), seed=s.get("seed", seed)
+    )
+    session = []
+    for i, pair in enumerate(pairs, 1):
+        a, b = blind.shown(pair)
+        console.rule(f"pair {i}/{len(pairs)}")
+        console.print("[bold]A[/]\n" + a + "\n", markup=False, highlight=False)
+        console.print("[bold]B[/]\n" + b + "\n", markup=False, highlight=False)
+        guess = ""
+        while guess.upper() not in ("A", "B"):
+            guess = typer.prompt("Which one is machine-written? (A/B)")
+        reason = typer.prompt("One-line reason", default="", show_default=False)
+        entry = blind.record(v.name, pair, guess, reason)
+        session.append(entry)
+        verdict = "[green]right[/]" if entry["correct"] else "[red]wrong[/]"
+        console.print(
+            f"{verdict}: the candidate was {pair.candidate_position} "
+            f"({pair.candidate_source} vs {pair.control_source})"
+        )
+    summary = blind.summarize(v.name, session)
+    if json_out:
+        print_json(summary.to_json())
+        return
+    console.rule("results")
+    if summary.session_accuracy is not None:
+        console.print(
+            f"this session: {summary.session_correct}/{summary.session_total} "
+            f"({100 * summary.session_accuracy:.0f}%)"
+        )
+    if summary.accuracy is not None:
+        console.print(
+            f"cumulative: {summary.correct}/{summary.total} ({100 * summary.accuracy:.0f}%)"
+        )
+    if summary.top_reasons:
+        console.print(
+            "most frequent reasons: " + "; ".join(f"{r} ({c})" for r, c in summary.top_reasons)
+        )
+
+
 # ------------------------------------------------------------------ providers
 
 
