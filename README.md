@@ -68,8 +68,8 @@ deslop convert examples/slop_sample.md --out converted.md --diff
 deslop draft tests/fixtures/brief_sample.yaml --out piece.md
 deslop score piece.md
 
-# 6. Can you tell the sample from the critics? Overlap on this small corpus is low, so lower the floor.
-deslop blind --candidates examples --n 3 --min-overlap 0.03
+# 6. Can you tell the sample from the critics?
+deslop blind --candidates examples --n 3
 ```
 
 Without a key, `make example` runs the conversion step from the cache committed under
@@ -238,7 +238,7 @@ Records go to `$DESLOP_HOME/blind/<voice>.jsonl`.
 | `--voice`, `-v` | resolved | voice directory |
 | `--candidates` | required | directory of `.md` or `.txt` drafts |
 | `--n` | `5` | pairs to judge |
-| `--min-overlap` | `0.15` | skip pairs whose Jaccard overlap is below this |
+| `--min-overlap` | `0.03` | skip pairs whose Jaccard overlap is below this (content-word Jaccard against a small corpus runs 0.03-0.06) |
 | `--corpus` | recorded | corpus to draw controls from |
 | `--seed` | random | make the sampling reproducible |
 
@@ -282,7 +282,7 @@ convert:
   models: [claude, gpt]
   budget: 2.0
 blind:
-  min-overlap: 0.03
+  min-overlap: 0.05
 ```
 
 ## Environment

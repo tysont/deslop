@@ -723,7 +723,7 @@ def blind_cmd(
     corpus: Path | None = typer.Option(None, "--corpus"),
     seed: int | None = typer.Option(None, "--seed"),
     min_overlap: float | None = typer.Option(
-        None, "--min-overlap", help="Skip pairs whose lexical overlap is below this (0.15)"
+        None, "--min-overlap", help="Skip pairs whose lexical overlap is below this (0.03)"
     ),
     json_out: bool = typer.Option(False, "--json", help="Print the summary as JSON at the end"),
 ) -> None:

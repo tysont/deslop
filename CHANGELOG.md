@@ -2,6 +2,12 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v1.0.1 - 2026-10-31
+
+- `blind --min-overlap` defaults to 0.03 instead of 0.15. Content-word Jaccard between a
+  candidate paragraph and its best corpus match runs 0.03-0.06 on a small corpus, so the old
+  default skipped every real pair.
+
 ## v1.0.0 - 2026-10-31
 
 Hardening release.

@@ -223,14 +223,14 @@ def test_blind_command_logs_and_summarizes(fixture_voice, tmp_path, monkeypatch)
             "2",
             "--seed",
             "3",
-            "--min-overlap",
-            "0",
         ],
         input="A\ntoo tidy\nB\n\n",
     )
     assert r.exit_code == 0, r.output
+    # The default floor must admit real pairs on the fixture corpus (overlaps run 0.03-0.06).
     assert "this session: " in r.stdout and "/2 (" in r.stdout
     assert "(overlap 0." in r.stdout
+    assert "skipped" not in r.stdout
     r = runner.invoke(
         app,
         ["blind", "--voice", str(voice_dir), "--candidates", str(cands), "--min-overlap", "0.99"],

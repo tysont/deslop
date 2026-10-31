@@ -18,7 +18,7 @@ The public API is the handful of names exported here:
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 from deslop.converter import ConvertResult, convert
 from deslop.corpus import Corpus

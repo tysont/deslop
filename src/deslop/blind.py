@@ -18,7 +18,7 @@ from deslop.nlp import WORD_RE, count_words, is_prose_paragraph, split_paragraph
 BLIND_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "blind"
 MIN_WORDS = 40
 LENGTH_WINDOW = 0.25
-MIN_OVERLAP = 0.15
+MIN_OVERLAP = 0.03
 CANDIDATE_SUFFIXES = (".md", ".txt")
 
 
