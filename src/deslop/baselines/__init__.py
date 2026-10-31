@@ -10,16 +10,21 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from deslop.stats import MetricStat, TellStat
+from deslop.stats import DocSamples, MetricStat, TellStat
 
 
 class ReferenceProfile(BaseModel):
+    """A baseline: aggregate stats plus, for the LLM reference, one `DocSamples` per
+    generated document (chunk-mean metrics and tell rates, never the text) so threshold
+    calibration can check that reference documents fail."""
+
     name: str
     created: str
     source: str
     total_words: int
     metrics: dict[str, MetricStat] = Field(default_factory=dict)
     tells: dict[str, TellStat] = Field(default_factory=dict)
+    documents: list[DocSamples] = Field(default_factory=list)
     word_freq: dict[str, int] = Field(default_factory=dict)
     bigram_freq: dict[str, int] = Field(default_factory=dict)
 

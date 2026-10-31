@@ -24,6 +24,7 @@ class DocumentEntry(BaseModel):
     year: int | None = None
     weight: float = 1.0
     license: str = ""
+    source: str = ""  # url or origin note carried from ingest
     simhash: int | None = None
     words: int | None = None
 
@@ -135,6 +136,7 @@ class Corpus:
         year: int | None = None,
         weight: float = 1.0,
         license: str = "",
+        origin: str = "",
     ) -> DocumentEntry:
         """Ingest a file or URL, normalize it, and store it as `<author>_<title>.txt`.
 
@@ -142,6 +144,7 @@ class Corpus:
         in at 0.5). Raises `DuplicateError` for a near-duplicate of an existing document and
         `IngestError` when the source cannot be read.
         """
+        source_arg = source
         text, suggested = ingest(source)
         title = title or suggested
         fp = fingerprint(text)
@@ -162,6 +165,7 @@ class Corpus:
             year=year,
             weight=weight,
             license=license,
+            source=origin or (source_arg if source_arg.startswith("http") else ""),
             simhash=fp,
             words=count_words(text),
         )
@@ -190,6 +194,7 @@ class Corpus:
                     year=row.get("year") or year_of(row.get("date")),
                     weight=float(row.get("weight", 1.0)),
                     license=str(row.get("license") or ""),
+                    origin=str(row.get("url") or row.get("site") or ""),
                 )
             except DuplicateError:
                 report.duplicates.append(title)

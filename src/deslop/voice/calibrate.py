@@ -13,9 +13,11 @@ from deslop.providers.base import CachingProvider
 from deslop.stats import (
     DEFAULT_CHUNK_WORDS,
     AuthorSamples,
+    DocSamples,
     MetricsProfile,
     WordCounts,
     aggregate,
+    doc_samples,
     merge_samples,
     sample_text,
 )
@@ -49,14 +51,22 @@ def calibrate(
         raise ValueError("corpus has no documents")
 
     per_author: dict[str, AuthorSamples] = {}
-    per_doc: list[tuple[str, str, AuthorSamples]] = []
+    per_doc: list[DocSamples] = []
     counts = WordCounts()
     for doc in docs:
         if progress:
             progress(f"sampling {doc.entry.author}: {doc.entry.title}")
         samples = sample_text(doc.text, chunk_words=chunk_words, catalog=catalog)
         samples.weight = doc.entry.weight
-        per_doc.append((doc.entry.title, doc.entry.author, samples))
+        if samples.chunks > 0:
+            per_doc.append(
+                doc_samples(
+                    samples,
+                    title=doc.entry.title,
+                    author=doc.entry.author,
+                    source=doc.entry.source,
+                )
+            )
         author = doc.entry.author
         per_author[author] = (
             merge_samples(per_author[author], samples) if author in per_author else samples
@@ -64,19 +74,20 @@ def calibrate(
         per_author[author].weight = doc.entry.weight
         counts.add(doc.text)
 
-    profile = aggregate(per_author, max_share=max_share, chunk_words=chunk_words)
+    profile = aggregate(
+        per_author, max_share=max_share, chunk_words=chunk_words, per_document=per_doc
+    )
     if progress:
         progress("clustering documents into registers")
     metric_names = [n for n in sorted(profile.metrics) if profile.metrics[n].std > 0]
     vectors = [
         DocumentVector(
-            title=title,
-            author=author,
-            words=samples.words,
-            vector=document_vector(samples, profile, metric_names),
+            title=d.title,
+            author=d.author,
+            words=d.words,
+            vector=document_vector(d, profile, metric_names),
         )
-        for title, author, samples in per_doc
-        if samples.chunks > 0
+        for d in per_doc
     ]
     clusters, assignment = cluster_documents(vectors, metric_names)
     profile.clusters = with_voice_means(clusters, profile)
@@ -130,15 +141,12 @@ def calibrate(
     )
 
 
-def document_vector(
-    samples: AuthorSamples, profile: MetricsProfile, names: list[str]
-) -> list[float]:
-    """A document's mean metric values as z-scores against the voice."""
+def document_vector(doc: DocSamples, profile: MetricsProfile, names: list[str]) -> list[float]:
+    """A document's chunk-mean metric values as z-scores against the voice."""
     out = []
     for n in names:
-        vals = samples.metrics.get(n, [])
         stat = profile.metrics[n]
-        mean = sum(vals) / len(vals) if vals else stat.mean
+        mean = doc.metrics.get(n, stat.mean)
         out.append((mean - stat.mean) / stat.std if stat.std > 0 else 0.0)
     return out
 
@@ -147,8 +155,12 @@ def recalibrate_metrics(voice: Voice, *, max_share: float | None = None) -> Voic
     """Recompute aggregate stats from the retained per-author samples (no corpus needed)."""
     share = voice.meta.max_share if max_share is None else max_share
     profile = aggregate(
-        voice.metrics.per_author, max_share=share, chunk_words=voice.metrics.chunk_words
+        voice.metrics.per_author,
+        max_share=share,
+        chunk_words=voice.metrics.chunk_words,
+        per_document=voice.metrics.per_document,
     )
+    profile.clusters = voice.metrics.clusters
     return voice.model_copy(update={"metrics": profile})
 
 

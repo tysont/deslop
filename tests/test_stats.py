@@ -1,5 +1,7 @@
 # ABOUTME: Tests for chunking, weighted aggregation, and the author share cap.
 # ABOUTME: Pure arithmetic on hand-built samples.
+import math
+
 import pytest
 
 from deslop.nlp import analyze
@@ -76,3 +78,39 @@ def test_sample_text_runs_all_metrics(heldout_texts):
     assert s.chunks >= 2
     assert "sent_len_mean" in s.metrics and len(s.metrics["sent_len_mean"]) == s.chunks
     assert "T1" in s.tells
+
+
+def test_within_author_std_ignores_between_author_spread():
+    from deslop.stats import DocSamples, within_author_std
+
+    docs = [
+        DocSamples(title="a1", author="a", metrics={"x": 10.0}),
+        DocSamples(title="a2", author="a", metrics={"x": 12.0}),
+        DocSamples(title="b1", author="b", metrics={"x": 100.0}),
+        DocSamples(title="b2", author="b", metrics={"x": 102.0}),
+    ]
+    assert within_author_std(docs, "x") == pytest.approx(math.sqrt(2.0))
+    singles = [DocSamples(title="c", author="c", metrics={"x": 1.0}),
+               DocSamples(title="d", author="d", metrics={"x": 3.0})]
+    assert within_author_std(singles, "x") == pytest.approx(math.sqrt(2.0))
+
+
+def test_aggregate_with_documents_adds_within_std_and_ci():
+    from deslop.stats import DocSamples
+
+    per = {
+        "a": AuthorSamples(words=1000, chunks=2, metrics={"x": [1.0, 3.0]}, tells={"T1": [0.0, 2.0]}),
+        "b": AuthorSamples(words=1000, chunks=2, metrics={"x": [5.0, 7.0]}, tells={"T1": [4.0, 6.0]}),
+    }
+    docs = [
+        DocSamples(title="a1", author="a", words=500, metrics={"x": 1.0}),
+        DocSamples(title="a2", author="a", words=500, metrics={"x": 3.0}),
+        DocSamples(title="b1", author="b", words=500, metrics={"x": 5.0}),
+        DocSamples(title="b2", author="b", words=500, metrics={"x": 7.0}),
+    ]
+    p = aggregate(per, max_share=0.5, chunk_words=500, per_document=docs)
+    stat = p.metrics["x"]
+    assert stat.within_std == pytest.approx(math.sqrt(2.0))
+    assert 1.0 <= stat.ci_low <= stat.mean <= stat.ci_high <= 7.0
+    assert stat.ci_high - stat.ci_low > 0
+    assert len(p.per_document) == 4

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -16,18 +17,39 @@ DEFAULT_CHUNK_WORDS = 500
 
 
 class MetricStat(BaseModel):
+    """Per-metric statistics over 500-word chunks. `within_std` is the pooled standard
+    deviation of document means within one author, which is what the score bands use so that
+    the spread between authors does not widen them; `ci_low`/`ci_high` bound the mean with a
+    document-level bootstrap."""
+
     mean: float
     std: float
     p10: float
     p50: float
     p90: float
     n: int
+    within_std: float = 0.0
+    ci_low: float = 0.0
+    ci_high: float = 0.0
 
 
 class TellStat(BaseModel):
     rate_per_1k: float
     hits: int
     words: int
+
+
+class DocSamples(BaseModel):
+    """One document's chunk-averaged metric values and tell rates, kept for clustering,
+    held-out threshold calibration and the bootstrap."""
+
+    title: str
+    author: str
+    source: str = ""
+    words: int = 0
+    chunks: int = 0
+    metrics: dict[str, float] = Field(default_factory=dict)
+    tells: dict[str, float] = Field(default_factory=dict)
 
 
 class AuthorSamples(BaseModel):
@@ -68,6 +90,7 @@ class MetricsProfile(BaseModel):
     metrics: dict[str, MetricStat] = Field(default_factory=dict)
     tells: dict[str, TellStat] = Field(default_factory=dict)
     per_author: dict[str, AuthorSamples] = Field(default_factory=dict)
+    per_document: list[DocSamples] = Field(default_factory=list)
     clusters: list[Cluster] = Field(default_factory=list)
 
 
@@ -158,6 +181,23 @@ def sample_text(
     return samples
 
 
+def doc_samples(
+    samples: AuthorSamples, *, title: str, author: str, source: str = ""
+) -> DocSamples:
+    """Collapse one document's chunk samples to chunk-mean metrics and document tell rates."""
+    metrics = {k: sum(v) / len(v) for k, v in samples.metrics.items() if v}
+    tells = {k: sum(v) / len(v) for k, v in samples.tells.items() if v}
+    return DocSamples(
+        title=title,
+        author=author,
+        source=source,
+        words=samples.words,
+        chunks=samples.chunks,
+        metrics=metrics,
+        tells=tells,
+    )
+
+
 def merge_samples(a: AuthorSamples, b: AuthorSamples) -> AuthorSamples:
     out = AuthorSamples(weight=a.weight, words=a.words + b.words, chunks=a.chunks + b.chunks)
     for k in set(a.metrics) | set(b.metrics):
@@ -229,11 +269,72 @@ def capped_shares(raw: dict[str, float], max_share: float) -> dict[str, float]:
             return {a: 1.0 / len(raw) for a in raw}
 
 
+BOOTSTRAP_RESAMPLES = 200
+
+
+def within_author_std(docs: list[DocSamples], name: str) -> float:
+    """Pooled standard deviation of document means within authors. Authors with one
+    document contribute nothing; with no author holding two documents, fall back to the
+    spread across all documents."""
+    by_author: dict[str, list[float]] = {}
+    for d in docs:
+        if name in d.metrics:
+            by_author.setdefault(d.author, []).append(d.metrics[name])
+    pooled_ss = 0.0
+    pooled_n = 0
+    for vals in by_author.values():
+        if len(vals) < 2:
+            continue
+        m = sum(vals) / len(vals)
+        pooled_ss += sum((v - m) ** 2 for v in vals)
+        pooled_n += len(vals) - 1
+    if pooled_n > 0:
+        return math.sqrt(pooled_ss / pooled_n)
+    vals = [d.metrics[name] for d in docs if name in d.metrics]
+    if len(vals) < 2:
+        return 0.0
+    m = sum(vals) / len(vals)
+    return math.sqrt(sum((v - m) ** 2 for v in vals) / (len(vals) - 1))
+
+
+def bootstrap_ci(
+    docs: list[DocSamples],
+    name: str,
+    doc_weights: dict[str, float],
+    *,
+    resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """95% interval for the weighted mean of `name`, resampling documents with replacement."""
+    pool = [(d.metrics[name], doc_weights.get(d.title, 0.0)) for d in docs if name in d.metrics]
+    if len(pool) < 2:
+        v = pool[0][0] if pool else 0.0
+        return v, v
+    rng = random.Random(seed)
+    means = []
+    for _ in range(resamples):
+        draw = [pool[rng.randrange(len(pool))] for _ in pool]
+        total = sum(w for _, w in draw)
+        means.append(sum(v * w for v, w in draw) / total if total > 0 else 0.0)
+    means.sort()
+    lo = means[int(0.025 * (len(means) - 1))]
+    hi = means[int(0.975 * (len(means) - 1))]
+    return lo, hi
+
+
 def aggregate(
-    per_author: dict[str, AuthorSamples], *, max_share: float = 0.25, chunk_words: int
+    per_author: dict[str, AuthorSamples],
+    *,
+    max_share: float = 0.25,
+    chunk_words: int,
+    per_document: list[DocSamples] | None = None,
 ) -> MetricsProfile:
     weights = author_weights(per_author, max_share)
-    profile = MetricsProfile(chunk_words=chunk_words, per_author=per_author)
+    docs = per_document or []
+    profile = MetricsProfile(chunk_words=chunk_words, per_author=per_author, per_document=docs)
+    # Each document's bootstrap weight is its words times its author's per-chunk weight, so
+    # the resampled mean respects the same author cap as the point estimate.
+    doc_weights = {d.title: d.words * weights.get(d.author, 0.0) for d in docs}
     profile.total_words = sum(s.words for s in per_author.values())
     metric_names = sorted({k for s in per_author.values() for k in s.metrics})
     for name in metric_names:
@@ -243,7 +344,14 @@ def aggregate(
             vals = s.metrics.get(name, [])
             values.extend(vals)
             ws.extend([weights.get(a, 0.0)] * len(vals))
-        profile.metrics[name] = weighted_stat(values, ws)
+        stat = weighted_stat(values, ws)
+        if docs:
+            stat.within_std = within_author_std(docs, name)
+            stat.ci_low, stat.ci_high = bootstrap_ci(docs, name, doc_weights)
+        else:
+            stat.within_std = stat.std
+            stat.ci_low = stat.ci_high = stat.mean
+        profile.metrics[name] = stat
     tell_ids = sorted({k for s in per_author.values() for k in s.tells})
     for tid in tell_ids:
         values, ws = [], []
