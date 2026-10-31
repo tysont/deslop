@@ -387,6 +387,64 @@ def convert_cmd(
     raise typer.Exit(0 if result.report_after.verdict == "PASS" else 2)
 
 
+# ------------------------------------------------------------------ draft
+
+
+@app.command("draft")
+def draft_cmd(
+    ctx: typer.Context,
+    brief: Path = typer.Argument(..., help="Brief yaml: title and sections with claim/refs/quotes"),
+    voice: Path | None = typer.Option(None, "--voice", "-v"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Write the finished draft here"),
+    max_iter: int | None = typer.Option(None, "--max-iter", help="Convert iterations (2)"),
+    models: str | None = typer.Option(None, "--models"),
+    budget: float | None = typer.Option(None, "--budget"),
+    sigma: float | None = typer.Option(None, "--sigma"),
+    tell_mult: float | None = typer.Option(None, "--tell-mult"),
+    tell_floor: float | None = typer.Option(None, "--tell-floor"),
+    lock: str | None = typer.Option(None, "--lock"),
+    preserve_length: float | None = typer.Option(None, "--preserve-length"),
+    patterns: list[Path] = typer.Option([], "--patterns"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    from deslop.draft import draft, load_brief
+    from deslop.voice import Voice
+
+    s = Settings(ctx, "draft")
+    try:
+        b = load_brief(brief)
+    except (ValueError, OSError) as exc:
+        fail(str(exc))
+    v = Voice.load(s.voice(voice))
+    opts = convert_options(s, "rewrite", max_iter, models, budget, lock, preserve_length)
+    opts["convert_max_iter"] = (
+        opts.pop("max_iter") if max_iter is not None else int(s.get("max_iter", None, 2))
+    )
+    opts.pop("mode")
+    result = draft(
+        b,
+        v,
+        **opts,
+        **score_options(s, sigma, tell_mult, tell_floor, patterns),
+        progress=s.progress(json_out),
+    )
+    out = s.path("out", out)
+    if out is not None:
+        out.write_text(result.text, encoding="utf-8")
+    if json_out:
+        print_json(result.to_json())
+    else:
+        incomplete = [x.heading for x in result.sections if not x.complete]
+        stripped = sum(len(x.stripped) for x in result.sections)
+        console.print(
+            f"drafted {len(result.sections)} section(s); stripped {stripped} unlisted item(s)"
+            + (f"; incomplete: {', '.join(incomplete)}" if incomplete else "")
+        )
+        print_convert_summary(result.convert, False, out)
+        console.print(f"total cost ${result.cost.usd:.3f} over {result.cost.calls} call(s)")
+    raise typer.Exit(0 if result.report.verdict == "PASS" else 2)
+
+
 # ------------------------------------------------------------------ voice
 
 

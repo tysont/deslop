@@ -1,0 +1,33 @@
+# A brief for `deslop draft`: one claim per section, with the references and quotations each
+# section must use verbatim. Everything here is from Johnson's Preface to Shakespeare (1765),
+# which is public domain and included in tests/fixtures/corpus_small.
+title: What Johnson Asked of Shakespeare
+audience: General readers who know the plays but not the eighteenth-century criticism.
+words_per_section: 180
+sections:
+  - heading: General nature
+    claim: >
+      Johnson praises Shakespeare above his contemporaries because his characters are drawn from
+      general nature rather than from the manners of one time or place, which is why they still
+      read as true.
+    refs:
+      - "(Johnson 1765)"
+    quotes:
+      - "Nothing can please many, and please long, but just representations of general nature."
+  - heading: No heroes
+    claim: >
+      For Johnson, Shakespeare's refusal of heroes is a strength: his people speak as any reader
+      would have spoken in their place, so the dialogue stays level with life even when the plot
+      is supernatural.
+    refs:
+      - "(Johnson 1765)"
+    quotes:
+      - "Shakespeare has no heroes; his scenes are occupied only by men"
+  - heading: The stream of time
+    claim: >
+      Johnson's test of merit is survival across generations, and by that test Shakespeare has
+      already passed, since a century and a half of changing taste had not worn him away.
+    refs:
+      - "(Johnson 1765)"
+    quotes:
+      - "The stream of time, which is continually washing the dissoluble fabricks of other poets, passes without injury by the adamant of Shakespeare."
