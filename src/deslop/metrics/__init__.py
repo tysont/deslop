@@ -2,13 +2,13 @@
 # ABOUTME: Importing this package registers rhythm, anchor, and tell metrics.
 from __future__ import annotations
 
+from deslop.metrics import anchors, rhythm  # noqa: F401  (registration side effects)
 from deslop.metrics.base import (
     METRICS,
     MetricSpec,
     compute_all,
     metric,
 )
-from deslop.metrics import anchors, rhythm  # noqa: F401  (registration side effects)
 from deslop.metrics.tells import TellHit, detect_tells, tell_rates
 
 __all__ = [

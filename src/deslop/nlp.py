@@ -93,10 +93,22 @@ class Analysis:
         return max(self.word_count, 1) / 1000.0
 
 
+def looks_like_verse(lines: list[str]) -> bool:
+    """Short lines that mostly begin with a capital are verse rather than wrapped prose."""
+    lines = [ln for ln in lines if ln.strip()]
+    if len(lines) < 2:
+        return False
+    mean_len = sum(len(ln) for ln in lines) / len(lines)
+    capitalized = sum(1 for ln in lines if ln.strip()[:1].isupper() or ln.strip()[:1] in "\"'")
+    return mean_len < 50 and capitalized / len(lines) >= 0.8
+
+
 def is_prose_paragraph(text: str) -> bool:
-    """Skip headings, list markers, and very short fragments."""
+    """Skip headings, list markers, verse blocks, and very short fragments."""
     stripped = text.strip()
     if stripped.startswith("#"):
+        return False
+    if looks_like_verse(stripped.split("\n")):
         return False
     return count_words(stripped) >= 3
 

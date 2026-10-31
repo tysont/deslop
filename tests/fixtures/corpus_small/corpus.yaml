@@ -7,24 +7,24 @@ documents:
   year: 1765
   weight: 1.0
   license: Public domain (Project Gutenberg)
-  simhash: 3415099059279202364
-  words: 15056
+  simhash: 3451118528642123836
+  words: 16175
 - path: hazlitt_characters_of_shakespeare_s_plays.txt
   author: William Hazlitt
   title: Characters of Shakespeare's Plays
   year: 1817
   weight: 1.0
   license: Public domain (Project Gutenberg)
-  simhash: 4040451595423759040
-  words: 14314
+  simhash: 4040451604013660864
+  words: 16058
 - path: arnold_the_function_of_criticism_at_the_present_time.txt
   author: Matthew Arnold
   title: The Function of Criticism at the Present Time
   year: 1865
   weight: 1.0
   license: Public domain (Project Gutenberg)
-  simhash: 12019582450864249589
-  words: 13998
+  simhash: 12163697912207465213
+  words: 16091
 - path: bradley_shakespearean_tragedy_lecture_i.txt
   author: A. C. Bradley
   title: Shakespearean Tragedy, Lecture I

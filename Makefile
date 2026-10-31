@@ -21,4 +21,4 @@ llm-reference:
 	uv run python scripts/build_llm_reference.py
 
 english-generic:
-	uv run python scripts/build_english_generic.py
+	uv run python scripts/build_english_generic.py .cache/gutenberg

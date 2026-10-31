@@ -1,0 +1,119 @@
+# ABOUTME: Compiles a corpus into a Voice: metrics profile, lexicon, rules, profile, exemplars.
+# ABOUTME: Deterministic except for the optional LLM-written profile.md.
+from __future__ import annotations
+
+from pathlib import Path
+
+from deslop import __version__
+from deslop.baselines import english_generic, has_baseline, llm_reference
+from deslop.corpus import Corpus
+from deslop.patterns import load_catalog
+from deslop.stats import (
+    DEFAULT_CHUNK_WORDS,
+    AuthorSamples,
+    WordCounts,
+    aggregate,
+    merge_samples,
+    sample_text,
+)
+from deslop.voice.exemplars import build_exemplars
+from deslop.voice.lexicon import build_lexicon
+from deslop.voice.model import Voice, VoiceMeta
+from deslop.voice.profile import llm_profile, template_profile
+from deslop.voice.rules import build_rules
+
+
+def calibrate(
+    corpus: Corpus,
+    *,
+    name: str | None = None,
+    max_share: float = 0.25,
+    exemplar_words: int = 2000,
+    use_llm: bool = True,
+    llm_model: str | None = None,
+    provider=None,
+    patterns: tuple[str, ...] = (),
+    ban_ratio: float = 10.0,
+    chunk_words: int = DEFAULT_CHUNK_WORDS,
+    progress=None,
+) -> Voice:
+    catalog = load_catalog(patterns)
+    generic = english_generic()
+    llm = llm_reference() if has_baseline("llm_reference") else None
+    docs = corpus.documents()
+    if not docs:
+        raise ValueError("corpus has no documents")
+
+    per_author: dict[str, AuthorSamples] = {}
+    counts = WordCounts()
+    for doc in docs:
+        if progress:
+            progress(f"sampling {doc.entry.author}: {doc.entry.title}")
+        samples = sample_text(doc.text, chunk_words=chunk_words, catalog=catalog)
+        samples.weight = doc.entry.weight
+        author = doc.entry.author
+        per_author[author] = (
+            merge_samples(per_author[author], samples) if author in per_author else samples
+        )
+        per_author[author].weight = doc.entry.weight
+        counts.add(doc.text)
+
+    profile = aggregate(per_author, max_share=max_share, chunk_words=chunk_words)
+    lexicon = build_lexicon(counts, profile, generic, llm, catalog, ban_ratio=ban_ratio)
+    rules = build_rules(profile, generic, lexicon)
+    if progress:
+        progress("selecting exemplars")
+    exemplars = build_exemplars(
+        [(d.entry.author, d.entry.title, d.text) for d in docs],
+        profile,
+        target_words=exemplar_words,
+        max_share=max_share,
+    )
+    voice_name = name or corpus.name
+    profile_source = "template"
+    if use_llm and provider is None:
+        from deslop.providers.base import first_available
+
+        provider = first_available()
+    if use_llm and provider is not None:
+        if progress:
+            progress(f"writing profile with {provider.name}")
+        profile_md = llm_profile(
+            voice_name, profile, generic, exemplars, rules, provider, llm_model
+        )
+        profile_source = f"{provider.name}:{llm_model or provider.default_model}"
+    else:
+        profile_md = template_profile(voice_name, profile, generic)
+
+    total = sum(s.words for s in per_author.values())
+    meta = VoiceMeta(
+        name=voice_name,
+        deslop_version=__version__,
+        corpus_name=corpus.name,
+        corpus_hash=corpus.content_hash(),
+        total_words=total,
+        author_shares={a: round(s.words / total, 4) for a, s in per_author.items()},
+        max_share=max_share,
+        profile_source=profile_source,
+    )
+    return Voice(
+        meta=meta,
+        metrics=profile,
+        lexicon=lexicon,
+        rules=rules,
+        profile=profile_md,
+        exemplars=exemplars,
+    )
+
+
+def recalibrate_metrics(voice: Voice, *, max_share: float | None = None) -> Voice:
+    """Recompute aggregate stats from the retained per-author samples (no corpus needed)."""
+    share = voice.meta.max_share if max_share is None else max_share
+    profile = aggregate(
+        voice.metrics.per_author, max_share=share, chunk_words=voice.metrics.chunk_words
+    )
+    return voice.model_copy(update={"metrics": profile})
+
+
+def load_voice(path: Path | str) -> Voice:
+    return Voice.load(path)

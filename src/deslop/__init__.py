@@ -3,3 +3,10 @@
 from __future__ import annotations
 
 __version__ = "0.1.0"
+
+from deslop.corpus import Corpus
+from deslop.report import Report
+from deslop.score import score
+from deslop.voice import Voice
+
+__all__ = ["Corpus", "Report", "Voice", "__version__", "score"]

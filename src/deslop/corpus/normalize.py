@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from deslop.nlp import looks_like_verse
+
 QUOTE_MAP = str.maketrans(
     {
         "‘": "'",
@@ -23,8 +25,10 @@ QUOTE_MAP = str.maketrans(
     }
 )
 
-GUTENBERG_START_RE = re.compile(r"^\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG.*$", re.M)
-GUTENBERG_END_RE = re.compile(r"^\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG.*$", re.M)
+GUTENBERG_START_RE = re.compile(
+    r"^\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG.*$", re.MULTILINE
+)
+GUTENBERG_END_RE = re.compile(r"^\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG.*$", re.MULTILINE)
 
 
 def strip_gutenberg(text: str) -> str:
@@ -50,15 +54,11 @@ def unwrap_lines(text: str) -> str:
         lines = [ln for ln in lines if ln]
         if not lines:
             continue
-        if all(_looks_like_verse_or_heading(ln) for ln in lines) and len(lines) > 1:
+        if looks_like_verse(lines):
             out.append("\n".join(lines))
         else:
             out.append(" ".join(lines))
     return "\n\n".join(out)
-
-
-def _looks_like_verse_or_heading(line: str) -> bool:
-    return len(line) < 45 and not line.endswith((".", ",", ";", ":", "-"))
 
 
 def normalize(text: str, *, gutenberg: bool = True) -> str:

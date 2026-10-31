@@ -4,10 +4,10 @@ NOTE B. Where was Hamlet at the time of his father's death? 403
 
 NOTE D. 'My tables--meet it is I set it down' 409
 
-NOTE I. The duration of the action in
-_Othello_ 423
+NOTE I. The duration of the action in _Othello_ 423
 
-NOTE J. The 'additions' in the Folio text of _Othello_. The Pontic sea 429
+NOTE J. The 'additions' in the Folio text of _Othello_. The
+Pontic sea 429
 
 NOTE M. Questions as to _Othello_, IV. i. 435
 
@@ -19,9 +19,11 @@ NOTE R. Reminiscences of _Othello_ in _King Lear_ 441
 
 NOTE S. _King Lear_ and _Timon of Athens_ 443
 
-NOTE U. Movements of the _dramatis personæ_ in _King Lear_, II 448
+NOTE U. Movements of the _dramatis personæ_ in _King
+Lear_, II 448
 
-NOTE W. The staging of the scene of Lear's reunion with Cordelia 453
+NOTE W. The staging of the scene of Lear's reunion with
+Cordelia 453
 
 NOTE Y. Some difficult passages in _King Lear_ 458
 
@@ -29,7 +31,8 @@ NOTE BB. The date of _Macbeth_. Metrical Tests 470
 
 NOTE CC. When was the murder of Duncan first plotted? 480
 
-NOTE EE. Duration of the action in _Macbeth_. Macbeth's age. 'He has no children' 486
+NOTE EE. Duration of the action in _Macbeth_. Macbeth's age.
+'He has no children' 486
 
 In these lectures I propose to consider the four principal tragedies of Shakespeare from a single point of view. Nothing will be said of Shakespeare's place in the history either of English literature or of the drama in general. No attempt will be made to compare him with other writers. I shall leave untouched, or merely glanced at, questions regarding his life and character, the development of his genius and art, the genuineness, sources, texts, inter-relations of his various works. Even what may be called, in a restricted sense, the 'poetry' of the four tragedies--the beauties of style, diction, versification--I shall pass by in silence. Our one object will be what, again in a restricted sense, may be called dramatic appreciation; to increase our understanding and enjoyment of these works as dramas; to learn to apprehend the action and some of the personages of each with a somewhat greater truth and intensity, so that they may assume in our imaginations a shape a little less unlike the shape they wore in the imagination of their creator. For this end all those studies that were mentioned just now, of literary history and the like, are useful and even in various degrees necessary. But an overt pursuit of them is not necessary here, nor is any one of them so indispensable to our object as that close familiarity with the plays, that native strength and justice of perception, and that habit of reading with an eager mind, which make many an unscholarly lover of Shakespeare a far better critic than many a Shakespeare scholar.
 
@@ -55,13 +58,21 @@ Such exceptional suffering and calamity, then, affecting the hero, and--we must 
 
 Let us now pause for a moment on the ideas we have so far reached. They would more than suffice to describe the whole tragic fact as it presented itself to the mediaeval mind. To the mediaeval mind a tragedy meant a narrative rather than a play, and its notion of the matter of this narrative may readily be gathered from Dante or, still better, from Chaucer. Chaucer's _Monk's Tale_ is a series of what he calls 'tragedies'; and this means in fact a series of tales _de Casibus Illustrium Virorum_,--stories of the Falls of Illustrious Men, such as Lucifer, Adam, Hercules and Nebuchadnezzar. And the Monk ends the tale of Croesus thus:
 
-Anhanged was Cresus, the proudè kyng; His roial tronè myghte hym nat availle. Tragédie is noon oother maner thyng, Ne kan in syngyng criè ne biwaille But for that Fortune alwey wole assaile With unwar strook the regnès that been proude; For whan men trusteth hire, thanne wol she faille, And covere hire brighte facè with a clowde.
+Anhanged was Cresus, the proudè kyng;
+His roial tronè myghte hym nat availle.
+Tragédie is noon oother maner thyng,
+Ne kan in syngyng criè ne biwaille
+But for that Fortune alwey wole assaile
+With unwar strook the regnès that been proude;
+For whan men trusteth hire, thanne wol she faille,
+And covere hire brighte facè with a clowde.
 
 A total reverse of fortune, coming unawares upon a man who 'stood in high degree,' happy and apparently secure,--such was the tragic fact to the mediaeval mind. It appealed strongly to common human sympathy and pity; it startled also another feeling, that of fear. It frightened men and awed them. It made them feel that man is blind and helpless, the plaything of an inscrutable power, called by the name of Fortune or some other name,--a power which appears to smile on him for a little, and then on a sudden strikes him down in his pride.
 
 Shakespeare's idea of the tragic fact is larger than this idea and goes beyond it; but it includes it, and it is worth while to observe the identity of the two in a certain point which is often ignored. Tragedy with Shakespeare is concerned always with persons of 'high degree'; often with kings or princes; if not, with leaders in the state like Coriolanus, Brutus, Antony; at the least, as in _Romeo and Juliet_, with members of great houses, whose quarrels are of public moment. There is a decided difference here between _Othello_ and our three other tragedies, but it is not a difference of kind. Othello himself is no mere private person; he is the General of the Republic. At the beginning we see him in the Council-Chamber of the Senate. The consciousness of his high position never leaves him. At the end, when he is determined to live no longer, he is as anxious as Hamlet not to be misjudged by the great world, and his last speech begins,
 
-Soft you; a word or two before you go. I have done the state some service, and they know it.
+Soft you; a word or two before you go.
+I have done the state some service, and they know it.
 
 And this characteristic of Shakespeare's tragedies, though not the most vital, is neither external nor unimportant. The saying that every death-bed is the scene of the fifth act of a tragedy has its meaning, but it would not be true if the word 'tragedy' bore its dramatic sense. The pangs of despised love and the anguish of remorse, we say, are the same in a peasant and a prince; but, not to insist that they cannot be so when the prince is really a prince, the story of the prince, the triumvir, or the general, has a greatness and dignity of its own. His fate affects the welfare of a whole nation or empire; and when he falls suddenly from the height of earthly greatness to the dust, his fall produces a sense of contrast, of the powerlessness of man, and of the omnipotence--perhaps the caprice--of Fortune or Fate, which no tale of private life can possibly rival.
 
@@ -69,7 +80,8 @@ Such feelings are constantly evoked by Shakespeare's tragedies,--again in varyin
 
 grinning at his pomp, watching till his vanity and his fancied security have wholly encased him round, and then coming and boring with a little pin through his castle wall. And these feelings, though their predominance is subdued in the mightiest tragedies, remain powerful there. In the figure of the maddened Lear we see
 
-A sight most pitiful in the meanest wretch, Past speaking of in a king;
+A sight most pitiful in the meanest wretch,
+Past speaking of in a king;
 
 and if we would realise the truth in this matter we cannot do better than compare with the effect of _King Lear_ the effect of Tourgénief's parallel and remarkable tale of peasant life, _A King Lear of the Steppes_.
 
@@ -187,8 +199,7 @@ Thus we are left at last with an idea showing two sides or aspects which we can 
 
 [Footnote 12: I have raised no objection to the use of the idea of fate, because it occurs so often both in conversation and in books about Shakespeare's tragedies that I must suppose it to be natural to many readers. Yet I doubt whether it would be so if Greek tragedy had never been written; and I must in candour confess that to me it does not often occur while I am reading, or when I have just read, a tragedy of Shakespeare. Wordsworth's lines, for example, about
 
-poor humanity's afflicted will
-Struggling in vain with ruthless destiny
+poor humanity's afflicted will Struggling in vain with ruthless destiny
 
 do not represent the impression I receive; much less do images which compare man to a puny creature helpless in the claws of a bird of prey. The reader should examine himself closely on this matter.]
 
@@ -216,18 +227,24 @@ This tragedy illustrates another practice of Shakespeare's. _King Lear_ has a se
 
 But why should Iago open the play? Or, if this seems too presumptuous a question, let us put it in the form, What is the effect of his opening the play? It is that we receive at the very outset a strong impression of the force which is to prove fatal to the hero's happiness, so that, when we see the hero himself, the shadow of fate already rests upon him. And an effect of this kind is to be noticed in other tragedies. We are made conscious at once of some power which is to influence the whole action to the hero's undoing. In _Macbeth_ we see and hear the Witches, in _Hamlet_ the Ghost. In the first scene of _Julius Caesar_ and of _Coriolanus_ those qualities of the crowd are vividly shown which render hopeless the enterprise of the one hero and wreck the ambition of the other. It is the same with the hatred between the rival houses in _Romeo and Juliet_, and with Antony's infatuated passion. We realise them at the end of the first page, and are almost ready to regard the hero as doomed. Often, again, at one or more points during the exposition this feeling is reinforced by some expression that has an ominous effect. The first words we hear from Macbeth, 'So foul and fair a day I have not seen,' echo, though he knows it not, the last words we heard from the Witches, 'Fair is foul, and foul is fair.' Romeo, on his way with his friends to the banquet, where he is to see Juliet for the first time, tells Mercutio that he has had a dream. What the dream was we never learn, for Mercutio does not care to know, and breaks into his speech about Queen Mab; but we can guess its nature from Romeo's last speech in the scene:
 
-My mind misgives Some consequence yet hanging in the stars Shall bitterly begin his fearful date With this night's revels.
+My mind misgives
+Some consequence yet hanging in the stars
+Shall bitterly begin his fearful date
+With this night's revels.
 
 When Brabantio, forced to acquiesce in his daughter's stolen marriage, turns, as he leaves the council-chamber, to Othello, with the warning,
 
-Look to her, Moor, if thou hast eyes to see; She has deceived her father, and may thee,
+Look to her, Moor, if thou hast eyes to see;
+She has deceived her father, and may thee,
 
 this warning, and no less Othello's answer, 'My life upon her faith,' make our hearts sink. The whole of the coming story seems to be prefigured in Antony's muttered words (I. ii. 120):
 
-These strong Egyptian fetters I must break, Or lose myself in dotage;
+These strong Egyptian fetters I must break,
+Or lose myself in dotage;
 
 and, again, in Hamlet's weary sigh, following so soon on the passionate resolution stirred by the message of the Ghost:
 
-The time is out of joint. Oh cursed spite, That ever I was born to set it right.
+The time is out of joint. Oh cursed spite,
+That ever I was born to set it right.
 
 These words occur at a point (the end of the First Act) which may be held to fall either within the exposition or beyond it. I should take the former view, though such questions, as we saw at starting, can hardly be decided with certainty. The dimensions of this first section of a tragedy depend on a variety of causes, of which the chief seems to be the comparative simplicity or complexity of the situation from which the conflict arises. Where this is simple the exposition is short, as in _Julius Caesar_ and _Macbeth_. Where it is complicated the exposition requires more space, as in _Romeo and Juliet_, _Hamlet_, and _King Lear_. Its completion is generally marked in the mind of the reader by a feeling that the action it contains is for the moment complete but has left a problem. The lovers have met, but their families are at deadly enmity; the hero seems at the height of success, but has admitted the thought of murdering his sovereign; the old king has divided his kingdom between two hypocritical daughters, and has rejected his true child; the hero has acknowledged a sacred duty of revenge, but is weary of life: and we ask, What will come of this? Sometimes, I may add, a certain time is supposed to elapse before the events which answer our question make their appearance and the conflict begins; in _King Lear_, for instance, about a fortnight; in _Hamlet_ about two months.

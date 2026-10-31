@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-
 import warnings
 
 with warnings.catch_warnings():
@@ -20,7 +19,7 @@ def fingerprint(text: str) -> int:
 
 
 def distance(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
+    return (a ^ b).bit_count()
 
 
 def is_duplicate(fp: int, existing: list[int], max_distance: int = 3) -> bool:

@@ -14,7 +14,9 @@ CITATION_PATTERNS = [
     re.compile(r"\b\d{1,3}:\d{1,3}(?:[-–]\d{1,3})?\b"),
     re.compile(r"\b\d{2,3}[a-e]\b(?=[\s,.;)])"),
     re.compile(r"\b(?:pp?|ll?)\.\s?\d+(?:[-–]\d+)?\b"),
-    re.compile(r"\([A-Z][A-Za-z'\-]+(?:\s(?:and|&)\s[A-Z][A-Za-z'\-]+)?,?\s\d{4}[a-z]?(?:[,:]\s?\d+(?:[-–]\d+)?)?\)"),
+    re.compile(
+        r"\([A-Z][A-Za-z'\-]+(?:\s(?:and|&)\s[A-Z][A-Za-z'\-]+)?,?\s\d{4}[a-z]?(?:[,:]\s?\d+(?:[-–]\d+)?)?\)"
+    ),
     re.compile(r"\b(?:Act|act)\s[IVX1-5]+,?\s(?:[Ss]c(?:ene|\.)\s?[ivx0-9]+)"),
     re.compile(r"\b[IVX]+\.\s?[ivx]+\.\s?\d+\b"),
 ]
@@ -35,6 +37,7 @@ COMMITTED_CLAIM_RE = re.compile(
     r"|\b(?:the|a)\s+(?:better|worse|stronger|weaker|more\s+likely|less\s+likely|"
     r"more\s+plausible|less\s+plausible)\s+(?:reading|view|account|explanation|interpretation)\b"
     r"|\b(?:must|cannot)\s+be\s+(?:right|wrong|rejected|accepted|the\s+case)\b",
+    re.IGNORECASE,
 )
 
 
@@ -103,8 +106,11 @@ def count_reader_address(a: Analysis) -> int:
     for s in a.sentences:
         root = s.span.root
         first = next((t for t in s.span if t.is_alpha), None)
-        if first is not None and first is root and root.tag_ == "VB" and not any(
-            c.dep_ == "nsubj" for c in root.children
+        if (
+            first is not None
+            and first.i == root.i
+            and root.tag_ == "VB"
+            and not any(c.dep_ == "nsubj" for c in root.children)
         ):
             count += 1
     return count

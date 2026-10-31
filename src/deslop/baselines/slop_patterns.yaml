@@ -275,7 +275,10 @@ patterns:
       subjects:
         - this
         - what follows
-        - we
+      we_verbs:
+        - turn
+        - return
+        - arrive
       verbs:
         - argue
         - show
@@ -325,6 +328,11 @@ patterns:
         - not quite
         - partly
         - in part
+        - that is the question
+        - this is the question
+        - the question is
+        - that is
+        - this is
   - id: T10
     name: formula_openers
     description: Stock sentence openers (So, Then, Against that, Set X beside Y, It is worth noting, Importantly).

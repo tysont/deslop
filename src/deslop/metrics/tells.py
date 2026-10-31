@@ -67,12 +67,19 @@ def _span_hit(pattern: Pattern, sent: Sentence, span: Span, note: str = ""):
 
 
 def is_abstract(tok: Token, catalog: Catalog) -> bool:
-    if tok.pos_ not in ("NOUN", "PROPN"):
+    if tok.pos_ not in ("NOUN", "PROPN", "ADJ"):
         return False
     lemma = tok.lemma_.lower()
     if lemma in catalog.lexicon("abstract_nouns"):
         return True
+    if tok.pos_ == "ADJ":
+        return False
     return any(lemma.endswith(s) for s in catalog.lexicon("abstract_suffixes")) and len(lemma) > 6
+
+
+def is_verse(sent: Sentence) -> bool:
+    """Sentences spanning kept line breaks are quoted verse, not the writer's prose."""
+    return "\n" in sent.text.strip()
 
 
 def has_anchor(sent: Sentence) -> bool:
@@ -116,7 +123,9 @@ def regex_detector(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catal
     text = sent.text
     for raw in pattern.params.get("patterns", []):
         for m in _compile(raw).finditer(text):
-            hits.append(_hit(pattern, sent, sent.start + m.start(), sent.start + m.end(), m.group(0)))
+            hits.append(
+                _hit(pattern, sent, sent.start + m.start(), sent.start + m.end(), m.group(0))
+            )
     return hits
 
 
@@ -157,12 +166,16 @@ def triad(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
         return hits
     m = SURFACE_TRIAD_RE.search(sent.text)
     if m:
-        hits.append(_hit(pattern, sent, sent.start + m.start(), sent.start + m.end(), m.group(0), "surface"))
+        hits.append(
+            _hit(pattern, sent, sent.start + m.start(), sent.start + m.end(), m.group(0), "surface")
+        )
     return hits
 
 
 CHAIN_DEPS = ("conj", "parataxis")
-SURFACE_TRIAD_RE = re.compile(r"(?<![,;])\b[^,;:.?!]{2,40},\s[^,;:.?!]{2,40},\s(?:and|or)\s[^,;:.?!]{2,40}")
+SURFACE_TRIAD_RE = re.compile(
+    r"(?<![,;])\b[^,;:.?!]{2,40},\s[^,;:.?!]{2,40},\s(?:and|or)\s[^,;:.?!]{2,40}"
+)
 
 
 def conjunct_chain(tok: Token) -> list[Token]:
@@ -179,7 +192,9 @@ def conjunct_chain(tok: Token) -> list[Token]:
 
 
 ANTITHESIS_RE = re.compile(
-    r"\bnot\b[^,;.?!]{1,50}\bbut\b|,\s*not\s+\w|\bless\b[^,;.?!]{1,40}\bthan\b|\bmore\b[^,;.?!]{1,40}\bthan\b",
+    r"\bnot\b[^,;.?!]{1,50}\bbut\b|,\s*not\s+\w|\bless\b[^,;.?!]{1,40}\bthan\b|\bmore\b[^,;.?!]{1,40}\bthan\b"
+    r"|^to \w+\b.{0,40}\bis to\b|^what\b.{0,40}\bis what\b"
+    r"|\ba (?:kind|sort) of\b|\bis the \w+ of\b",
     re.IGNORECASE,
 )
 
@@ -205,12 +220,14 @@ def aphoristic_close(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Cat
         return []
     if sent.word_count > int(pattern.params.get("max_words", 30)) or has_anchor(sent):
         return []
-    nouns = [t for t in sent.span if t.pos_ == "NOUN"]
+    if is_verse(sent):
+        return []
+    nouns = [t for t in sent.span if t.pos_ in ("NOUN", "PROPN") or is_abstract(t, catalog)]
     abstract = [t for t in nouns if is_abstract(t, catalog)]
     density = len(abstract) / len(nouns) if nouns else 0.0
-    dense = density >= float(pattern.params.get("abstract_density", 0.3)) and len(
-        abstract
-    ) >= int(pattern.params.get("min_abstract", 2))
+    dense = density >= float(pattern.params.get("abstract_density", 0.3)) and len(abstract) >= int(
+        pattern.params.get("min_abstract", 2)
+    )
     shaped = bool(ANTITHESIS_RE.search(sent.text)) or is_chiastic(sent)
     if dense or shaped:
         note = "antithesis" if shaped else f"abstract={density:.2f}"
@@ -225,7 +242,11 @@ def invented_label(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catal
         if tok.dep_ != "poss" or not is_abstract(tok, catalog):
             continue
         head = tok.head
-        if is_abstract(head, catalog):
+        if not is_abstract(head, catalog):
+            # Mis-parsed possessives: fall back to the token after the 's marker.
+            after = [t for t in sent.span if t.i > tok.i and t.text != "'s"]
+            head = after[0] if after else head
+        if is_abstract(head, catalog) and head.i > tok.i:
             hits.append(_token_hit(pattern, sent, tok, head))
     return hits
 
@@ -233,21 +254,29 @@ def invented_label(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catal
 @sentence_detector("meta_commentary")
 def meta_commentary(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
     verbs = set(pattern.params.get("verbs", []))
+    we_verbs = set(pattern.params.get("we_verbs", []))
     subjects = set(pattern.params.get("subjects", []))
     text_nouns = catalog.lexicon("text_nouns")
     hits = []
     for tok in sent.span:
-        if tok.pos_ != "VERB" or tok.lemma_.lower() not in verbs:
+        if tok.pos_ != "VERB":
             continue
         subj = subject_of(tok)
         if subj is None:
             continue
+        verb = tok.lemma_.lower()
         lemma = subj.lemma_.lower()
-        is_text = subj.pos_ == "NOUN" and lemma in text_nouns
-        is_deictic = subj.lower_ in subjects or (
-            subj.lower_ == "what" and tok.lemma_.lower() in ("follow",)
+        is_text = subj.pos_ == "NOUN" and lemma in text_nouns and verb in verbs
+        is_deictic = subj.lower_ in subjects and verb in verbs
+        is_we = (
+            subj.lower_ == "we"
+            and verb in we_verbs
+            and not any(
+                c.dep_ == "aux" and c.lower_ in ("can", "could", "may", "might", "shall", "will")
+                for c in tok.children
+            )
         )
-        if is_text or is_deictic:
+        if is_text or is_deictic or is_we:
             hits.append(_token_hit(pattern, sent, subj, tok, note=tok.lower_))
     return hits
 
@@ -255,9 +284,7 @@ def meta_commentary(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Cata
 @sentence_detector("epithet_substitution")
 def epithet_substitution(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
     roles = catalog.lexicon("role_nouns")
-    introduced = any(
-        t.pos_ == "PROPN" for s in a.sentences[: sent.index] for t in s.span
-    )
+    introduced = any(t.pos_ == "PROPN" for s in a.sentences[: sent.index] for t in s.span)
     if not introduced:
         return []
     hits = []
@@ -275,10 +302,12 @@ def epithet_substitution(a: Analysis, sent: Sentence, pattern: Pattern, catalog:
 
 @sentence_detector("unanswered_question")
 def unanswered_question(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
-    if not sent.text.rstrip().endswith("?") or QUOTE_RE.search(sent.text):
+    if not sent.text.rstrip().endswith("?") or QUOTE_RE.search(sent.text) or is_verse(sent):
         return []
-    openers = [o.lower() for o in pattern.params.get("answer_openers", [])]
     following = a.sentences[sent.index + 1 : sent.index + 3]
+    if following and following[0].text.rstrip().endswith("?"):
+        return []  # a series of questions is judged by its last member
+    openers = [o.lower() for o in pattern.params.get("answer_openers", [])]
     asked = content_lemmas(sent.span)
     for nxt in following:
         lowered = nxt.text.lower().lstrip('"“')
@@ -339,9 +368,17 @@ def tidy_summary_close(a: Analysis, pattern: Pattern, catalog: Catalog):
         return []
     overlap = len(own & prior) / len(own)
     prior_propn = {t.lower_ for p in a.paragraphs[:-1] for t in p.doc if t.pos_ == "PROPN"}
-    new_anchor = any(t.pos_ == "PROPN" and t.lower_ not in prior_propn for t in last.doc) or bool(
-        NUMBER_RE.search(last.text)
-    ) or bool(QUOTE_RE.search(last.text))
+    new_anchor = (
+        any(
+            t.pos_ == "PROPN"
+            and t.text[:1].isupper()
+            and t.lower_ not in prior_propn
+            and t.lemma_.lower() not in prior
+            for t in last.doc
+        )
+        or bool(NUMBER_RE.search(last.text))
+        or bool(QUOTE_RE.search(last.text))
+    )
     if overlap >= float(pattern.params.get("min_overlap", 0.75)) and not new_anchor:
         first = last.sentences[0]
         return [
@@ -379,7 +416,9 @@ def detect_tells(a: Analysis, catalog: Catalog | None = None) -> list[TellHit]:
     return hits
 
 
-def tell_rates(a: Analysis, hits: list[TellHit], catalog: Catalog | None = None) -> dict[str, float]:
+def tell_rates(
+    a: Analysis, hits: list[TellHit], catalog: Catalog | None = None
+) -> dict[str, float]:
     """Hits per 1k words for every pattern in the catalog (zero when absent)."""
     catalog = catalog or load_catalog()
     counts = {p.id: 0 for p in catalog.patterns}

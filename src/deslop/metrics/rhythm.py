@@ -39,16 +39,12 @@ def sent_len_cv(a: Analysis) -> float:
     return stdev(lengths) / m if m else 0.0
 
 
-@metric(
-    "pct_sent_lt8", group="rhythm", slop_side="none", description="% sentences under 8 words"
-)
+@metric("pct_sent_lt8", group="rhythm", slop_side="none", description="% sentences under 8 words")
 def pct_sent_lt8(a: Analysis) -> float:
     return pct(sentence_lengths(a), lambda n: n < 8)
 
 
-@metric(
-    "pct_sent_gt30", group="rhythm", slop_side="none", description="% sentences over 30 words"
-)
+@metric("pct_sent_gt30", group="rhythm", slop_side="none", description="% sentences over 30 words")
 def pct_sent_gt30(a: Analysis) -> float:
     return pct(sentence_lengths(a), lambda n: n > 30)
 

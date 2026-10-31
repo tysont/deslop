@@ -14,15 +14,57 @@ FOOTNOTE_RE = re.compile(r"\[\d+\]")
 
 # (gutenberg id, author, title, year, start marker, target words)
 CORPUS_DOCS = [
-    ("5429", "Samuel Johnson", "Preface to Shakespeare", 1765, "That praises are without reason", 15000),
-    ("5085", "William Hazlitt", "Characters of Shakespeare's Plays", 1817, "CYMBELINE is one of the most", 15000),
-    ("12628", "Matthew Arnold", "The Function of Criticism at the Present Time", 1865, "Many objections have been made to a proposition", 15000),
-    ("16966", "A. C. Bradley", "Shakespearean Tragedy, Lecture I", 1904, "THE SUBSTANCE OF SHAKESPEAREAN TRAGEDY", 15000),
+    (
+        "5429",
+        "Samuel Johnson",
+        "Preface to Shakespeare",
+        1765,
+        "That praises are without reason",
+        16000,
+    ),
+    (
+        "5085",
+        "William Hazlitt",
+        "Characters of Shakespeare's Plays",
+        1817,
+        "CYMBELINE is one of the most",
+        16000,
+    ),
+    (
+        "12628",
+        "Matthew Arnold",
+        "The Function of Criticism at the Present Time",
+        1865,
+        "Many objections have been made to a proposition",
+        16000,
+    ),
+    (
+        "16966",
+        "A. C. Bradley",
+        "Shakespearean Tragedy, Lecture I",
+        1904,
+        "THE SUBSTANCE OF SHAKESPEAREAN TRAGEDY",
+        16000,
+    ),
 ]
 
 HELDOUT_DOCS = [
-    ("16209", "William Hazlitt", "On Poetry in General", "The best general notion which I can give of poetry", 1500, "heldout_hazlitt.md"),
-    ("16966", "A. C. Bradley", "Macbeth", "_Macbeth_, it is probable, was the last", 1500, "heldout_bradley.md"),
+    (
+        "16209",
+        "William Hazlitt",
+        "On Poetry in General",
+        "The best general notion which I can give of poetry",
+        1500,
+        "heldout_hazlitt.md",
+    ),
+    (
+        "16966",
+        "A. C. Bradley",
+        "Macbeth",
+        "_Macbeth_, it is probable, was the last",
+        1500,
+        "heldout_bradley.md",
+    ),
 ]
 
 
@@ -70,9 +112,15 @@ def main(raw_dir: str) -> None:
     for gid, author, title, year, marker, target in CORPUS_DOCS:
         tmp = scratch / f"{gid}.txt"
         tmp.write_text(excerpt(raw, gid, marker, target), encoding="utf-8")
-        entry = corpus.add(str(tmp), author=author, title=title, year=year, license="Public domain (Project Gutenberg)")
+        entry = corpus.add(
+            str(tmp),
+            author=author,
+            title=title,
+            year=year,
+            license="Public domain (Project Gutenberg)",
+        )
         print(f"{author:20s} {entry.words:6d} words -> {entry.path}")
-    for gid, author, title, marker, target, name in HELDOUT_DOCS:
+    for gid, author, _title, marker, target, name in HELDOUT_DOCS:
         text = excerpt(raw, gid, marker, target)
         (Path("tests/fixtures") / name).write_text(text, encoding="utf-8")
         print(f"heldout {author:20s} {count_words(text):6d} words -> {name}")
