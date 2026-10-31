@@ -38,6 +38,15 @@ class NonRetryableError(ProviderError):
     """Auth, bad-request, and programming errors: fail fast instead of backing off."""
 
 
+class CacheMissError(Exception):
+    """A cache-only provider was asked for a prompt that is not in its cache. Deliberately
+    not a ProviderError so retry loops do not swallow it."""
+
+
+def cache_only_default() -> bool:
+    return os.environ.get("DESLOP_CACHE_ONLY", "").strip().lower() in ("1", "true", "yes")
+
+
 @dataclass
 class Usage:
     input_tokens: int = 0
@@ -81,11 +90,19 @@ class CachingProvider:
     default_model: str = ""
 
     def __init__(
-        self, *, cache_dir: Path | None = None, use_cache: bool = True, max_retries: int = 4
+        self,
+        *,
+        cache_dir: Path | None = None,
+        use_cache: bool = True,
+        max_retries: int = 4,
+        cache_only: bool | None = None,
     ):
+        """cache_only providers answer from the cache alone: they need no credentials and
+        raise CacheMissError for any prompt not already cached (default: $DESLOP_CACHE_ONLY)."""
         self.cache_dir = cache_dir or default_cache_dir()
         self.use_cache = use_cache
         self.max_retries = max_retries
+        self.cache_only = cache_only_default() if cache_only is None else cache_only
         self.usage = Usage()
 
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
@@ -109,6 +126,11 @@ class CachingProvider:
             self.usage.add(usage)
             return Completion(
                 text=data["text"], model=model, provider=self.name, usage=usage, from_cache=True
+            )
+        if self.cache_only:
+            raise CacheMissError(
+                f"{self.name}/{model}: prompt not in cache {self.cache_dir} and "
+                "cache-only mode is on (unset DESLOP_CACHE_ONLY and provide credentials)"
             )
         delay = 1.0
         last: Exception | None = None

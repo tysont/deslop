@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from deslop.pricing import is_priced, price
 from deslop.providers.base import (
@@ -19,8 +20,10 @@ class OpenAIProvider(CachingProvider):
     name = "openai"
     default_model = DEFAULT_MODELS["openai"]
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
+        if self.cache_only:
+            return
         if not os.environ.get("OPENAI_API_KEY"):
             raise ProviderError("OPENAI_API_KEY is not set")
         from openai import OpenAI
@@ -58,8 +61,10 @@ class CompatibleProvider(OpenAIProvider):
     name = "compatible"
     default_model = DEFAULT_MODELS["compatible"]
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         CachingProvider.__init__(self, **kwargs)
+        if self.cache_only:
+            return
         base_url = os.environ.get("DESLOP_COMPATIBLE_BASE_URL")
         if not base_url:
             raise ProviderError("DESLOP_COMPATIBLE_BASE_URL is not set")

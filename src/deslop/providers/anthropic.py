@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from deslop.pricing import is_priced, price
 from deslop.providers.base import (
@@ -19,8 +20,10 @@ class AnthropicProvider(CachingProvider):
     name = "anthropic"
     default_model = DEFAULT_MODELS["anthropic"]
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
+        if self.cache_only:
+            return
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise ProviderError("ANTHROPIC_API_KEY is not set")
         from anthropic import Anthropic

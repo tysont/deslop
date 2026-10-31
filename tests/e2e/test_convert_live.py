@@ -1,18 +1,8 @@
-# ABOUTME: Live end-to-end test: converts the slop sample with real providers (cached on disk).
-# ABOUTME: Skipped unless an Anthropic or OpenAI key is configured. Encodes the Phase 2 definition of done.
-import os
-
-import pytest
-from dotenv import load_dotenv
-
+# ABOUTME: End-to-end test: converts the slop sample with real providers, replayed from
+# ABOUTME: tests/cache when no credentials are present. Encodes the Phase 2 definition of done.
 from deslop import convert
 from deslop.lock import inventory
 from deslop.nlp import analyze
-
-load_dotenv(override=True)
-HAS_KEY = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY"))
-
-pytestmark = pytest.mark.skipif(not HAS_KEY, reason="no provider credentials")
 
 
 def check_locks_and_untouched(res, source):
@@ -30,9 +20,16 @@ def check_locks_and_untouched(res, source):
     assert "--- before" in res.diff
 
 
-def test_slop_sample_converts_to_pass_in_rewrite_mode(fixture_voice, slop_text, tmp_path):
+def test_slop_sample_converts_to_pass_in_rewrite_mode(
+    fixture_voice, slop_text, tmp_path, provider_factory
+):
     res = convert(
-        slop_text, fixture_voice, mode="rewrite", max_iter=4, pairs_path=tmp_path / "pairs.jsonl"
+        slop_text,
+        fixture_voice,
+        mode="rewrite",
+        max_iter=4,
+        pairs_path=tmp_path / "pairs.jsonl",
+        provider_factory=provider_factory,
     )
     assert res.report_before.verdict == "FAIL"
     assert res.report_after.verdict == "PASS", res.report_after.fixes
@@ -40,11 +37,18 @@ def test_slop_sample_converts_to_pass_in_rewrite_mode(fixture_voice, slop_text, 
     check_locks_and_untouched(res, slop_text)
 
 
-def test_slop_sample_converts_to_pass_in_edit_mode(fixture_voice, slop_text, tmp_path):
+def test_slop_sample_converts_to_pass_in_edit_mode(
+    fixture_voice, slop_text, tmp_path, provider_factory
+):
     # Adjacent flagged sentences (including monotone runs) are rewritten as one passage, so
     # edit mode can restore rhythm while every sentence outside a unit stays byte-identical.
     res = convert(
-        slop_text, fixture_voice, mode="edit", max_iter=4, pairs_path=tmp_path / "pairs.jsonl"
+        slop_text,
+        fixture_voice,
+        mode="edit",
+        max_iter=4,
+        pairs_path=tmp_path / "pairs.jsonl",
+        provider_factory=provider_factory,
     )
     assert res.report_after.verdict == "PASS", res.report_after.fixes
     check_locks_and_untouched(res, slop_text)
