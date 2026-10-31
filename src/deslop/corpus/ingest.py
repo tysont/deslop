@@ -25,7 +25,7 @@ def ingest(source: str) -> tuple[str, str]:
         raise IngestError(f"no such file: {source}")
     suffix = path.suffix.lower()
     if suffix in (".txt", ".text", ""):
-        return normalize(read_text(path)), path.stem
+        return normalize(strip_frontmatter(read_text(path))), path.stem
     if suffix in (".md", ".markdown"):
         return normalize(strip_markdown(read_text(path)), gutenberg=False), path.stem
     if suffix in (".html", ".htm", ".xhtml"):
@@ -68,9 +68,16 @@ def extract_html(html: str) -> str:
     return text
 
 
+def strip_frontmatter(text: str) -> str:
+    import re
+
+    return re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.S)
+
+
 def strip_markdown(text: str) -> str:
     import re
 
+    text = strip_frontmatter(text)
     text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)

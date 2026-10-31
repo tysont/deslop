@@ -8,17 +8,22 @@ from deslop.voice.exemplars import parse_exemplars
 
 
 def test_voice_round_trip(fixture_voice, tmp_path):
+    import zipfile
+
     path = fixture_voice.save(tmp_path / "rt.voice")
-    assert {p.name for p in path.iterdir()} == {
-        "voice.yaml",
-        "metrics.json",
-        "lexicon.json",
-        "rules.md",
-        "profile.md",
-        "exemplars.md",
-    }
+    with zipfile.ZipFile(path) as zf:
+        assert set(zf.namelist()) == {
+            "voice.yaml",
+            "metrics.json",
+            "lexicon.json",
+            "rules.md",
+            "profile.md",
+            "exemplars.md",
+        }
     loaded = Voice.load(path)
-    assert loaded.meta == fixture_voice.meta
+    assert loaded.meta.model_dump(exclude={"checksum"}) == fixture_voice.meta.model_dump(
+        exclude={"checksum"}
+    )
     assert loaded.metrics == fixture_voice.metrics
     assert loaded.lexicon == fixture_voice.lexicon
     assert loaded.rules == fixture_voice.rules

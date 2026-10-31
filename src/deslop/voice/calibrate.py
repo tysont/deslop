@@ -2,6 +2,7 @@
 # ABOUTME: Deterministic except for the optional LLM-written profile.md.
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from deslop.thresholds import calibrate_thresholds
 from deslop.voice.clusters import DocumentVector, cluster_documents, with_voice_means
 from deslop.voice.exemplars import build_exemplars
 from deslop.voice.lexicon import build_lexicon
-from deslop.voice.model import Voice, VoiceMeta
+from deslop.voice.model import AuthorProvenance, DocumentProvenance, Voice, VoiceMeta
 from deslop.voice.profile import llm_profile, template_profile
 from deslop.voice.rules import build_rules
 
@@ -103,7 +104,7 @@ def calibrate(
     if progress:
         progress("selecting exemplars")
     exemplars = build_exemplars(
-        [(d.entry.author, d.entry.title, d.text) for d in docs],
+        [(d.entry.author, d.entry.title, d.entry.source, d.text) for d in docs],
         profile,
         target_words=exemplar_words,
         max_share=max_share,
@@ -125,18 +126,8 @@ def calibrate(
     else:
         profile_md = template_profile(voice_name, profile, generic, llm)
 
-    total = sum(s.words for s in per_author.values())
-    meta = VoiceMeta(
-        name=voice_name,
-        deslop_version=__version__,
-        corpus_name=corpus.name,
-        corpus_hash=corpus.content_hash(),
-        corpus_path=str(corpus.root.resolve()),
-        total_words=total,
-        author_shares={a: round(s.words / total, 4) for a, s in per_author.items()},
-        max_share=max_share,
-        profile_source=profile_source,
-    )
+    meta = provenance(corpus, per_author, max_share=max_share, name=voice_name)
+    meta.profile_source = profile_source
     return Voice(
         meta=meta,
         metrics=profile,
@@ -147,6 +138,57 @@ def calibrate(
     )
 
 
+def provenance(
+    corpus: Corpus, per_author: dict[str, AuthorSamples], *, max_share: float, name: str
+) -> VoiceMeta:
+    """voice.yaml: counts, the author list with shares and sources, licenses and documents."""
+    total = sum(s.words for s in per_author.values())
+    docs = corpus.manifest.documents
+    sources_by_author: dict[str, set[str]] = {}
+    for d in docs:
+        if d.source:
+            sources_by_author.setdefault(d.author, set()).add(source_site(d.source))
+    authors = [
+        AuthorProvenance(
+            name=a,
+            words=s.words,
+            share=round(s.words / total, 4) if total else 0.0,
+            documents=sum(1 for d in docs if d.author == a),
+            sources=sorted(sources_by_author.get(a, set())),
+        )
+        for a, s in sorted(per_author.items(), key=lambda kv: -kv[1].words)
+    ]
+    return VoiceMeta(
+        name=name,
+        deslop_version=__version__,
+        corpus_name=corpus.name,
+        corpus_hash=corpus.content_hash(),
+        total_words=total,
+        document_count=len(docs),
+        authors=authors,
+        author_shares={a.name: a.share for a in authors},
+        documents=[
+            DocumentProvenance(
+                title=d.title,
+                author=d.author,
+                words=d.words or 0,
+                source=d.source,
+                license=d.license,
+                year=d.year,
+            )
+            for d in docs
+        ],
+        licenses=sorted({d.license for d in docs if d.license}),
+        max_share=max_share,
+    )
+
+
+def source_site(source: str) -> str:
+    """The host of a URL, or the source note itself."""
+    m = re.match(r"https?://([^/]+)", source)
+    return m.group(1).removeprefix("www.") if m else source
+
+
 def document_vector(doc: DocSamples, profile: MetricsProfile, names: list[str]) -> list[float]:
     """A document's chunk-mean metric values as z-scores against the voice."""
     out = []
@@ -155,6 +197,76 @@ def document_vector(doc: DocSamples, profile: MetricsProfile, names: list[str]) 
         mean = doc.metrics.get(n, stat.mean)
         out.append((mean - stat.mean) / stat.std if stat.std > 0 else 0.0)
     return out
+
+
+def extend(
+    base: Voice,
+    corpus: Corpus,
+    *,
+    max_share: float | None = None,
+    patterns: tuple[str, ...] = (),
+    chunk_words: int | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> Voice:
+    """Fold `corpus` (newly added texts) into `base`'s measurements: per-author and
+    per-document samples are merged, the aggregate, registers and thresholds recomputed,
+    provenance extended. profile.md, rules.md and exemplars.md are kept as they are."""
+    catalog = load_catalog(patterns)
+    share = base.meta.max_share if max_share is None else max_share
+    chunk = chunk_words or base.metrics.chunk_words
+    per_author = {a: s.model_copy(deep=True) for a, s in base.metrics.per_author.items()}
+    per_doc = list(base.metrics.per_document)
+    for doc in corpus.documents():
+        if progress:
+            progress(f"sampling {doc.entry.author}: {doc.entry.title}")
+        samples = sample_text(doc.text, chunk_words=chunk, catalog=catalog)
+        samples.weight = doc.entry.weight
+        author = doc.entry.author
+        per_author[author] = (
+            merge_samples(per_author[author], samples) if author in per_author else samples
+        )
+        per_author[author].weight = doc.entry.weight
+        if samples.chunks > 0:
+            per_doc.append(
+                doc_samples(
+                    samples,
+                    title=doc.entry.title,
+                    author=author,
+                    source=doc.entry.source,
+                )
+            )
+    profile = aggregate(per_author, max_share=share, chunk_words=chunk, per_document=per_doc)
+    metric_names = [n for n in sorted(profile.metrics) if profile.metrics[n].std > 0]
+    vectors = [
+        DocumentVector(
+            title=d.title,
+            author=d.author,
+            words=d.words,
+            vector=document_vector(d, profile, metric_names),
+        )
+        for d in per_doc
+    ]
+    clusters, _ = cluster_documents(vectors, metric_names)
+    profile.clusters = with_voice_means(clusters, profile)
+    llm = llm_reference() if has_baseline("llm_reference") else None
+    profile.thresholds = calibrate_thresholds(
+        profile, llm.documents if llm else [], banned=set(base.lexicon.banned_ids())
+    )
+    meta = provenance(corpus, per_author, max_share=share, name=base.meta.name)
+    meta.profile_source = base.meta.profile_source
+    meta.documents = base.meta.documents + meta.documents
+    meta.document_count = len(meta.documents)
+    meta.licenses = sorted(set(base.meta.licenses) | set(meta.licenses))
+    meta.corpus_name = base.meta.corpus_name
+    meta.corpus_hash = f"{base.meta.corpus_hash}+{corpus.content_hash()}"
+    return Voice(
+        meta=meta,
+        metrics=profile,
+        lexicon=base.lexicon,
+        rules=base.rules,
+        profile=base.profile,
+        exemplars=base.exemplars,
+    )
 
 
 def recalibrate_metrics(voice: Voice, *, max_share: float | None = None) -> Voice:

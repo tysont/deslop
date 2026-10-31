@@ -1,0 +1,137 @@
+# ABOUTME: Tests for building voices from files: author resolution, manifests, provenance in
+# ABOUTME: voice.yaml, zip-canonical save/load, stripped exemplars, and extending a voice.
+from __future__ import annotations
+
+import json
+import zipfile
+from pathlib import Path
+
+import pytest
+import yaml
+
+from deslop.voice import Voice
+from deslop.voice.collect import author_for, gather_files, title_for
+from deslop.voice.exemplars import parse_exemplars
+from deslop.voice.pack import PackError, pack_voice, unpack_voice
+
+FIXTURES = Path(__file__).parent / "fixtures" / "corpus_small"
+
+
+def test_author_resolution_order(tmp_path):
+    fm = tmp_path / "essay.md"
+    fm.write_text("---\nauthor: Ann Author\ntitle: On Foxes\nurl: https://x.org/a\n---\n\nText.\n")
+    plain = tmp_path / "hazlitt_on_actors.txt"
+    plain.write_text("Text.")
+    assert author_for(fm, {}) == "Ann Author" and title_for(fm) == "On Foxes"
+    assert author_for(plain, {}) == "Hazlitt" and title_for(plain) == "on actors"
+    assert author_for(plain, {"hazlitt_*": "William Hazlitt"}) == "William Hazlitt"
+    assert author_for(fm, {"default": "Someone"}) == "Ann Author"
+    assert author_for(tmp_path / "x.txt", {"default": "Someone"}) == "Someone"
+
+
+def test_gather_files_walks_directories_and_spots_manifests(tmp_path):
+    (tmp_path / "a.txt").write_text("a")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "b.md").write_text("b")
+    (sub / "notes.json").write_text("{}")
+    crawl = tmp_path / "crawl"
+    crawl.mkdir()
+    (crawl / "manifest.jsonl").write_text("")
+    (crawl / "c.txt").write_text("c")
+    files = gather_files([tmp_path])
+    assert tmp_path / "a.txt" in files and sub / "b.md" in files
+    assert crawl in files and crawl / "c.txt" not in files
+    assert sub / "notes.json" not in files
+
+
+def test_from_texts_builds_zip_with_provenance(tmp_path):
+    voice = Voice.from_texts(
+        [FIXTURES],
+        name="critics",
+        author_map={
+            "johnson_*": "Samuel Johnson",
+            "hazlitt_*": "William Hazlitt",
+            "arnold_*": "Matthew Arnold",
+            "bradley_*": "A. C. Bradley",
+        },
+        use_llm=False,
+    )
+    assert voice.meta.document_count == 4 and voice.meta.total_words > 50000
+    assert {a.name for a in voice.meta.authors} == {
+        "Samuel Johnson",
+        "William Hazlitt",
+        "Matthew Arnold",
+        "A. C. Bradley",
+    }
+    assert voice.meta.corpus_path is None and voice.meta.schema_version == 2
+    assert voice.metrics.thresholds.stats is not None
+    out = voice.save(tmp_path / "critics.voice")
+    assert zipfile.is_zipfile(out)
+    with zipfile.ZipFile(out) as zf:
+        meta = yaml.safe_load(zf.read("voice.yaml"))
+    assert meta["checksum"] and meta["document_count"] == 4
+    again = Voice.load(out)
+    assert again.read_only and again.name == "critics" and again.meta.checksum
+    with pytest.raises(PackError):
+        again.save(out)
+    # The directory form is a working copy.
+    work = tmp_path / "work"
+    work.mkdir()
+    again.save(work)
+    assert (work / "voice.yaml").exists() and Voice.load(work).read_only is False
+
+
+def test_from_texts_reads_a_crawler_manifest(tmp_path):
+    crawl = tmp_path / "crawl"
+    crawl.mkdir()
+    rows = []
+    for i, src in enumerate(sorted(FIXTURES.glob("*.txt"))):
+        name = f"doc{i}.txt"
+        (crawl / name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        rows.append(
+            {
+                "file": name,
+                "author": f"Writer {i}",
+                "title": f"Piece {i}",
+                "url": f"https://site{i % 2}.org/{name}",
+                "license": "CC BY 4.0",
+                "date": "2001",
+            }
+        )
+    (crawl / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    voice = Voice.from_texts([crawl], name="crawl", use_llm=False)
+    assert voice.meta.document_count == 4
+    assert voice.meta.licenses == ["CC BY 4.0"]
+    assert sorted(voice.meta.authors[0].sources)[0].startswith("site")
+    assert any(
+        "<https://site" in line for line in voice.exemplars.splitlines() if line.startswith("## ")
+    )
+
+
+def test_strip_exemplars_pack(fixture_voice, tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    fixture_voice.save(work)
+    stripped = pack_voice(work, tmp_path / "shared.voice", strip_exemplars=True)
+    shared = Voice.load(stripped)
+    assert shared.meta.has_exemplars is False and parse_exemplars(shared.exemplars) == []
+    unpack_voice(stripped, tmp_path / "u")  # checksum covers the stripped file
+    assert "Stripped for sharing" in (tmp_path / "u" / "exemplars.md").read_text()
+
+
+def test_extend_folds_new_texts_and_keeps_prose(fixture_voice, fixtures_dir):
+    extended = Voice.from_texts(
+        [fixtures_dir / "heldout_bradley.md"],
+        name="fixture",
+        author_map={"default": "A. C. Bradley"},
+        base=fixture_voice,
+        use_llm=False,
+    )
+    assert extended.meta.document_count == fixture_voice.meta.document_count + 1
+    assert extended.meta.total_words > fixture_voice.meta.total_words
+    assert (
+        extended.profile == fixture_voice.profile and extended.exemplars == fixture_voice.exemplars
+    )
+    assert extended.metrics.thresholds.stats is not None
+    assert len(extended.metrics.per_document) == len(fixture_voice.metrics.per_document) + 1

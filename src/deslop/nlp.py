@@ -19,11 +19,12 @@ SPACY_MODEL_URL = (
 )
 
 
-@lru_cache(maxsize=1)
-def load_nlp() -> Language:
-    """Load the small English pipeline once per process."""
+@lru_cache(maxsize=2)
+def load_nlp(ner: bool = False) -> Language:
+    """Load the small English pipeline once per process; `ner=True` keeps entity recognition
+    (used by the content lock to tell names from sentence-initial capitals)."""
     try:
-        return spacy.load(SPACY_MODEL, disable=["ner"])
+        return spacy.load(SPACY_MODEL, disable=[] if ner else ["ner"])
     except OSError as exc:
         raise OSError(
             f"spaCy model {SPACY_MODEL} is not installed. Install it with "

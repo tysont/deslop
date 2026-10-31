@@ -24,6 +24,7 @@ class Candidate:
     typicality: float
     content: frozenset[str]
     register: str = ""
+    source: str = ""
 
 
 def _zvector(values: dict[str, float], profile: MetricsProfile, names: list[str]) -> list[float]:
@@ -104,7 +105,8 @@ def render_exemplars(chosen: list[Candidate]) -> str:
     lines = ["# Exemplars", "", "Verbatim excerpts chosen for typicality and diversity.", ""]
     for c in chosen:
         suffix = f" ({c.register})" if c.register else ""
-        lines.append(f"## {c.author}, _{c.title}_{suffix}")
+        source = f" <{c.source}>" if c.source else ""
+        lines.append(f"## {c.author}, _{c.title}_{suffix}{source}")
         lines.append("")
         lines.append(c.text.strip())
         lines.append("")
@@ -112,23 +114,26 @@ def render_exemplars(chosen: list[Candidate]) -> str:
 
 
 def build_exemplars(
-    docs: list[tuple[str, str, str]],
+    docs: list[tuple[str, str, str, str]],
     profile: MetricsProfile,
     *,
     target_words: int = 2000,
     max_share: float = 0.25,
     registers: dict[str, str] | None = None,
 ) -> str:
-    """Select exemplars. With `registers` (document title -> register label), the word
-    budget is split across registers in proportion to the documents' words, so every
-    register the corpus contains is represented, not only the most typical one."""
+    """Select exemplars from (author, title, source, text) documents. With `registers`
+    (document title -> register label), the word budget is split across registers in
+    proportion to the documents' words, so every register the corpus contains is
+    represented, not only the most typical one. Each heading names author, title, register
+    and, when known, the source URL."""
     by_register: dict[str, list[Candidate]] = {}
     words_by_register: dict[str, int] = {}
-    for author, title, text in docs:
+    for author, title, source, text in docs:
         label = (registers or {}).get(title, "")
         cands = candidates_from(author, title, analyze(text), profile)
         for c in cands:
             c.register = label
+            c.source = source
         by_register.setdefault(label, []).extend(cands)
         words_by_register[label] = words_by_register.get(label, 0) + len(text.split())
     total = sum(words_by_register.values()) or 1
@@ -140,7 +145,10 @@ def build_exemplars(
 
 
 def parse_exemplars(markdown: str) -> list[str]:
-    """Return exemplar bodies (without headings) from exemplars.md."""
+    """Return exemplar bodies (without headings) from exemplars.md; an exemplars file with
+    no `## ` headings (for example one stripped for sharing) yields none."""
+    if not any(line.startswith("## ") for line in markdown.splitlines()):
+        return []
     bodies: list[str] = []
     current: list[str] = []
     for line in markdown.splitlines():
