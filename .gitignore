@@ -9,3 +9,5 @@ htmlcov/
 .env
 *.egg-info/
 .cache/
+examples/build/
+site/

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    env:
+      # With keys, uncached prompts in tests/e2e go live; without, a miss fails the test.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DESLOP_HOME: ${{ github.workspace }}/.deslop-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Install
+        run: uv sync --all-groups
+      - name: Lint
+        run: |
+          uv run ruff check src tests scripts examples
+          uv run ruff format --check src tests scripts examples
+      - name: Type check
+        run: uv run mypy
+      - name: Test with coverage gate
+        run: uv run pytest --cov=deslop --cov-report=term-missing --cov-fail-under=85
+      - name: Worked example replays from the committed cache
+        run: uv run python examples/convert_example.py
+        env:
+          DESLOP_CACHE_ONLY: "1"
+      - name: Build docs
+        run: uv run mkdocs build --strict
+      - name: Build wheel
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.12'
+        with:
+          name: dist
+          path: dist/
