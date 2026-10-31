@@ -2,11 +2,12 @@
 # ABOUTME: CLI commands are thin wrappers over the names exported here.
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
+from deslop.converter import ConvertResult, convert
 from deslop.corpus import Corpus
 from deslop.report import Report
 from deslop.score import score
 from deslop.voice import Voice
 
-__all__ = ["Corpus", "Report", "Voice", "__version__", "score"]
+__all__ = ["ConvertResult", "Corpus", "Report", "Voice", "__version__", "convert", "score"]

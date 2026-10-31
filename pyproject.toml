@@ -1,6 +1,6 @@
 [project]
 name = "deslop"
-version = "0.1.0"
+version = "0.2.0"
 description = "Voice calibration, scoring, and conversion for prose"
 readme = "README.md"
 requires-python = ">=3.12"

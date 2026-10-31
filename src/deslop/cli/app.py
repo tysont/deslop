@@ -250,7 +250,7 @@ def convert_cmd(
     show_diff: bool = typer.Option(False, "--diff", help="Print the unified diff"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    from deslop.convert import convert
+    from deslop.converter import convert
     from deslop.lock import LOCK_CLASSES
     from deslop.voice import Voice
 

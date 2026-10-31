@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from deslop.convert import (
+from deslop.converter import (
     ProviderPool,
     Unit,
     clean_response,

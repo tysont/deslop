@@ -94,7 +94,7 @@ def test_providers_test_runs_without_keys(monkeypatch):
 
 
 def test_convert_command_with_fake_provider(fixture_voice, tmp_path, monkeypatch):
-    import deslop.convert as convert_module
+    import deslop.converter as convert_module
     from tests.test_convert import FakeProvider
 
     text = "Abraham climbs the hill in Genesis 22. The chapter asks what he owes. He builds the altar there."
