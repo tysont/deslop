@@ -17,6 +17,7 @@ from deslop.nlp import WORD_RE, count_words, is_prose_paragraph, split_paragraph
 BLIND_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "blind"
 MIN_WORDS = 40
 LENGTH_WINDOW = 0.25
+MIN_OVERLAP = 0.15
 CANDIDATE_SUFFIXES = (".md", ".txt")
 
 
@@ -29,12 +30,22 @@ class Pair(BaseModel):
     candidate_position: str = "A"  # which letter the candidate was shown as
 
 
+class Pairing(BaseModel):
+    """The pairs made for one session plus the candidates that were tried and left out."""
+
+    pairs: list[Pair] = Field(default_factory=list)
+    skipped: int = 0  # best control overlapped the candidate by less than min_overlap
+    unpaired: int = 0  # candidates tried that got no pair, for any reason
+
+
 class Summary(BaseModel):
     voice: str
     session_total: int = 0
     session_correct: int = 0
     total: int = 0
     correct: int = 0
+    skipped: int = 0
+    unpaired: int = 0
     top_reasons: list[tuple[str, int]] = Field(default_factory=list)
 
     @property
@@ -99,16 +110,22 @@ def make_pairs(
     n: int,
     *,
     seed: int | None = None,
-) -> list[Pair]:
-    """Pick n candidates at random; pair each with the unused pool paragraph of similar length
-    (+/- LENGTH_WINDOW) and highest content-word Jaccard overlap. If nothing is within the
-    length window, the nearest length among the ten most similar paragraphs is used."""
+    min_overlap: float = MIN_OVERLAP,
+) -> Pairing:
+    """Walk the candidates in random order until n pairs are made. Each candidate is paired
+    with the unused pool paragraph of similar length (+/- LENGTH_WINDOW) and highest
+    content-word Jaccard overlap; if nothing is within the length window, the nearest length
+    among the ten most similar paragraphs is used. A candidate whose best control overlaps it
+    by less than min_overlap is skipped."""
     rng = random.Random(seed)
-    chosen = rng.sample(candidates, min(n, len(candidates)))
+    order = list(candidates)
+    rng.shuffle(order)
     pool_words = [(src, text, content_words(text), count_words(text)) for src, text in pool]
     used: set[int] = set()
-    pairs: list[Pair] = []
-    for src, text in chosen:
+    pairing = Pairing()
+    for src, text in order:
+        if len(pairing.pairs) >= n:
+            break
         words = count_words(text)
         cw = content_words(text)
         scored = [
@@ -117,7 +134,8 @@ def make_pairs(
             if i not in used
         ]
         if not scored:
-            break
+            pairing.unpaired += 1
+            continue
         in_window = [
             (s, i) for s, i in scored if abs(pool_words[i][3] - words) <= LENGTH_WINDOW * words
         ]
@@ -126,9 +144,13 @@ def make_pairs(
         else:
             top = sorted(scored, reverse=True)[:10]
             score, idx = min(top, key=lambda si: abs(pool_words[si[1]][3] - words))
+        if score < min_overlap:
+            pairing.skipped += 1
+            pairing.unpaired += 1
+            continue
         used.add(idx)
         control_src, control, _, _ = pool_words[idx]
-        pairs.append(
+        pairing.pairs.append(
             Pair(
                 candidate=text,
                 candidate_source=src,
@@ -138,7 +160,7 @@ def make_pairs(
                 candidate_position=rng.choice("AB"),
             )
         )
-    return pairs
+    return pairing
 
 
 def shown(pair: Pair) -> tuple[str, str]:

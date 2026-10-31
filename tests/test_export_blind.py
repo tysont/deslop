@@ -98,15 +98,41 @@ def test_blind_pairs_match_length_and_overlap_without_reuse():
         ("c1", "Shakespeare wrote his plays about kings and the sons of kings. " * 5),
         ("c2", "Shakespeare made plays of kings and sons. " * 6),
     ]
-    pairs = blind.make_pairs(cands, pool, 2, seed=1)
-    assert len(pairs) == 2
+    pairing = blind.make_pairs(cands, pool, 2, seed=1)
+    pairs = pairing.pairs
+    assert len(pairs) == 2 and pairing.skipped == 0 and pairing.unpaired == 0
     assert {p.control_source for p in pairs} <= {"p1", "p3"}  # similar length, high overlap
     assert len({p.control_source for p in pairs}) == 2  # no reuse
     assert all(p.overlap > 0 for p in pairs)
     a, b = blind.shown(pairs[0])
     assert (a if pairs[0].candidate_position == "A" else b) == pairs[0].candidate
-    positions = {blind.make_pairs(cands, pool, 1, seed=s)[0].candidate_position for s in range(20)}
+    positions = {
+        blind.make_pairs(cands, pool, 1, seed=s).pairs[0].candidate_position for s in range(20)
+    }
     assert positions == {"A", "B"}
+
+
+def test_blind_min_overlap_skips_weak_pairs_and_counts_unpaired():
+    pool = [
+        ("p1", "Shakespeare wrote plays about kings and their sons. " * 5),
+        ("p2", "The weather in the valley turned cold before the harvest came in. " * 4),
+        ("p3", "Shakespeare and his kings; the sons of kings; plays on plays. " * 5),
+    ]
+    cands = [
+        ("c1", "Shakespeare wrote his plays about kings and the sons of kings. " * 5),
+        ("c2", "Granite quarries employ masons who cut blocks for cathedral walls. " * 5),
+        ("c3", "Shakespeare made plays of kings and sons. " * 6),
+    ]
+    pairing = blind.make_pairs(cands, pool, 3, seed=1, min_overlap=0.15)
+    assert {p.candidate_source for p in pairing.pairs} == {"c1", "c3"}
+    assert all(p.overlap >= 0.15 for p in pairing.pairs)
+    assert pairing.skipped == 1  # c2 overlaps nothing
+    assert pairing.unpaired == 1  # c2 went unpaired
+    strict = blind.make_pairs(cands, pool, 3, seed=1, min_overlap=0.99)
+    assert strict.pairs == [] and strict.skipped == 3 and strict.unpaired == 3
+    # Asking for more pairs than the pool can supply also leaves candidates unpaired.
+    short = blind.make_pairs(cands, pool[:1], 3, seed=1, min_overlap=0.0)
+    assert len(short.pairs) == 1 and short.unpaired == 2
 
 
 def test_blind_record_and_summary(tmp_path):

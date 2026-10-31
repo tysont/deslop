@@ -213,16 +213,45 @@ def test_blind_command_logs_and_summarizes(fixture_voice, tmp_path, monkeypatch)
     (cands / "draft.md").write_text((fixtures / "slop_sample.md").read_text(encoding="utf-8"))
     r = runner.invoke(
         app,
-        ["blind", "--voice", str(voice_dir), "--candidates", str(cands), "--n", "2", "--seed", "3"],
+        [
+            "blind",
+            "--voice",
+            str(voice_dir),
+            "--candidates",
+            str(cands),
+            "--n",
+            "2",
+            "--seed",
+            "3",
+            "--min-overlap",
+            "0",
+        ],
         input="A\ntoo tidy\nB\n\n",
     )
     assert r.exit_code == 0, r.output
-    assert "this session: " in r.stdout and "cumulative: 2" in r.stdout
+    assert "this session: " in r.stdout and "/2 (" in r.stdout
+    assert "(overlap 0." in r.stdout
+    r = runner.invoke(
+        app,
+        ["blind", "--voice", str(voice_dir), "--candidates", str(cands), "--min-overlap", "0.99"],
+    )
+    assert r.exit_code == 0 and "skipped 8 pair" in r.stdout and "could not be paired" in r.stdout
     log = (tmp_path / "blind" / "fixture.jsonl").read_text().splitlines()
     assert len(log) == 2 and json.loads(log[0])["reason"] == "too tidy"
     r = runner.invoke(
         app,
-        ["blind", "--voice", str(voice_dir), "--candidates", str(cands), "--n", "1", "--json"],
+        [
+            "blind",
+            "--voice",
+            str(voice_dir),
+            "--candidates",
+            str(cands),
+            "--n",
+            "1",
+            "--min-overlap",
+            "0",
+            "--json",
+        ],
         input="B\nhmm\n",
     )
     assert r.exit_code == 0 and json.loads(r.stdout[r.stdout.index("{") :])["total"] == 3

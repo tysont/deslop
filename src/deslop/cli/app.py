@@ -706,6 +706,9 @@ def blind_cmd(
     n: int | None = typer.Option(None, "--n", help="Pairs to judge (5)"),
     corpus: Path | None = typer.Option(None, "--corpus"),
     seed: int | None = typer.Option(None, "--seed"),
+    min_overlap: float | None = typer.Option(
+        None, "--min-overlap", help="Skip pairs whose lexical overlap is below this (0.15)"
+    ),
     json_out: bool = typer.Option(False, "--json", help="Print the summary as JSON at the end"),
 ) -> None:
     from deslop import blind
@@ -724,15 +727,22 @@ def blind_cmd(
     cands = blind.candidates_from_dir(candidates)
     if not cands:
         fail(f"no paragraphs of {blind.MIN_WORDS}+ words under {candidates}")
-    pairs = blind.make_pairs(
-        cands, blind.corpus_pool(corp), int(s.get("n", n, 5)), seed=s.get("seed", seed)
+    min_overlap = float(s.get("min_overlap", min_overlap, blind.MIN_OVERLAP))
+    pairing = blind.make_pairs(
+        cands,
+        blind.corpus_pool(corp),
+        int(s.get("n", n, 5)),
+        seed=s.get("seed", seed),
+        min_overlap=min_overlap,
     )
+    pairs = pairing.pairs
     session = []
     for i, pair in enumerate(pairs, 1):
         a, b = blind.shown(pair)
-        console.rule(f"pair {i}/{len(pairs)}")
-        console.print("[bold]A[/]\n" + a + "\n", markup=False, highlight=False)
-        console.print("[bold]B[/]\n" + b + "\n", markup=False, highlight=False)
+        console.rule(f"pair {i}/{len(pairs)}  (overlap {pair.overlap:.2f})")
+        for letter, text in (("A", a), ("B", b)):
+            console.print(f"[bold]{letter}[/]")
+            console.print(text + "\n", markup=False, highlight=False)
         guess = ""
         while guess.upper() not in ("A", "B"):
             guess = typer.prompt("Which one is machine-written? (A/B)")
@@ -745,10 +755,19 @@ def blind_cmd(
             f"({pair.candidate_source} vs {pair.control_source})"
         )
     summary = blind.summarize(v.name, session)
+    summary.skipped = pairing.skipped
+    summary.unpaired = pairing.unpaired
     if json_out:
         print_json(summary.to_json())
         return
     console.rule("results")
+    if pairing.skipped:
+        console.print(
+            f"skipped {pairing.skipped} pair(s) with overlap below {min_overlap:.2f}; "
+            "lower --min-overlap or add candidates closer to the corpus"
+        )
+    if pairing.unpaired:
+        console.print(f"{pairing.unpaired} candidate(s) could not be paired")
     if summary.session_accuracy is not None:
         console.print(
             f"this session: {summary.session_correct}/{summary.session_total} "
