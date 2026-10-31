@@ -415,6 +415,47 @@ def tidy_summary_close(a: Analysis, pattern: Pattern, catalog: Catalog):
     return []
 
 
+@document_detector("monotone_run")
+def monotone_run(a: Analysis, pattern: Pattern, catalog: Catalog):
+    """Runs of >= min_run consecutive prose sentences within one paragraph whose word
+    counts all sit within `tolerance` of each other. The span is the whole run."""
+    min_run = int(pattern.params.get("min_run", 3))
+    tolerance = int(pattern.params.get("tolerance", 5))
+    hits: list[TellHit] = []
+
+    def flush(run: list[Sentence]) -> None:
+        if len(run) >= min_run:
+            first, last = run[0], run[-1]
+            hits.append(
+                TellHit(
+                    pattern.id,
+                    first.index,
+                    first.para_index,
+                    first.start,
+                    last.end,
+                    a.text[first.start : last.end],
+                    note=f"{len(run)} sentences of {min(s.word_count for s in run)}-"
+                    f"{max(s.word_count for s in run)} words",
+                )
+            )
+
+    for para in a.paragraphs:
+        run: list[Sentence] = []
+        for sent in para.sentences:
+            if is_verse(sent):
+                flush(run)
+                run = []
+                continue
+            counts = [s.word_count for s in run] + [sent.word_count]
+            if run and max(counts) - min(counts) <= tolerance:
+                run.append(sent)
+            else:
+                flush(run)
+                run = [sent]
+        flush(run)
+    return hits
+
+
 # ---------------------------------------------------------------- driver
 
 

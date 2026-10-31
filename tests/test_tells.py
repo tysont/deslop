@@ -121,6 +121,27 @@ def test_T14_tidy_summary_close():
     assert not ids(with_new_anchor, "T14")
 
 
+def test_T15_monotone_run():
+    run = (
+        "Abraham climbs the mountain with Isaac at dawn. "
+        "Isaac carries the wood up the long slope. "
+        "Sarah waits at home in Beersheba for them. "
+        "The servants sit below with the donkey."
+    )
+    hits = ids(run, "T15")
+    assert len(hits) == 1
+    assert hits[0].text == run and hits[0].sentence_idx == 0
+    varied = "Abraham climbs. Isaac carries the wood up the long slope while Sarah waits in Beersheba. The servants sit."
+    assert not ids(varied, "T15")
+    two = "Abraham climbs the mountain with Isaac. Isaac carries the wood up the slope."
+    assert not ids(two, "T15")
+
+
+def test_T15_runs_stay_inside_a_paragraph():
+    text = "Abraham climbs the hill. Isaac carries the wood.\n\nSarah waits at home. The servants sit below."
+    assert not ids(text, "T15")
+
+
 def test_regex_pattern_extension_needs_no_code(tmp_path):
     extra = tmp_path / "extra.yaml"
     extra.write_text(
@@ -147,7 +168,7 @@ def test_hit_offsets_index_into_text():
         assert text[h.start : h.end] == h.text
 
 
-@pytest.mark.parametrize("pid", [f"T{i}" for i in range(1, 15)])
+@pytest.mark.parametrize("pid", [f"T{i}" for i in range(1, 16)])
 def test_every_catalog_pattern_has_detector(pid):
     from deslop.metrics.tells import DOCUMENT_DETECTORS, SENTENCE_DETECTORS
 

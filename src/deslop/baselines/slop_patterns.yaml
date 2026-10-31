@@ -374,3 +374,11 @@ patterns:
     params:
       min_paragraphs: 3
       min_overlap: 0.75
+  - id: T15
+    name: monotone_run
+    description: Three or more consecutive sentences whose word counts all fall within five of each other.
+    detector: metric
+    function: monotone_run
+    params:
+      min_run: 3
+      tolerance: 5

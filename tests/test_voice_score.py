@@ -42,7 +42,7 @@ def test_lexicon_content(fixture_voice):
     terms = {e.term for e in lex.encouraged_words}
     assert "shakespeare" in terms or "poet" in terms or "criticism" in terms
     assert all(e.log_odds > 0 for e in lex.encouraged_words)
-    assert len(lex.patterns) == 14
+    assert len(lex.patterns) == 15
 
 
 def test_rules_and_profile_and_exemplars(fixture_voice):

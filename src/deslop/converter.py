@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from deslop.lock import LOCK_CLASSES, check, inventory
 from deslop.metrics import compute_all, detect_tells
-from deslop.nlp import Analysis, analyze
+from deslop.nlp import Analysis, Sentence, analyze
 from deslop.patterns import load_catalog
 from deslop.providers.base import CachingProvider, ProviderError, Usage, get_provider
 from deslop.report import Report, TellHitResult
@@ -88,7 +88,7 @@ class ConvertResult(BaseModel):
 @dataclass
 class Unit:
     index: int
-    kind: str  # sentence | paragraph
+    kind: str  # sentence | passage (adjacent flagged sentences) | paragraph
     start: int
     end: int
     text: str
@@ -105,20 +105,30 @@ def flagged_hits(report: Report) -> list[TellHitResult]:
     return [h for t in report.tells if (t.flagged or t.banned) for h in t.hits]
 
 
-def longest_similar_run(a: Analysis) -> list[int]:
-    """Sentence indexes of the longest run of consecutive sentences within +/-5 words."""
-    sents = a.sentences
-    best: list[int] = []
-    run: list[int] = []
-    for prev, cur in zip(sents, sents[1:], strict=False):
-        if not run:
-            run = [prev.index]
-        if abs(cur.word_count - prev.word_count) <= 5:
-            run.append(cur.index)
-        else:
-            best = max(best, run, key=len)
-            run = []
-    return max(best, run, key=len)
+def similar_runs(a: Analysis, min_run: int = 3, tolerance: int = 5) -> list[list[int]]:
+    """Sentence indexes of every run of >= min_run consecutive sentences in one paragraph
+    whose word counts all fall within `tolerance` of each other."""
+    runs: list[list[int]] = []
+    for para in a.paragraphs:
+        run: list[Sentence] = []
+        for sent in para.sentences:
+            counts = [x.word_count for x in run] + [sent.word_count]
+            if run and max(counts) - min(counts) <= tolerance:
+                run.append(sent)
+            else:
+                if len(run) >= min_run:
+                    runs.append([x.index for x in run])
+                run = [sent]
+        if len(run) >= min_run:
+            runs.append([x.index for x in run])
+    return runs
+
+
+def rhythm_targets(a: Analysis) -> set[int]:
+    """Sentences to rewrite when only rhythm metrics are flagged: every monotone run of
+    three, or failing that every pair of similar-length neighbours."""
+    runs = similar_runs(a, 3) or similar_runs(a, 2)
+    return {i for run in runs for i in run}
 
 
 def metric_notes_for(report: Report) -> list[str]:
@@ -126,8 +136,8 @@ def metric_notes_for(report: Report) -> list[str]:
     for m in report.flagged_metrics():
         if m.name in ("sent_len_std", "sent_len_cv", "max_run_similar_len"):
             notes.append(
-                "Sentence lengths are too uniform; vary them sharply "
-                "(some under 8 words, some over 30)."
+                "Sentence lengths are too uniform; vary them sharply: merge some into a "
+                "single sentence of over 35 words and cut others to under 8."
             )
         elif m.name == "opener_top_word_share":
             notes.append("Too many sentences begin with the same word; open this one differently.")
@@ -155,33 +165,49 @@ def select_units(text: str, a: Analysis, report: Report, mode: Mode) -> list[Uni
     notes = metric_notes_for(report)
     units: list[Unit] = []
     if mode == "edit":
-        by_sentence: dict[int, list[TellHitResult]] = {}
+        by_sentence: dict[int, dict[tuple[str, int, int], TellHitResult]] = {}
         for h in hits:
-            by_sentence.setdefault(h.sentence_idx, []).append(h)
+            for s in a.sentences:
+                if s.start < h.end and h.start < s.end:
+                    by_sentence.setdefault(s.index, {})[(h.pattern_id, h.start, h.end)] = h
         targets = set(by_sentence)
         if not targets and notes:
-            targets = set(longest_similar_run(a))
+            targets = rhythm_targets(a)
+        # Adjacent flagged sentences in one paragraph form a single unit so the model can
+        # split or merge them; everything outside these units stays byte-identical.
+        groups: list[list[Sentence]] = []
         for s in a.sentences:
-            if s.index in targets:
-                units.append(
-                    Unit(
-                        index=len(units),
-                        kind="sentence",
-                        start=s.start,
-                        end=s.end,
-                        text=text[s.start : s.end],
-                        para_index=s.para_index,
-                        hits=by_sentence.get(s.index, []),
-                        metric_notes=notes,
-                    )
+            if s.index not in targets:
+                continue
+            last = groups[-1][-1] if groups else None
+            if last and last.index == s.index - 1 and last.para_index == s.para_index:
+                groups[-1].append(s)
+            else:
+                groups.append([s])
+        for group in groups:
+            merged: dict[tuple[str, int, int], TellHitResult] = {}
+            for s in group:
+                merged.update(by_sentence.get(s.index, {}))
+            first, last = group[0], group[-1]
+            units.append(
+                Unit(
+                    index=len(units),
+                    kind="sentence" if len(group) == 1 else "passage",
+                    start=first.start,
+                    end=last.end,
+                    text=text[first.start : last.end],
+                    para_index=first.para_index,
+                    hits=list(merged.values()),
+                    metric_notes=notes,
                 )
+            )
     else:
         by_para: dict[int, list[TellHitResult]] = {}
         for h in hits:
             by_para.setdefault(h.para_idx, []).append(h)
         targets = set(by_para)
         if not targets and notes:
-            targets = {a.sentences[i].para_index for i in longest_similar_run(a)}
+            targets = {a.sentences[i].para_index for i in rhythm_targets(a)}
         for p in a.paragraphs:
             if p.index in targets:
                 units.append(
@@ -232,7 +258,12 @@ AFTER: {after}
 - Return only the rewritten {kind}, in the voice, between {min_words} and {max_words} words.
 - Do not repeat or alter the surrounding context.
 - Do not add a new fact, name, number, quotation or citation.
-{extra}"""
+{extra}{rejected}"""
+
+REJECTED_TEMPLATE = """
+
+# Earlier attempts that were rejected (do not repeat them)
+{attempts}"""
 
 
 SENTENCE_SLACK_WORDS = 4  # a single sentence needs room to change rhythm
@@ -255,6 +286,7 @@ FIX_HINTS = {
     "T9": "Either answer the question in the same sentence or turn it into a statement.",
     "T13": "Replace the colon reveal with an ordinary clause.",
     "T14": "Do not restate; add a new particular or cut the paragraph.",
+    "T15": "Vary sentence length: at least one sentence under 8 words, one well over 20.",
 }
 
 
@@ -311,7 +343,10 @@ def build_prompt(
     lock_classes: tuple[str, ...],
     preserve_length: float,
     catalog,
+    rejected: list[tuple[str, str]] | None = None,
 ) -> tuple[str, str]:
+    """Build (system, user) prompts. `rejected` lists (candidate, reason) pairs from earlier
+    attempts on this unit so the next attempt avoids the same mistake."""
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
     para = a.paragraphs[unit.para_index]
     before = text[max(para.start, unit.start - 400) : unit.start].strip() or "(start of text)"
@@ -329,6 +364,10 @@ def build_prompt(
     extra = ""
     if unit.kind == "paragraph":
         extra = "- Keep the paragraph as a single paragraph; do not split it."
+    elif unit.kind == "passage":
+        extra = "- You may split or merge sentences within this passage; keep it on one line."
+    if "T15" in unit.tell_ids:
+        extra += "\n- Vary sentence length sharply: at least one sentence under 8 words."
     user = UNIT_TEMPLATE.format(
         exemplars="\n\n".join(exemplars.closest(text[para.start : para.end])),
         before=before,
@@ -340,8 +379,25 @@ def build_prompt(
         min_words=low,
         max_words=high,
         extra=extra,
+        rejected=_rejected_section(rejected or [], catalog),
     )
     return system, user
+
+
+def _rejected_section(rejected: list[tuple[str, str]], catalog) -> str:
+    if not rejected:
+        return ""
+    lines = []
+    for candidate, reason in rejected:
+        detail = reason
+        if reason.startswith("new tells: "):
+            names = []
+            for pid in reason[len("new tells: ") :].split(", "):
+                p = catalog.by_id(pid)
+                names.append(f"{pid} {p.name} ({p.description.rstrip('.')})")
+            detail = "introduced " + "; ".join(names)
+        lines.append(f'- Rejected ({detail}): "{candidate[:300]}"')
+    return REJECTED_TEMPLATE.format(attempts="\n".join(lines))
 
 
 # ---------------------------------------------------------------- validation
@@ -373,7 +429,7 @@ def validate(
         return "empty or unchanged"
     if unit.kind == "paragraph" and "\n\n" in candidate:
         return "split the paragraph"
-    if unit.kind == "sentence" and "\n" in candidate:
+    if unit.kind in ("sentence", "passage") and "\n" in candidate:
         return "contains line breaks"
     for ctx in (context_before, context_after):
         tail = ctx.strip()
@@ -507,6 +563,7 @@ def convert(
     unit_logs: list[UnitLog] = []
 
     document_names = set(inventory(text).proper_nouns)
+    rejected_for: dict[str, list[tuple[str, str]]] = {}
     current = text
     report = report_before
     best_text, best_report = text, report_before
@@ -529,15 +586,23 @@ def convert(
             if budget is not None and pool.usage().cost_usd > budget:
                 stopped = "budget"
                 break
-            system, user = build_prompt(
-                unit, current, a, voice, exemplars, lock, preserve_length, catalog
-            )
             para = a.paragraphs[unit.para_index]
             ctx_before = current[para.start : unit.start]
             ctx_after = current[unit.end : para.end]
             attempt_provider = provider
             accepted = False
             for attempt in range(2):
+                system, user = build_prompt(
+                    unit,
+                    current,
+                    a,
+                    voice,
+                    exemplars,
+                    lock,
+                    preserve_length,
+                    catalog,
+                    rejected=rejected_for.get(unit.text),
+                )
                 try:
                     completion = attempt_provider.complete(system, user, temperature=0.7)
                 except ProviderError as exc:
@@ -586,6 +651,7 @@ def convert(
                     replacements[unit.index] = candidate
                     accepted = True
                     break
+                rejected_for.setdefault(unit.text, []).append((candidate, reason))
                 if attempt == 0:
                     attempt_provider = pool.other_than(provider)
             if progress and not accepted:

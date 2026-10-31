@@ -97,7 +97,10 @@ def test_convert_command_with_fake_provider(fixture_voice, tmp_path, monkeypatch
     import deslop.converter as convert_module
     from tests.test_convert import FakeProvider
 
-    text = "Abraham climbs the hill in Genesis 22. The chapter asks what he owes. He builds the altar there."
+    text = (
+        "Abraham climbs the hill in Genesis 22 with the wood on Isaac's back and the knife in his "
+        "own hand. The chapter asks what he owes. He builds the altar there."
+    )
     script = {"The chapter asks what he owes.": "What he owes is never said."}
     fake = FakeProvider("claude", script)
     monkeypatch.setattr(convert_module, "get_provider", lambda name, **kw: fake)

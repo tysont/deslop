@@ -1,6 +1,7 @@
 # ABOUTME: Tests for the conversion loop using a scripted fake provider (no network).
 # ABOUTME: Covers unit selection, validation, retry with the other provider, splicing, pairs log, budget.
 import json
+import math
 
 import pytest
 
@@ -118,11 +119,54 @@ def test_select_units_edit_and_rewrite(fixture_voice, slop_text):
     a = analyze(slop_text)
     edit = select_units(slop_text, a, report, "edit")
     rewrite = select_units(slop_text, a, report, "rewrite")
-    assert all(u.kind == "sentence" for u in edit) and len(edit) >= 8
+    assert all(u.kind in ("sentence", "passage") for u in edit) and len(edit) >= 8
     assert all(u.kind == "paragraph" for u in rewrite) and len(rewrite) == report.paragraphs_count
     assert all(slop_text[u.start : u.end] == u.text for u in edit + rewrite)
     assert any("T1" in u.tell_ids for u in edit)
     assert all(u.metric_notes for u in edit)  # slop sample has flagged metrics
+
+
+def test_select_units_edit_merges_adjacent_flagged_sentences(fixture_voice):
+    text = (
+        "Abraham climbs the mountain with Isaac at dawn. "
+        "Isaac carries the wood up the long slope. "
+        "Sarah waits at home in Beersheba for them. "
+        "The servants sit below with the donkey for three days, as Genesis 22 says, while "
+        "Abraham and the boy go on alone up the slope.\n\n"
+        "The chapter asks what Abraham owes."
+    )
+    report = score(text, fixture_voice)
+    assert "T15" in {t.id for t in report.flagged_tells()}
+    a = analyze(text)
+    units = select_units(text, a, report, "edit")
+    assert [u.kind for u in units] == ["passage", "sentence"]
+    run = units[0]
+    assert run.text.startswith("Abraham climbs") and run.text.endswith("for them.")
+    assert "T15" in run.tell_ids
+    assert text[run.start : run.end] == run.text
+    assert units[1].text == "The chapter asks what Abraham owes."
+
+
+def test_passage_prompt_asks_for_varied_lengths(fixture_voice):
+    from deslop.converter import ExemplarIndex, build_prompt
+
+    text = (
+        "Abraham climbs the mountain with Isaac at dawn. "
+        "Isaac carries the wood up the long slope. "
+        "Sarah waits at home in Beersheba for them."
+    )
+    report = score(text, fixture_voice)
+    a = analyze(text)
+    unit = select_units(text, a, report, "edit")[0]
+    assert unit.kind == "passage"
+    _, user = build_prompt(
+        unit, text, a, fixture_voice, ExemplarIndex(fixture_voice), (), 0.15, load_catalog()
+    )
+    assert "under 8 words" in user
+    assert "split or merge" in user
+    low, high = length_bounds(unit, 0.15)
+    words = len(unit.text.split())
+    assert low == int(words * 0.85) and high == math.ceil(words * 1.15) + 1
 
 
 def test_select_units_metric_only_falls_back_to_similar_run(fixture_voice, heldout_texts):
@@ -162,14 +206,17 @@ def test_convert_pass_returns_unchanged(fixture_voice, heldout_texts, tmp_path):
 
 def test_convert_loop_with_scripted_rewrites(fixture_voice, tmp_path):
     text = (
-        "Abraham climbs the mountain with Isaac in Genesis 22. The chapter asks what he owes. "
-        "The narrator refuses to look inside him. He builds the altar and binds his son.\n\n"
+        "Abraham climbs the mountain with Isaac in Genesis 22, leaving the servants and the "
+        "donkey at the foot of the slope. The chapter asks what he owes. "
+        "The narrator refuses to look inside him. He builds the altar there and lays the wood in "
+        "order on it, as his father's people had always done before him.\n\n"
         "Sarah is absent from the whole account. The text insists on her silence. "
         "Isaac carries the wood up the slope while Abraham carries the knife and the fire."
     )
     script = {
-        "The chapter asks what he owes.": "What he owes is never said.",
-        "The narrator refuses to look inside him.": "We are never shown what he feels.",
+        "The chapter asks what he owes. The narrator refuses to look inside him.": (
+            "What he owes is never said, and we are never shown what he feels."
+        ),
         "The text insists on her silence.": "Her silence is the fact the account leaves us with.",
     }
     claude = FakeProvider("claude", script, cost=0.02)
@@ -181,9 +228,9 @@ def test_convert_loop_with_scripted_rewrites(fixture_voice, tmp_path):
     )
     assert res.report_before.verdict == "FAIL"
     assert "chapter asks" not in res.text
-    assert (
-        "Abraham climbs the mountain with Isaac in Genesis 22." in res.text
-    )  # unflagged, byte-identical
+    assert "Abraham climbs the mountain with Isaac in Genesis 22, leaving" in res.text
+    assert "as his father's people had always done before him." in res.text  # byte-identical
+    assert [u.kind for u in res.units if u.iteration == 1] == ["passage", "sentence"]
     assert res.text.count("\n\n") == 1
     accepted = [u for u in res.units if u.accepted]
     assert accepted and all(u.before in script for u in accepted)
@@ -196,9 +243,12 @@ def test_convert_loop_with_scripted_rewrites(fixture_voice, tmp_path):
 
 
 def test_convert_retries_with_other_provider_then_keeps_original(fixture_voice, tmp_path):
-    text = "Abraham climbs the hill in Genesis 22. The chapter asks what he owes. He builds the altar there."
+    text = (
+        "Abraham climbs the hill in Genesis 22 with the wood on Isaac's back and the knife in his "
+        "own hand. The chapter asks what he owes. He builds the altar there."
+    )
     bad = {
-        "The chapter asks what he owes.": "The chapter asks what Isaac owes."
+        "The chapter asks what he owes.": "The chapter asks what Sarah owes."
     }  # adds a name: lock violation
     claude = FakeProvider("claude", bad)
     gpt = FakeProvider("gpt", bad)
@@ -218,7 +268,10 @@ def test_convert_retries_with_other_provider_then_keeps_original(fixture_voice, 
 
 
 def test_convert_provider_failure_falls_through(fixture_voice, tmp_path):
-    text = "Abraham climbs the hill in Genesis 22. The chapter asks what he owes. He builds the altar there."
+    text = (
+        "Abraham climbs the hill in Genesis 22 with the wood on Isaac's back and the knife in his "
+        "own hand. The chapter asks what he owes. He builds the altar there."
+    )
     script = {"The chapter asks what he owes.": "What he owes, no one explains."}
     down = FakeProvider("claude", script, fail=True)
     gpt = FakeProvider("gpt", script)
@@ -232,6 +285,56 @@ def test_convert_provider_failure_falls_through(fixture_voice, tmp_path):
     )
     assert any(u.reason.startswith("provider error") for u in res.units)
     assert any(u.accepted and u.provider == "gpt" for u in res.units)
+
+
+def test_rejected_attempts_are_fed_back_into_the_retry_prompt(fixture_voice, tmp_path):
+    from deslop.converter import ExemplarIndex, build_prompt
+
+    text = (
+        "Abraham climbs the hill in Genesis 22 with the wood on Isaac's back and the knife in his "
+        "own hand. The chapter asks what he owes. He builds the altar there."
+    )
+    report = score(text, fixture_voice)
+    a = analyze(text)
+    unit = select_units(text, a, report, "edit")[0]
+    _, user = build_prompt(
+        unit,
+        text,
+        a,
+        fixture_voice,
+        ExemplarIndex(fixture_voice),
+        (),
+        0.15,
+        load_catalog(),
+        rejected=[("The chapter asks what Sarah owes.", "content lock: added Sarah")],
+    )
+    assert "rejected" in user and "added Sarah" in user and "what Sarah owes" in user
+
+    class Learns(FakeProvider):
+        def _raw_complete(self, system, user, model, temperature):
+            self.prompts.append((system, user))
+            fixed = "rejected" in user
+            return Completion(
+                text="What he owes is never said."
+                if fixed
+                else "The chapter asks what Sarah owes.",
+                model=model,
+                provider=self.name,
+                usage=Usage(input_tokens=1, output_tokens=1, cost_usd=0.01, calls=1),
+            )
+
+    claude, gpt = Learns("claude", {}), Learns("gpt", {})
+    providers = {"claude": claude, "gpt": gpt}
+    res = convert(
+        text,
+        fixture_voice,
+        provider_factory=lambda n: providers[n],
+        pairs_path=tmp_path / "p.jsonl",
+        max_iter=1,
+    )
+    assert [u.accepted for u in res.units] == [False, True]
+    assert "What he owes is never said." in res.text
+    assert "T4" in gpt.prompts[0][1] or "content lock" in gpt.prompts[0][1]
 
 
 def test_convert_budget_stops_early(fixture_voice, slop_text, tmp_path):
