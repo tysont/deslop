@@ -65,6 +65,15 @@ class Cost(BaseModel):
 
 
 class ConvertResult(BaseModel):
+    """What [`convert`][deslop.convert] produced.
+
+    `text` is the best iteration by distance (the input when nothing was accepted);
+    `report_before` and `report_after` are its scores; `diff` is a unified diff; `units`
+    logs every rewrite attempt with its provider, model and acceptance reason; `cost`
+    totals tokens and USD from `pricing.yaml`; `stopped` is why the loop ended
+    (pass, max_iter, budget, nothing_flagged, no_progress).
+    """
+
     text: str
     report_before: Report
     report_after: Report
@@ -554,6 +563,20 @@ def convert(
     pairs_path: Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> ConvertResult:
+    """Rewrite `text` toward `voice` until it scores PASS, `max_iter` is reached, or
+    `budget` (USD) is spent.
+
+    In `edit` mode only flagged sentences are rewritten, with adjacent flagged sentences
+    merged into one passage the model may split or merge; everything outside a rewritten
+    unit stays byte-identical. In `rewrite` mode whole flagged paragraphs are redone.
+    Each iteration uses the next provider in `models` (aliases `claude` and `gpt`). A
+    rewrite is rejected when it changes a locked citation, quotation, number or proper noun
+    (`lock`), drifts outside `preserve_length` (a fraction), repeats its context, or
+    introduces a new tell; rejected attempts are shown to the retry. Accepted and rejected
+    pairs are appended to `pairs_path` (default `$DESLOP_HOME/pairs/<voice>.jsonl`).
+    `provider_factory` maps a provider name to a `CachingProvider` and is how tests and the
+    worked example replay from a cache.
+    """
     catalog = load_catalog(patterns)
     report_before = score(
         text, voice, sigma=sigma, tell_mult=tell_mult, tell_floor=tell_floor, patterns=patterns

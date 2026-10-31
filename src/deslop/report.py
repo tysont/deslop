@@ -64,6 +64,15 @@ class ScoreOptions(BaseModel):
 
 
 class Report(BaseModel):
+    """The result of scoring one text against one voice.
+
+    `verdict` is PASS or FAIL; `distance` is 0-100, where 0 means every metric sits at the
+    voice's mean and no tell exceeds its threshold. `metrics` and `tells` carry every
+    measurement with its threshold and whether it was flagged; `paragraphs` locate the hits;
+    `fixes` are the one-line suggestions the CLI prints. `annotate(text)` returns the input
+    with inline `[Tn]` markers.
+    """
+
     voice: str
     verdict: Verdict
     distance: float

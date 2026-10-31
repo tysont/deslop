@@ -30,6 +30,9 @@ from deslop.voice.model import Voice
 
 
 class Section(BaseModel):
+    """One section of a brief: a heading, the single claim it argues, and the references and
+    quotations it must use verbatim."""
+
     heading: str
     claim: str
     refs: list[str] = Field(default_factory=list)
@@ -38,6 +41,9 @@ class Section(BaseModel):
 
 
 class Brief(BaseModel):
+    """What to write: a title, an optional audience, a target length per section, and the
+    sections. Load one from yaml with [`load_brief`][deslop.load_brief]."""
+
     title: str
     audience: str = ""
     words_per_section: int = 180
@@ -45,6 +51,7 @@ class Brief(BaseModel):
 
 
 def load_brief(path: Path | str) -> Brief:
+    """Parse a brief yaml file; raises `ValueError` when a section lacks a heading or claim."""
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict) or not data.get("sections"):
         raise ValueError(f"{path}: a brief needs a title and a list of sections")
@@ -69,6 +76,10 @@ class SectionLog(BaseModel):
 
 
 class DraftResult(BaseModel):
+    """What [`draft`][deslop.draft.draft] produced: `draft_text` as assembled from the sections,
+    `text` after conversion, a `SectionLog` per section (attempts, missing items, stripped
+    unlisted citations), the full `ConvertResult`, the final `Report`, and the total `Cost`."""
+
     brief: Brief
     draft_text: str  # assembled before conversion
     text: str  # after conversion
@@ -248,6 +259,14 @@ def draft(
     pairs_path: Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> DraftResult:
+    """Write a piece from `brief` in `voice`, then convert it in rewrite mode.
+
+    Each section is drafted on its own with the previous section as context, up to two
+    attempts when a listed reference or quotation is missing. Any quotation or citation the
+    brief did not list is stripped before conversion (a sentence holding an unlisted
+    quotation is dropped whole). The remaining options are passed to
+    [`convert`][deslop.convert]; `convert_max_iter` caps its iterations.
+    """
     pool = ProviderPool(models, provider_factory)
     provider = pool.for_iteration(0)
     logs: list[SectionLog] = []

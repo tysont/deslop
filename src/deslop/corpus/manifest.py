@@ -66,6 +66,14 @@ def slugify(value: str) -> str:
 
 
 class Corpus:
+    """A directory of normalized plain-text documents described by `corpus.yaml`.
+
+    Create one with [`Corpus.init`][deslop.Corpus.init], fill it with
+    [`add`][deslop.Corpus.add] (text, markdown, HTML, epub, PDF, or a URL), and inspect author
+    balance with [`stats`][deslop.Corpus.stats]. Near-duplicate documents are rejected by
+    simhash. The content hash is recorded in every voice calibrated from the corpus.
+    """
+
     def __init__(self, root: Path, manifest: CorpusManifest):
         self.root = Path(root)
         self.manifest = manifest
@@ -73,6 +81,7 @@ class Corpus:
     # ------------------------------------------------------------ lifecycle
     @classmethod
     def init(cls, root: Path, name: str | None = None) -> Corpus:
+        """Create the directory and manifest, or load the corpus already there."""
         root = Path(root)
         root.mkdir(parents=True, exist_ok=True)
         if (root / MANIFEST).exists():
@@ -83,6 +92,7 @@ class Corpus:
 
     @classmethod
     def load(cls, root: Path) -> Corpus:
+        """Load an existing corpus directory."""
         root = Path(root)
         with (root / MANIFEST).open(encoding="utf-8") as fh:
             manifest = CorpusManifest.model_validate(yaml.safe_load(fh) or {})
@@ -99,6 +109,7 @@ class Corpus:
         return self.manifest.name
 
     def documents(self) -> list[DocumentText]:
+        """Every document's manifest entry together with its text."""
         docs = []
         for entry in self.manifest.documents:
             text = (self.root / entry.path).read_text(encoding="utf-8")
@@ -115,6 +126,12 @@ class Corpus:
         weight: float = 1.0,
         license: str = "",
     ) -> DocumentEntry:
+        """Ingest a file or URL, normalize it, and store it as `<author>_<title>.txt`.
+
+        `weight` scales the document's share during calibration (accepted outputs are folded
+        in at 0.5). Raises `DuplicateError` for a near-duplicate of an existing document and
+        `IngestError` when the source cannot be read.
+        """
         text, suggested = ingest(source)
         title = title or suggested
         fp = fingerprint(text)
@@ -150,6 +167,8 @@ class Corpus:
         return h.hexdigest()[:16]
 
     def stats(self, max_share: float = 0.25) -> CorpusStats:
+        """Word counts and shares per author; authors over `max_share` are listed in
+        `over_cap` and downweighted at calibration."""
         by_author: dict[str, list[int]] = {}
         for doc in self.documents():
             by_author.setdefault(doc.entry.author, []).append(doc.words)

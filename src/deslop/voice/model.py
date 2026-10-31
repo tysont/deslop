@@ -61,6 +61,14 @@ class Lexicon(BaseModel):
 
 
 class Voice(BaseModel):
+    """A calibrated voice: the six files of a `name.voice/` directory held in memory.
+
+    `metrics` holds the per-metric mean, standard deviation and percentiles measured over
+    fixed-size chunks of the corpus plus tell rates; `lexicon` holds over-represented words and
+    bigrams and the per-pattern rates (with banned patterns) against the LLM reference;
+    `rules`, `profile` and `exemplars` are the markdown files a model is shown when rewriting.
+    """
+
     meta: VoiceMeta
     metrics: MetricsProfile
     lexicon: Lexicon
@@ -74,6 +82,7 @@ class Voice(BaseModel):
         return self.meta.name
 
     def save(self, path: Path | str) -> Path:
+        """Write the six voice files into `path` (created if needed) and remember it."""
         root = Path(path)
         root.mkdir(parents=True, exist_ok=True)
         (root / "voice.yaml").write_text(
@@ -90,6 +99,7 @@ class Voice(BaseModel):
 
     @classmethod
     def load(cls, path: Path | str) -> Voice:
+        """Read a voice directory; raises `FileNotFoundError` if it has no `voice.yaml`."""
         root = Path(path)
         if not (root / "voice.yaml").exists():
             raise FileNotFoundError(f"not a voice directory: {root}")
@@ -112,6 +122,8 @@ class Voice(BaseModel):
 
     @classmethod
     def calibrate(cls, corpus: Corpus, **opts: Any) -> Voice:
+        """Measure a corpus into a voice; see `deslop.voice.calibrate.calibrate` for options
+        (`name`, `max_share`, `exemplar_words`, `use_llm`, `llm_model`, `patterns`)."""
         from deslop.voice.calibrate import calibrate
 
         return calibrate(corpus, **opts)

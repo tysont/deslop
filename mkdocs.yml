@@ -1,0 +1,54 @@
+site_name: deslop
+site_description: Voice calibration, scoring, conversion, and drafting for prose
+repo_url: https://github.com/tysont/deslop
+repo_name: tysont/deslop
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: black
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - scheme: slate
+      primary: black
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+nav:
+  - Overview: index.md
+  - Concepts:
+      - Corpus: corpus.md
+      - Voice: voice.md
+      - Score: score.md
+      - Convert: convert.md
+      - Draft: draft.md
+  - Examples: examples.md
+  - API reference: api.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences
+  - toc:
+      permalink: true

@@ -43,6 +43,13 @@ def score(
     patterns: tuple[str, ...] = (),
     analysis: Analysis | None = None,
 ) -> Report:
+    """Score `text` against `voice` and return a [`Report`][deslop.Report].
+
+    A metric is flagged when it sits more than `sigma` standard deviations from the voice's
+    mean on its slop side. A tell is flagged when its rate per 1k words exceeds
+    `max(voice_rate * tell_mult, tell_floor)`, or at all if the voice bans it. `patterns`
+    names extra pattern catalogs (yaml) to load beside the built-in one.
+    """
     catalog = load_catalog(patterns)
     a = analysis or analyze(text)
     options = ScoreOptions(sigma=sigma, tell_mult=tell_mult, tell_floor=tell_floor)
