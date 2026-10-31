@@ -115,6 +115,6 @@ def test_rescale_anchors():
     assert rescale(0.5, stats) == 70.0
     assert rescale(0.7, stats) == 89.0
     assert 95.0 < rescale(1.5, stats) <= 100.0
-    assert rescale(0.0, stats) == 7.5
+    assert rescale(0.0, stats) == 0.0 and rescale(0.05, stats) == 10.0
     assert rescale(0.3, None) == 30.0
     assert Thresholds().stats is None

@@ -90,13 +90,15 @@ def passes(
 
 
 def rescale(raw: float, stats: CalibrationStats | None) -> float:
-    """Map a raw composite onto 0-100: linear from the 90th-percentile held-out document
-    (DISTANCE_HELDOUT) to the median LLM-reference document (DISTANCE_LLM), then saturating
-    toward 100 with the LLM 90th percentile landing near 89."""
+    """Map a raw composite onto 0-100: linear from 0 to the 90th-percentile held-out document
+    (DISTANCE_HELDOUT), linear from there to the median LLM-reference document (DISTANCE_LLM),
+    then saturating toward 100 with the LLM 90th percentile landing near 89."""
     if stats is None or stats.raw_llm_median <= stats.raw_heldout_p90:
         return round(min(100.0, 100.0 * raw), 1)
     span = stats.raw_llm_median - stats.raw_heldout_p90
-    if raw <= stats.raw_llm_median:
+    if raw <= stats.raw_heldout_p90:
+        value = DISTANCE_HELDOUT * raw / max(stats.raw_heldout_p90, 1e-9)
+    elif raw <= stats.raw_llm_median:
         scale = (DISTANCE_LLM - DISTANCE_HELDOUT) / span
         value = DISTANCE_HELDOUT + scale * (raw - stats.raw_heldout_p90)
     else:

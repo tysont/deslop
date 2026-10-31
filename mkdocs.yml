@@ -1,5 +1,5 @@
 site_name: deslop
-site_description: Voice calibration, scoring, conversion, and drafting for prose
+site_description: Measure a writer's voice, score text against it, write in it
 repo_url: https://github.com/tysont/deslop
 repo_name: tysont/deslop
 strict: true
@@ -24,11 +24,9 @@ theme:
 nav:
   - Overview: index.md
   - Concepts:
-      - Corpus: corpus.md
       - Voice: voice.md
       - Score: score.md
-      - Convert: convert.md
-      - Draft: draft.md
+      - Apply: apply.md
   - Examples: examples.md
   - API reference: api.md
 

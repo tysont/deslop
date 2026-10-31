@@ -1,13 +1,10 @@
 # deslop
 
-deslop measures a writer's voice from a corpus of their prose, scores any text against that
-voice, and rewrites only the spans that deviate while leaving the rest byte-identical. Its first
-job is removing the structural and lexical tells of machine-written text, but a voice can be
-any writer or register you have enough text for. It is a Python library with a CLI on top, and
-every model call it makes is cached, priced, and logged.
-
-Documentation: this README is the command reference; the concept pages and the API reference
-are built with `make docs` from `docs/`.
+deslop measures a writer's voice from their texts, scores any text against that voice, and
+writes or rewrites text in it with every proposition kept. Its first job is removing the
+structural and lexical tells of machine-written prose, but a voice can be any writer or
+register you have enough text for. Two verbs do the work: `voice` builds a voice from files,
+`apply` writes a text or a brief in it; `score` reports how far any text is from the voice.
 
 ## Install
 
@@ -27,254 +24,174 @@ uv add https://github.com/explosion/spacy-models/releases/download/en_core_web_s
 uv run deslop doctor
 ```
 
-The spaCy model `en_core_web_sm` is a GitHub release wheel, which package indexes cannot
-reference as a dependency, so it is a second install step; `deslop doctor` tells you if it is
-missing. pandoc is needed only to ingest epub and docx.
-
-Conversion and drafting need a model. Put `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` in the
-environment or a `.env` file in the working directory; everything else works offline.
+The spaCy model is a GitHub release wheel, which package metadata cannot reference, so it is
+a second step; `deslop doctor` points at it when it is missing. `apply` needs at least one
+provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`); two providers are better, because the
+writer, the semantic lock and the judge are rotated so no model checks its own work.
+`voice` needs a key only to write `profile.md`; `--no-llm` keeps it offline.
 
 ## Quickstart
 
-This runs on the four public-domain essays shipped in the repository, so you need no corpus of
-your own. From a checkout:
-
 ```sh
-# 1. A corpus: four essays on Shakespeare by Johnson, Hazlitt, Bradley and Arnold.
-deslop corpus init critics.corpus
-deslop corpus add critics.corpus tests/fixtures/corpus_small/johnson_preface_to_shakespeare.txt \
-  --author "Samuel Johnson" --title "Preface to Shakespeare" --year 1765
-deslop corpus add critics.corpus tests/fixtures/corpus_small/hazlitt_characters_of_shakespeare_s_plays.txt \
-  --author "William Hazlitt" --title "Characters of Shakespeare's Plays" --year 1817
-deslop corpus add critics.corpus tests/fixtures/corpus_small/bradley_shakespearean_tragedy_lecture_i.txt \
-  --author "A. C. Bradley" --title "Shakespearean Tragedy, Lecture I" --year 1904
-deslop corpus add critics.corpus tests/fixtures/corpus_small/arnold_the_function_of_criticism_at_the_present_time.txt \
-  --author "Matthew Arnold" --title "The Function of Criticism at the Present Time" --year 1865
-deslop corpus stats critics.corpus
-
-# 2. A voice. --no-llm keeps this step offline (the profile is templated instead of written).
-deslop calibrate critics.corpus --out critics.voice --no-llm
-deslop voice show critics.voice
+# 1. A voice from four essays on Shakespeare (Johnson, Hazlitt, Bradley, Arnold), shipped as
+#    fixtures. Authors come from the author map; frontmatter or filenames also work.
+deslop voice tests/fixtures/corpus_small -o critics.voice --author-map examples/authors.yaml
+deslop voice show critics.voice --clusters
 export DESLOP_VOICE=critics.voice
 
-# 3. Score a machine-written sample: FAIL, with every flagged metric and tell located.
+# 2. Score a machine-written sample: FAIL, with every flagged metric and tell located, and
+#    the distance read against the voice's own held-out documents and LLM-reference prose.
 deslop score examples/slop_sample.md
 deslop score examples/slop_sample.md --annotate annotated.md
 
-# 4. Convert it (needs a key): only the flagged sentences are rewritten.
-deslop convert examples/slop_sample.md --out converted.md --diff
+# 3. Apply the voice (needs keys). Each paragraph gets three candidates, checked by the
+#    content lock, the semantic lock, the linter and a judge; the diff shows what changed and
+#    the meaning section shows which propositions survived.
+deslop apply examples/slop_sample.md -o applied.md --diff
 
-# 5. Draft a new piece from a brief (needs a key), then check it.
-deslop draft tests/fixtures/brief_sample.yaml --out piece.md
+# 4. Draft a new piece from a brief, in the voice, then check it.
+deslop apply --brief tests/fixtures/brief_sample.yaml -o piece.md
 deslop score piece.md
 
-# 6. Can you tell the sample from the critics?
-deslop blind --candidates examples --n 3
+# 5. Can you tell the sample from the critics?
+deslop lab blind --candidates examples --n 3
 ```
 
-Without a key, `make example` runs the conversion step from the cache committed under
-`tests/cache` and prints the before and after reports.
+Without a key, `make example` runs the apply step from the cache committed under
+`tests/cache`.
 
 ## Command reference
 
-Every option can also be set in a config file (see Configuration); a flag always wins. Paths
-to voices are directories ending in `.voice`. `--json` on any command prints the full result
-as JSON on stdout and nothing else.
+Every command reads `deslop.yaml` (see Configuration file) and takes `--json` for machine
+output. Where a flag has a default it is in the table.
 
-Global options: `--config PATH` names the settings file; `--version` prints the version.
+### `deslop voice FILES-OR-DIRS... -o NAME.voice [options]`
 
-### `deslop corpus init DIR [--name NAME]`
-
-Create a corpus directory with an empty manifest. `--name` defaults to the directory name.
-Loading an existing corpus is a no-op.
-
-### `deslop corpus add DIR SOURCE... --author AUTHOR [options]`
-
-Ingest one or more files or URLs (text, markdown, HTML, epub, PDF) into the corpus.
+Measure texts into a voice. Files may be text, markdown, HTML, epub, PDF or docx; directories
+are walked. A directory holding a `manifest.jsonl` (one JSON object per line with `file`,
+`author`, `title`, and optional `url`, `license`, `date`) is read through the manifest, which
+is how a crawler hands over provenance. The corpus is built in a temporary directory, near
+duplicates are dropped, and only provenance is kept in the voice.
 
 | flag | default | meaning |
 | --- | --- | --- |
-| `--author` | required | author name, used for share accounting |
-| `--title` | from the source | document title (only with a single source) |
-| `--year` | none | publication year |
-| `--weight` | `1.0` | share multiplier at calibration |
-| `--license` | empty | free-text license note |
-
-A near-duplicate of an existing document is refused with exit 1.
-
-With `--from-manifest`, the single SOURCE is a directory holding a `manifest.jsonl` whose rows
-name a `file` (relative to the directory), `author` and `title`, plus optional `year` (or a
-`date` string starting with the year), `weight` and `license`. Every row is added; near
-duplicates are skipped and counted, rows that cannot be read are reported, and the command
-prints `added N, M duplicate(s) skipped, K failed`.
-
-### `deslop corpus stats DIR [--max-share 0.25]`
-
-Word counts and shares per author, and which authors exceed `--max-share` and will be
-downweighted at calibration.
-
-### `deslop calibrate CORPUS --out NAME.voice [options]`
-
-Measure the corpus into a voice directory.
-
-| flag | default | meaning |
-| --- | --- | --- |
-| `--out` | required | voice directory to write |
-| `--name` | the `--out` name | voice name |
+| `-o, --out` | required | the `NAME.voice` zip to write; the name is the voice's name |
+| `--author-map` | none | yaml of filename glob to author; `default` names the author for files nothing matches |
+| `--max-share` | `0.15` | cap on any author's share at calibration |
+| `--exemplar-words` | `2500` | size of `exemplars.md` |
 | `--no-llm` | off | template `profile.md` instead of asking a model |
-| `--llm-model` | provider default | model that writes the profile |
-| `--max-share` | `0.25` | author share cap |
-| `--exemplar-words` | `2000` | size of `exemplars.md` |
-| `--patterns` | none | extra tell catalog yaml, repeatable |
+| `--llm-model` | provider default | model for `profile.md` |
+| `--from OLD.voice --add FILES` | | fold new texts into an existing voice: measurements, registers and thresholds are recomputed, the prose files kept |
+| `--patterns` | none | extra pattern catalog yaml, repeatable |
+
+Author resolution per file: the author map, then `author:` in YAML frontmatter, then the
+filename's first underscore-separated part. At the end of calibration the thresholds are tuned
+(see Thresholds) and the command prints the separation it achieved.
+
+### `deslop apply [FILE] -o OUT.md [options]`
+
+Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when FAIL.
+
+| flag | default | meaning |
+| --- | --- | --- |
+| `-v, --voice` | resolved | the voice (see Default voice) |
+| `-o, --out` | stdout | where to write the result |
+| `--brief BRIEF.yaml` | none | draft from a brief instead of rewriting a file |
+| `--mode` | `rewrite` | `rewrite` every paragraph, or `edit` only flagged sentences |
+| `--models` | `claude,gpt` | providers in rotation; the writer of a candidate never judges it |
+| `--n` | `3` | candidates sampled per paragraph in rewrite mode |
+| `--judge-min` | `4` | lowest judge score (1 to 5) a candidate may have |
+| `--budget` | none | USD ceiling; returns the best text so far |
+| `--max-iter` | `4` | edit-mode iterations |
+| `--diff` | off | print the unified diff and the meaning diff |
+| `--patterns` | none | extra pattern catalog yaml |
+
+Rewrite mode, per paragraph: the paragraph's propositions are extracted (cached); `--n`
+candidates are sampled at temperature 0.9 from the providers in rotation with the profile,
+the rules, three exemplars nearest in subject and spread across registers, the paragraph,
+its propositions and the document's allowlist of names, numbers, quotations and citations;
+each candidate must pass the content lock (nothing locked removed), the semantic lock (every
+proposition kept, none added, judged by a different provider), then is scored by the linter in
+document context and by the judge. The best candidate by linter distance, then judge score,
+that passes both locks and `--judge-min` wins. If none passes, one retry names the failures;
+if that fails too the original paragraph is kept and the report says so. A paragraph that
+already reads in the voice (judge at or above the gate, no flagged tell) is kept without
+rewriting. Paragraphs flagged for a summary close or a monotone run are rewritten with their
+predecessor as a section. A final document-level pass rewrites any unit left with T14, T15 or
+an aphoristic close.
+
+Edit mode rewrites only flagged sentences, with adjacent flagged sentences merged into one
+passage, under the same two locks; everything outside a unit stays byte-identical.
+
+A brief (`--brief`) is drafted section by section first (one claim per section, listed
+references and quotations verbatim, anything unlisted stripped), then the draft goes through
+rewrite mode.
 
 ### `deslop score [FILE] [options]`
 
-Score a file (or stdin) against a voice. Prints the verdict, distance, flagged metrics and
-tells with their thresholds, the hits by paragraph, and one-line fixes.
-
 | flag | default | meaning |
 | --- | --- | --- |
-| `--voice`, `-v` | resolved (see Default voice) | voice directory |
-| `--sigma` | `1.5` | standard deviations from the voice mean before a metric is flagged |
-| `--tell-mult` | `2.0` | multiple of the voice's own rate before a tell is flagged |
-| `--tell-floor` | `1.0` | minimum rate per 1k words before a tell is flagged |
-| `--patterns` | none | extra tell catalog yaml, repeatable |
+| `-v, --voice` | resolved | the voice |
 | `--annotate PATH` | none | write the input with inline `[Tn]` markers |
-| `--quiet`, `-q` | off | print only the verdict line |
+| `--judge` | off | also ask an LLM judge (one call) and print its three rubric scores |
+| `--models` | `claude,gpt` | provider for `--judge` |
+| `-q, --quiet` | off | print only the verdict line |
 
 Exit 0 on PASS, 2 on FAIL.
 
-### `deslop convert [FILE] [options]`
-
-Rewrite the flagged spans with a model until the text passes.
-
-| flag | default | meaning |
-| --- | --- | --- |
-| `--voice`, `-v` | resolved | voice directory |
-| `--mode` | `edit` | `edit` rewrites flagged sentences (adjacent ones as one passage); `rewrite` redoes flagged paragraphs |
-| `--max-iter` | `4` | score/rewrite rounds |
-| `--models` | `claude,gpt,claude,gpt` | providers to alternate per iteration (`claude`, `gpt`, `compatible`) |
-| `--budget` | none | stop after this many USD and return the best iteration |
-| `--lock` | `citations,quotes,numbers,proper_nouns` | content classes a rewrite may not change; `none` to disable |
-| `--preserve-length` | `15` | max percent a unit's word count may change |
-| `--sigma`, `--tell-mult`, `--tell-floor`, `--patterns` | as for score | scoring options |
-| `--out`, `-o` | stdout | write the converted text here |
-| `--diff` | off | print the unified diff instead of the text |
-
-Prints the verdict, iterations, distance before and after, rewrites accepted, cost, and why
-the loop stopped (`pass`, `max_iter`, `budget`, `nothing_flagged`, `no_progress`). Every
-attempt is appended to `$DESLOP_HOME/pairs/<voice>.jsonl`. Exit 0 on PASS, 2 on FAIL.
-
-### `deslop draft BRIEF.yaml [options]`
-
-Write a piece from a brief (see `tests/fixtures/brief_sample.yaml`: a title, optional audience,
-`words_per_section`, and sections with `heading`, `claim`, `refs`, `quotes`, `notes`). Each
-section makes one claim and uses its references and quotations verbatim; anything unlisted is
-stripped; the result is converted in rewrite mode.
-
-| flag | default | meaning |
-| --- | --- | --- |
-| `--voice`, `-v` | resolved | voice directory |
-| `--out`, `-o` | stdout | write the finished piece here |
-| `--max-iter` | `2` | conversion rounds after drafting |
-| `--models`, `--budget`, `--lock`, `--preserve-length` | as for convert | conversion options |
-| `--sigma`, `--tell-mult`, `--tell-floor`, `--patterns` | as for score | scoring options |
-
-Prints sections drafted, items stripped, incomplete sections, the conversion summary, and total
-cost. Exit 0 on PASS, 2 on FAIL.
-
 ### `deslop voice show VOICE [--clusters] [--json]`
 
-Print the metadata, the metric table, the tell rates against the LLM reference, and the rules.
-`--clusters` adds the registers found at calibration: for each, its documents, words, median
-document length, top authors and the metrics that set it apart from the voice mean.
-
-### `deslop voice pack VOICE [--out NAME.voice.zip]` and `deslop voice unpack NAME.voice.zip [--out DIR]`
-
-Zip a voice directory for sharing; `voice.yaml` inside the archive carries a sha256 of the
-other five files, and `unpack` refuses an archive whose files do not match it. Every command
-that takes a voice accepts either the directory or the `.zip`: the archive is extracted to a
-read-only temporary directory, verified, and read from there. `voice update` and `voice edit`
-need the directory, so unpack first.
-
-### `deslop voice edit VOICE`
-
-Open `profile.md`, `rules.md` and `exemplars.md` in `$VISUAL` or `$EDITOR` (default `vi`).
-
-### `deslop voice update VOICE --accept FILE... [options]`
-
-Fold accepted texts into the voice. The previous voice is snapshotted to
-`VOICE/history/<timestamp>/` first; `metrics.json` and `lexicon.json` are recalculated;
-`profile.md`, `rules.md` and `exemplars.md` are untouched unless `--regenerate`.
-
-| flag | default | meaning |
-| --- | --- | --- |
-| `--accept` | required | accepted text file, repeatable |
-| `--corpus` | recorded in the voice | corpus directory to add the texts to |
-| `--weight` | `0.5` | weight of the accepted documents |
-| `--regenerate` | off | also rewrite profile, rules and exemplars |
-| `--no-llm` | off | template the profile when regenerating |
+Provenance (documents, words, authors with shares and sources, licenses), the registers found
+by clustering (`--clusters`), every metric with its mean, 95% bootstrap interval,
+within-author spread and calibrated band, a warning for any metric whose interval is wider
+than its band with the words needed to narrow it, the tell rates with their limits, the
+separation achieved, and the rules.
 
 ### `deslop voice diff A B [--json]`
 
-Metric deltas with their direction (toward or away from slop), rule and lexicon changes, and
-author-share changes between two voices. Either side may be `VOICE@prev` or
-`VOICE@<timestamp>` to address a snapshot.
+Metric deltas with their direction, tell and ban changes, lexicon and author-share changes,
+and a diff of `rules.md`.
 
-### `deslop voice validate VOICE [--corpus DIR] [--json]`
+### `deslop voice validate VOICE [--json]`
 
-Check the schema, that the corpus hash still matches, and that the voice's own exemplars score
-PASS. Exit 1 if any check fails.
+Schema and checksum, that thresholds are calibrated and meet their targets, and that the
+voice's own exemplars score PASS. Exit 1 if any check fails.
 
-### `deslop voice export VOICE --out FILE [options]`
+### `deslop voice pack DIR [-o NAME.voice] [--strip-exemplars]` and `deslop voice unpack NAME.voice [-o DIR]`
 
-Write fine-tuning data: accepted convert pairs (system = `profile.md`, user = before,
-assistant = after) and 300 to 600 word corpus chunks with a model-written summary as the user
-turn. Prints the token count and a training-cost estimate from `pricing.yaml`. Never launches
-a job.
+Plumbing between the zip and its unpacked working directory. `--strip-exemplars` writes a
+shareable voice without the corpus excerpts; `apply` then works from `profile.md` and
+`rules.md` alone and says so.
 
-| flag | default | meaning |
-| --- | --- | --- |
-| `--out`, `-o` | required | JSONL file to write |
-| `--format` | `openai-ft` | `openai-ft` (messages) or `jsonl` (system/input/output/kind/source) |
-| `--corpus` | recorded | corpus to chunk |
-| `--no-pairs` | off | skip convert pairs |
-| `--no-chunks` | off | skip corpus chunks |
-| `--max-chunks` | all | cap on chunks |
-| `--cost-model` | `gpt-4.1` | model whose training rate prices the estimate |
+### `deslop voice edit VOICE`
 
-### `deslop blind --candidates DIR [options]`
+Unpack to a temporary directory, open `profile.md`, `rules.md` and `exemplars.md` in
+`$VISUAL` or `$EDITOR`, and repack when the editor closes.
 
-Pair each candidate paragraph with the unused corpus paragraph of similar length and highest
-content-word overlap, shuffle, and ask which is machine-written, with a one-line reason.
-Records go to `$DESLOP_HOME/blind/<voice>.jsonl`.
+### `deslop lab calibrate-thresholds VOICE [-o OUT.voice]`
 
-| flag | default | meaning |
-| --- | --- | --- |
-| `--voice`, `-v` | resolved | voice directory |
-| `--candidates` | required | directory of `.md` or `.txt` drafts |
-| `--n` | `5` | pairs to judge |
-| `--min-overlap` | `0.03` | skip pairs whose Jaccard overlap is below this (content-word Jaccard against a small corpus runs 0.03-0.06) |
-| `--corpus` | recorded | corpus to draw controls from |
-| `--seed` | random | make the sampling reproducible |
+Retune the bands and limits (see Thresholds) and print the separation. `voice` runs this
+itself; the command exists to rerun it after editing a voice.
 
-Prints each pair's overlap, right or wrong after each answer, then session and cumulative
-accuracy, the most frequent reasons, pairs skipped, and candidates that could not be paired.
+### `deslop lab blind --candidates DIR [--texts DIR] [--n 5] [--seed N] [--min-overlap 0.03]`
 
-### `deslop doctor [--json]`
+Pair paragraphs from your drafts with human paragraphs (from `--texts`, else the voice's
+exemplars) matched on length and lexical overlap, show each pair in random order, and ask
+which is machine-written. Results append to `$DESLOP_HOME/blind/<voice>.jsonl`.
 
-Check the spaCy model, that each configured provider answers, the age of the pricing table
-(warns past 90 days), that the cache directory is writable, and that the default voice resolves
-and validates. Exit 1 if any check fails; warnings do not change the exit code.
+### `deslop lab export VOICE --out FILE [--format openai-ft|jsonl] [--corpus DIR] [--no-pairs] [--no-chunks]`
 
-### `deslop providers test [--json]`
+Fine-tuning data from accepted apply pairs and summarized corpus chunks, with a token count
+and cost estimate. Never launches a job.
 
-Send a one-word prompt to each configured provider and report the model that answered.
+### `deslop doctor [--json]` and `deslop providers test [--json]`
+
+`doctor` checks the spaCy model, each configured provider, pricing age, cache writability and
+the default voice; exit 1 on any failure. `providers test` pings each configured provider.
 
 ## Default voice
 
-`score`, `convert`, `draft` and `blind` resolve their voice in this order, and the first hit
-wins:
+`apply`, `score` and `lab blind` resolve their voice in this order, and the first hit wins:
 
 1. `--voice` on the command line.
 2. The `DESLOP_VOICE` environment variable.
@@ -291,12 +208,13 @@ over both. Keys may use hyphens or underscores; lists may be yaml lists or comma
 
 ```yaml
 default_voice: voices/critics.voice
-sigma: 1.5
-convert:
-  mode: rewrite
-  max-iter: 3
+apply:
   models: [claude, gpt]
-  budget: 2.0
+  n: 3
+  judge-min: 4
+  budget: 5.0
+voice:
+  max-share: 0.15
 blind:
   min-overlap: 0.05
 ```
@@ -326,18 +244,36 @@ the packaged table is more than 90 days old.
 
 ## What a voice is
 
-`name.voice/` holds six hand-editable files:
+`NAME.voice` is a zip of six files; `voice unpack` gives you the directory form to edit and
+`voice pack` zips it again. Every command accepts either.
 
 | file | contents |
 | --- | --- |
-| `voice.yaml` | name, schema and deslop version, created date, corpus name, path and content hash, total words, author shares, profile source, and the content checksum once packed |
-| `metrics.json` | for every metric: mean, standard deviation, p10, p50, p90 over 500-word chunks; tell rates per 1k words; per-author samples; the registers (document clusters) with their top authors and distinguishing metrics |
+| `voice.yaml` | name, deslop version, created date, document and word counts, the author list with shares and sources, licenses carried from ingest, every document's title, author, words, source and license, and the sha256 of the other five files |
+| `metrics.json` | for every metric: mean, standard deviation, percentiles, within-author spread and a 95% bootstrap interval over documents; tell rates; per-author and per-document samples; the registers; the calibrated thresholds with their separation statistics |
 | `lexicon.json` | words and bigrams over-represented against generic English; each tell's rate in the voice and in the LLM reference, the ratio, and whether it is banned |
-| `rules.md` | the default rules plus rules the numbers justify (for example a ban on a tell the voice never uses) |
-| `profile.md` | a facts block rendered from `metrics.json` (every metric in words with its percentile against the generic and LLM baselines), the registers, then a description written by a model (or templated with `--no-llm`) that must agree with the facts |
-| `exemplars.md` | 1,500 to 3,000 words of verbatim excerpts, drawn from every register in proportion to its share of the corpus; each heading names the register |
+| `rules.md` | the default rules plus rules the numbers justify |
+| `profile.md` | a facts block rendered from `metrics.json` (every metric in words with its percentile against the generic and LLM baselines), the registers, then a description written by a model that must agree with the facts |
+| `exemplars.md` | verbatim excerpts drawn from every register in proportion to its share, each headed with author, title, register and source URL when known |
 
-`voice update` adds `history/<timestamp>/` snapshots of all six files.
+## Thresholds
+
+A fixed sigma rule produced false PASSes: a text could avoid one tell and sail through. Each
+voice therefore carries tuned thresholds. For every metric with a slop side the band is
+`mean ± k · s`, where `s` is the pooled standard deviation of document means within one
+author (so the spread between authors does not widen the band) and `k` is chosen per metric;
+every tell has a rate limit per 1,000 words. Calibration holds out about 20% of documents by
+author, starts loose, then tightens one criterion at a time, taking the step that fails the
+most LLM-reference documents per held-out document lost, until at least 95% of the 267
+LLM-reference documents fail while at least 90% of the held-out documents pass; with a real
+split it then keeps tightening wherever a step costs no held-out document, down to `k = 2`
+and twice the voice's tell rate. Corpora with fewer than five authors or ten documents use all
+their documents as the held-out set and skip that second phase.
+
+The composite distance is rescaled against the same calibration: the 90th-percentile held-out
+document lands at 20, the median LLM-reference document at 70, and the scale saturates toward
+100 above that. `score --json` carries the separation (`heldout_pass_rate`, `llm_fail_rate`,
+`heldout_p90`, `llm_median`) so the number can be read.
 
 ## Metrics
 
@@ -403,34 +339,33 @@ added there or in a file passed with `--patterns`.
 
 | code | meaning |
 | --- | --- |
-| 0 | success; for `score`, `convert` and `draft`, the text scores PASS |
-| 1 | error: bad arguments or input, no voice resolvable, duplicate document, provider failure, or a failed `voice validate` or `doctor` check |
-| 2 | `score`, `convert` or `draft` finished and the text scores FAIL |
+| 0 | success; for `score` and `apply`, the text scores PASS |
+| 1 | error: bad arguments or input, no voice resolvable, unreadable files, provider failure, or a failed `voice validate` or `doctor` check |
+| 2 | `score` or `apply` finished and the text scores FAIL |
 
 ## Python API
 
 ```python
-from deslop import Corpus, Voice, convert, draft, load_brief, score
+from deslop import Voice, apply, load_brief, score
 
-corpus = Corpus.init("critics.corpus")
-corpus.add("essay.txt", author="A. Writer", title="Essay", year=1911)
-voice = Voice.calibrate(corpus, use_llm=False)
+voice = Voice.from_texts(["essays/"], name="critics", author_map={"default": "A. Writer"})
 voice.save("critics.voice")
 
-report = score(open("draft.md").read(), Voice.load("critics.voice"))
-print(report.verdict, round(report.distance), report.fixes)
+voice = Voice.load("critics.voice")
+report = score(open("draft.md").read(), voice)
+print(report.verdict, report.distance, report.separation.llm_median, report.fixes)
 
-result = convert(open("draft.md").read(), Voice.load("critics.voice"), mode="edit")
+result = apply(open("draft.md").read(), voice, n=3, judge_min=4.0)
 print(result.report_after.verdict, result.cost.usd)
-print(result.diff)
+print(result.meaning_diff)
 
-piece = draft(load_brief("brief.yaml"), Voice.load("critics.voice"))
-print(piece.report.verdict, piece.cost.usd)
+piece = apply(load_brief("brief.yaml"), voice)
 print(piece.text)
 ```
 
-The docstrings on these names are the API reference; `make docs` renders them with
-mkdocs-material along with a page per concept and an examples page.
+`Voice.from_texts`, `Voice.load`, `Voice.save`, `apply` and `score` are the public API;
+`Report`, `Result` and `Brief` are their types. `make docs` renders their docstrings with
+mkdocs-material along with a page per concept.
 
 ## Development
 
@@ -445,7 +380,6 @@ make llm-reference    # rebuild baselines/llm_reference.json (needs keys)
 make english-generic  # rebuild baselines/english_generic.json from Gutenberg
 ```
 
-The end-to-end tests under `tests/e2e` call real providers and record every response under
-`tests/cache`, which is committed. Without credentials they replay from that cache and fail
-loudly on any uncached prompt; with credentials, uncached prompts go live. CI runs on Python
-3.12 and 3.13 and uses repository secrets for the keys when present.
+End-to-end tests call real providers when keys are present and record the responses under
+`tests/cache`; CI replays them without keys (`DESLOP_CACHE_ONLY=1`) and fails on any prompt
+that is not cached.

@@ -1,0 +1,5 @@
+# Filename glob -> author, for `deslop voice --author-map` on the fixture essays.
+johnson_*: Samuel Johnson
+hazlitt_*: William Hazlitt
+arnold_*: Matthew Arnold
+bradley_*: A. C. Bradley

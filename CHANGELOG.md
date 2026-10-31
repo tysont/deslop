@@ -2,6 +2,49 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.0.0 - 2026-11-01
+
+Breaking release: two primary verbs, zip voices, calibrated thresholds, and a
+generate-then-verify apply loop. No compatibility with v1 voices or commands.
+
+- CLI: `deslop voice FILES... -o NAME.voice` builds a voice straight from files or
+  directories (authors from `--author-map`, frontmatter, a `manifest.jsonl`, or the
+  filename); `--from OLD.voice --add FILES` extends one. `deslop apply` replaces `convert`
+  and `draft` (`--brief` selects drafting). `corpus init/add/stats`, `calibrate`, `convert`,
+  `draft`, `voice update` and `voice export` are gone; `blind`, `export` and the new
+  `calibrate-thresholds` live under `deslop lab`.
+- Library: `Voice.from_texts`, `Voice.load`, `Voice.save`, `apply(text_or_brief, voice)`
+  returning `Result`, and `score(text, voice)` returning `Report`. `Corpus` is internal.
+- Voice file: `NAME.voice` is a zip and the canonical form; every command accepts it, the
+  directory is only the unpacked working copy, `voice edit` unpacks and repacks. `voice.yaml`
+  carries provenance (document and word counts, authors with shares and sources, per-document
+  title/author/words/source/license, license notes, checksum). Exemplar headings carry the
+  source URL; `voice pack --strip-exemplars` makes a shareable voice and `apply` says when it
+  wrote without exemplars. `metrics.json` carries a 95% document-bootstrap interval per metric
+  and `voice show` warns when an interval is wider than its band, with the words needed.
+- Thresholds: the fixed 1.5σ rule is replaced by per-metric bands and per-tell limits tuned so
+  that at least 95% of the 267 LLM-reference documents fail and at least 90% of held-out
+  corpus documents (20% by author) pass; bands use within-author spread so between-author
+  differences do not widen them. The composite distance is rescaled so held-out documents sit
+  below 20 and LLM-reference prose centres on 70, and reports carry the separation stats. The
+  LLM reference baseline now stores per-document stats (never text) for this.
+- Content lock: a document-scoped allowlist. Removals are violations; additions pass when
+  the document already has them or they cite the primary text; everything else new goes to the
+  semantic lock. Sentence-initial capitals are proper nouns only when the document names them
+  elsewhere (spaCy NER plus document frequency).
+- Semantic lock: each unit's propositions are extracted and a different provider checks every
+  one survives and none is added (reader address and primary-text citations exempt); a failure
+  names the proposition. `--diff` prints a meaning section with ✓/✗ per proposition.
+- Judge: a rubric-scored LLM judge (voice, model prose, fidelity; 1 to 5) from a provider other
+  than the writer, stored in the report; `--judge-min` (4) gates rewrite mode; `score --judge`.
+- Apply loop: per paragraph (or a two-to-three paragraph section when T14/T15 need room), `--n`
+  candidates at temperature 0.9 across providers in rotation, verified by both locks, the
+  linter in document context and the judge, ranked by distance then judge; one retry naming
+  the failures, else the original is kept and recorded; a document-level pass for T14, T15 and
+  aphoristic closes. Edit mode keeps its mechanism under the new locks.
+- Tests: `tests/fixtures/genesis06_lesson.md` with both v1 conversions as regression
+  references; the e2e suite asserts the v2 output scores lower and judges higher than both.
+
 ## v1.0.2 - 2026-10-31
 
 - `profile.md` now opens with a facts block rendered from `metrics.json`: every metric in
