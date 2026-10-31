@@ -44,6 +44,15 @@ is free and reproducible.
 OPENAI_API_KEY, or DESLOP_COMPATIBLE_BASE_URL in the environment or `.env`) to
 write `profile.md`; everything else is deterministic.
 
+## Cost and pricing
+
+Every model call is cached under `~/.deslop/cache`, so rerunning the same conversion is free.
+Cost estimates come from `src/deslop/pricing.yaml`, which records USD per million tokens
+for each model and the pricing pages it was taken from. To add a model or change a price,
+create `~/.deslop/pricing.yaml` with the same `models:` layout; its entries are merged over
+the packaged table. Calls to models missing from both files are counted as `unpriced_calls`
+and contribute nothing to the reported cost.
+
 ## What a voice is
 
 `name.voice/` holds six hand-editable files:

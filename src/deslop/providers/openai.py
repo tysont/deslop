@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from deslop.pricing import is_priced, price
 from deslop.providers.base import (
     DEFAULT_MODELS,
     CachingProvider,
@@ -11,8 +12,6 @@ from deslop.providers.base import (
     NonRetryableError,
     ProviderError,
     Usage,
-    is_priced,
-    price,
 )
 
 

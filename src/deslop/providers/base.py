@@ -1,4 +1,4 @@
-# ABOUTME: Provider protocol, pricing table, response cache, and provider registry.
+# ABOUTME: Provider protocol, response cache, retry policy, and provider registry.
 # ABOUTME: complete(system, user, model, temperature) -> Completion is the only entry point.
 from __future__ import annotations
 
@@ -15,21 +15,6 @@ from dotenv import load_dotenv
 load_dotenv(override=True)  # a project .env beats stale shell exports
 
 CACHE_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "cache"
-
-# USD per million tokens (input, output). Unknown models fall back to zero cost.
-PRICING: dict[str, tuple[float, float]] = {
-    "claude-opus-5-5": (4.0, 20.0),
-    "claude-sonnet-5-5": (2.0, 10.0),
-    "claude-haiku-5-5": (0.1, 0.5),
-    "claude-opus-5": (5.0, 25.0),
-    "claude-sonnet-5": (2.0, 10.0),
-    "gpt-4o": (2.5, 10.0),
-    "gpt-4o-mini": (0.15, 0.6),
-    "gpt-4.1": (2.0, 8.0),
-    "gpt-4.1-mini": (0.4, 1.6),
-    "gpt-5": (1.25, 10.0),
-    "gpt-5-mini": (0.25, 2.0),
-}
 
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-5-5",
@@ -53,7 +38,7 @@ class Usage:
     cost_usd: float = 0.0
     calls: int = 0
     cached: int = 0
-    unpriced: int = 0  # calls to models missing from PRICING; their cost is not counted
+    unpriced: int = 0  # calls to models missing from pricing.yaml; their cost is not counted
 
     def add(self, other: Usage) -> None:
         self.input_tokens += other.input_tokens
@@ -71,17 +56,6 @@ class Completion:
     provider: str
     usage: Usage = field(default_factory=Usage)
     from_cache: bool = False
-
-
-def is_priced(model: str) -> bool:
-    return any(model.startswith(prefix) for prefix in PRICING)
-
-
-def price(model: str, input_tokens: int, output_tokens: int) -> float:
-    for prefix, (pin, pout) in sorted(PRICING.items(), key=lambda kv: -len(kv[0])):
-        if model.startswith(prefix):
-            return (input_tokens * pin + output_tokens * pout) / 1e6
-    return 0.0
 
 
 class Provider(Protocol):
