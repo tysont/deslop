@@ -183,9 +183,19 @@ stripped; the result is converted in rewrite mode.
 Prints sections drafted, items stripped, incomplete sections, the conversion summary, and total
 cost. Exit 0 on PASS, 2 on FAIL.
 
-### `deslop voice show VOICE [--json]`
+### `deslop voice show VOICE [--clusters] [--json]`
 
 Print the metadata, the metric table, the tell rates against the LLM reference, and the rules.
+`--clusters` adds the registers found at calibration: for each, its documents, words, median
+document length, top authors and the metrics that set it apart from the voice mean.
+
+### `deslop voice pack VOICE [--out NAME.voice.zip]` and `deslop voice unpack NAME.voice.zip [--out DIR]`
+
+Zip a voice directory for sharing; `voice.yaml` inside the archive carries a sha256 of the
+other five files, and `unpack` refuses an archive whose files do not match it. Every command
+that takes a voice accepts either the directory or the `.zip`: the archive is extracted to a
+read-only temporary directory, verified, and read from there. `voice update` and `voice edit`
+need the directory, so unpack first.
 
 ### `deslop voice edit VOICE`
 
@@ -320,12 +330,12 @@ the packaged table is more than 90 days old.
 
 | file | contents |
 | --- | --- |
-| `voice.yaml` | name, schema and deslop version, created date, corpus name, path and content hash, total words, author shares, profile source |
-| `metrics.json` | for every metric: mean, standard deviation, p10, p50, p90 over 500-word chunks; tell rates per 1k words; per-author samples |
+| `voice.yaml` | name, schema and deslop version, created date, corpus name, path and content hash, total words, author shares, profile source, and the content checksum once packed |
+| `metrics.json` | for every metric: mean, standard deviation, p10, p50, p90 over 500-word chunks; tell rates per 1k words; per-author samples; the registers (document clusters) with their top authors and distinguishing metrics |
 | `lexicon.json` | words and bigrams over-represented against generic English; each tell's rate in the voice and in the LLM reference, the ratio, and whether it is banned |
 | `rules.md` | the default rules plus rules the numbers justify (for example a ban on a tell the voice never uses) |
-| `profile.md` | a positive description of the voice, written by a model or templated with `--no-llm` |
-| `exemplars.md` | 1,500 to 3,000 words of verbatim excerpts chosen to cover the authors |
+| `profile.md` | a facts block rendered from `metrics.json` (every metric in words with its percentile against the generic and LLM baselines), the registers, then a description written by a model (or templated with `--no-llm`) that must agree with the facts |
+| `exemplars.md` | 1,500 to 3,000 words of verbatim excerpts, drawn from every register in proportion to its share of the corpus; each heading names the register |
 
 `voice update` adds `history/<timestamp>/` snapshots of all six files.
 

@@ -23,6 +23,7 @@ class Candidate:
     vector: list[float]
     typicality: float
     content: frozenset[str]
+    register: str = ""
 
 
 def _zvector(values: dict[str, float], profile: MetricsProfile, names: list[str]) -> list[float]:
@@ -102,7 +103,8 @@ def select_exemplars(
 def render_exemplars(chosen: list[Candidate]) -> str:
     lines = ["# Exemplars", "", "Verbatim excerpts chosen for typicality and diversity.", ""]
     for c in chosen:
-        lines.append(f"## {c.author}, _{c.title}_")
+        suffix = f" ({c.register})" if c.register else ""
+        lines.append(f"## {c.author}, _{c.title}_{suffix}")
         lines.append("")
         lines.append(c.text.strip())
         lines.append("")
@@ -115,11 +117,26 @@ def build_exemplars(
     *,
     target_words: int = 2000,
     max_share: float = 0.25,
+    registers: dict[str, str] | None = None,
 ) -> str:
-    cands: list[Candidate] = []
+    """Select exemplars. With `registers` (document title -> register label), the word
+    budget is split across registers in proportion to the documents' words, so every
+    register the corpus contains is represented, not only the most typical one."""
+    by_register: dict[str, list[Candidate]] = {}
+    words_by_register: dict[str, int] = {}
     for author, title, text in docs:
-        cands.extend(candidates_from(author, title, analyze(text), profile))
-    return render_exemplars(select_exemplars(cands, target_words=target_words, max_share=max_share))
+        label = (registers or {}).get(title, "")
+        cands = candidates_from(author, title, analyze(text), profile)
+        for c in cands:
+            c.register = label
+        by_register.setdefault(label, []).extend(cands)
+        words_by_register[label] = words_by_register.get(label, 0) + len(text.split())
+    total = sum(words_by_register.values()) or 1
+    chosen: list[Candidate] = []
+    for label, cands in sorted(by_register.items()):
+        budget = max(int(target_words * words_by_register[label] / total), MIN_WORDS * 2)
+        chosen.extend(select_exemplars(cands, target_words=budget, max_share=max_share))
+    return render_exemplars(chosen)
 
 
 def parse_exemplars(markdown: str) -> list[str]:

@@ -39,14 +39,36 @@ class AuthorSamples(BaseModel):
     tell_hits: dict[str, int] = Field(default_factory=dict)
 
 
+class ClusterMetric(BaseModel):
+    metric: str
+    cluster_mean: float
+    voice_mean: float
+    z: float
+
+
+class Cluster(BaseModel):
+    """One register found by clustering documents on their metric vectors."""
+
+    index: int
+    label: str
+    documents: int
+    words: int
+    median_doc_words: int
+    top_authors: list[str] = Field(default_factory=list)
+    titles: list[str] = Field(default_factory=list)
+    distinguishing: list[ClusterMetric] = Field(default_factory=list)
+
+
 class MetricsProfile(BaseModel):
-    """metrics.json: aggregate stats plus the per-author samples they came from."""
+    """metrics.json: aggregate stats plus the per-author samples they came from, and the
+    registers (document clusters) found at calibration."""
 
     chunk_words: int = DEFAULT_CHUNK_WORDS
     total_words: int = 0
     metrics: dict[str, MetricStat] = Field(default_factory=dict)
     tells: dict[str, TellStat] = Field(default_factory=dict)
     per_author: dict[str, AuthorSamples] = Field(default_factory=dict)
+    clusters: list[Cluster] = Field(default_factory=list)
 
 
 @dataclass

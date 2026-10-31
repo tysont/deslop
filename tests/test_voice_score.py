@@ -107,3 +107,19 @@ def test_recalibrate_without_corpus(fixture_voice):
 def test_score_options_change_verdict(fixture_voice, slop_text):
     lenient = score(slop_text, fixture_voice, sigma=50, tell_mult=100, tell_floor=1000)
     assert lenient.verdict == "PASS"
+
+
+def test_profile_has_facts_block_and_clusters(fixture_voice):
+    assert "## Facts" in fixture_voice.profile
+    assert fixture_voice.metrics.clusters, "calibrate should record registers"
+    for c in fixture_voice.metrics.clusters:
+        assert c.documents >= 1 and c.top_authors
+    # Exemplars are drawn from every register, not only the most typical one.
+    labels = {c.label for c in fixture_voice.metrics.clusters}
+    if len(labels) > 1:
+        seen = {
+            line.rsplit("(", 1)[-1].rstrip(")")
+            for line in fixture_voice.exemplars.splitlines()
+            if line.startswith("## ")
+        }
+        assert len(seen & labels) == len(labels)

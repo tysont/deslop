@@ -13,11 +13,13 @@ from deslop.providers.base import CachingProvider
 from deslop.stats import (
     DEFAULT_CHUNK_WORDS,
     AuthorSamples,
+    MetricsProfile,
     WordCounts,
     aggregate,
     merge_samples,
     sample_text,
 )
+from deslop.voice.clusters import DocumentVector, cluster_documents, with_voice_means
 from deslop.voice.exemplars import build_exemplars
 from deslop.voice.lexicon import build_lexicon
 from deslop.voice.model import Voice, VoiceMeta
@@ -47,12 +49,14 @@ def calibrate(
         raise ValueError("corpus has no documents")
 
     per_author: dict[str, AuthorSamples] = {}
+    per_doc: list[tuple[str, str, AuthorSamples]] = []
     counts = WordCounts()
     for doc in docs:
         if progress:
             progress(f"sampling {doc.entry.author}: {doc.entry.title}")
         samples = sample_text(doc.text, chunk_words=chunk_words, catalog=catalog)
         samples.weight = doc.entry.weight
+        per_doc.append((doc.entry.title, doc.entry.author, samples))
         author = doc.entry.author
         per_author[author] = (
             merge_samples(per_author[author], samples) if author in per_author else samples
@@ -61,6 +65,22 @@ def calibrate(
         counts.add(doc.text)
 
     profile = aggregate(per_author, max_share=max_share, chunk_words=chunk_words)
+    if progress:
+        progress("clustering documents into registers")
+    metric_names = [n for n in sorted(profile.metrics) if profile.metrics[n].std > 0]
+    vectors = [
+        DocumentVector(
+            title=title,
+            author=author,
+            words=samples.words,
+            vector=document_vector(samples, profile, metric_names),
+        )
+        for title, author, samples in per_doc
+        if samples.chunks > 0
+    ]
+    clusters, assignment = cluster_documents(vectors, metric_names)
+    profile.clusters = with_voice_means(clusters, profile)
+    registers = {title: clusters[i].label for title, i in assignment.items()}
     lexicon = build_lexicon(counts, profile, generic, llm, catalog, ban_ratio=ban_ratio)
     rules = build_rules(profile, generic, lexicon)
     if progress:
@@ -70,6 +90,7 @@ def calibrate(
         profile,
         target_words=exemplar_words,
         max_share=max_share,
+        registers=registers,
     )
     voice_name = name or corpus.name
     profile_source = "template"
@@ -81,11 +102,11 @@ def calibrate(
         if progress:
             progress(f"writing profile with {provider.name}")
         profile_md = llm_profile(
-            voice_name, profile, generic, exemplars, rules, provider, llm_model
+            voice_name, profile, generic, exemplars, rules, provider, llm_model, llm=llm
         )
         profile_source = f"{provider.name}:{llm_model or provider.default_model}"
     else:
-        profile_md = template_profile(voice_name, profile, generic)
+        profile_md = template_profile(voice_name, profile, generic, llm)
 
     total = sum(s.words for s in per_author.values())
     meta = VoiceMeta(
@@ -107,6 +128,19 @@ def calibrate(
         profile=profile_md,
         exemplars=exemplars,
     )
+
+
+def document_vector(
+    samples: AuthorSamples, profile: MetricsProfile, names: list[str]
+) -> list[float]:
+    """A document's mean metric values as z-scores against the voice."""
+    out = []
+    for n in names:
+        vals = samples.metrics.get(n, [])
+        stat = profile.metrics[n]
+        mean = sum(vals) / len(vals) if vals else stat.mean
+        out.append((mean - stat.mean) / stat.std if stat.std > 0 else 0.0)
+    return out
 
 
 def recalibrate_metrics(voice: Voice, *, max_share: float | None = None) -> Voice:

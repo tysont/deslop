@@ -488,8 +488,44 @@ def draft_cmd(
 # ------------------------------------------------------------------ voice
 
 
+@voice_app.command("pack")
+def voice_pack(
+    voice: Path,
+    out: Path | None = typer.Option(None, "--out", help="Default: <voice>.zip"),
+) -> None:
+    """Zip a voice directory with a content checksum in voice.yaml."""
+    from deslop.voice.pack import PackError, pack_voice
+
+    target = out or voice.with_name(voice.name + ".zip")
+    try:
+        pack_voice(voice, target)
+    except PackError as exc:
+        fail(str(exc))
+    console.print(f"packed {voice} -> {target}")
+
+
+@voice_app.command("unpack")
+def voice_unpack(
+    archive: Path,
+    out: Path | None = typer.Option(None, "--out", help="Default: the archive name without .zip"),
+) -> None:
+    """Extract a packed voice and verify its checksum."""
+    from deslop.voice.pack import PackError, unpack_voice
+
+    target = out or archive.with_name(archive.name.removesuffix(".zip"))
+    try:
+        unpack_voice(archive, target)
+    except PackError as exc:
+        fail(str(exc))
+    console.print(f"unpacked {archive} -> {target}")
+
+
 @voice_app.command("show")
-def voice_show(voice: Path, json_out: bool = typer.Option(False, "--json")) -> None:
+def voice_show(
+    voice: Path,
+    clusters: bool = typer.Option(False, "--clusters", help="Show the registers found"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
     from deslop.voice import Voice
 
     v = Voice.load(voice)
@@ -504,6 +540,26 @@ def voice_show(voice: Path, json_out: bool = typer.Option(False, "--json")) -> N
             )
         )
         return
+    if clusters:
+        ct = Table(title="Registers")
+        for col in ("register", "docs", "words", "median doc", "top authors", "distinguished by"):
+            ct.add_column(col)
+        for c in v.metrics.clusters:
+            marks = "; ".join(
+                f"{m.metric} {m.cluster_mean:.2f} vs {m.voice_mean:.2f} (z {m.z:+.1f})"
+                for m in c.distinguishing
+            )
+            ct.add_row(
+                c.label,
+                str(c.documents),
+                str(c.words),
+                str(c.median_doc_words),
+                ", ".join(c.top_authors),
+                marks,
+            )
+        console.print(ct)
+        if not v.metrics.clusters:
+            console.print("no registers recorded (voice calibrated before clustering existed)")
     console.print(
         f"[bold]{v.name}[/]  corpus {v.meta.corpus_name} ({v.meta.corpus_hash})  "
         f"{v.meta.total_words} words  created {v.meta.created}"
@@ -568,7 +624,11 @@ def voice_update(
     no_llm: bool = typer.Option(False, "--no-llm", help="Template profile when regenerating"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    from deslop.voice.pack import is_packed
     from deslop.voice.update import update
+
+    if is_packed(voice):
+        fail("packed voices are read-only; `deslop voice unpack` first")
 
     s = Settings(ctx, "voice_update")
     try:

@@ -2,8 +2,19 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
-## Unreleased
+## v1.0.2 - 2026-10-31
 
+- `profile.md` now opens with a facts block rendered from `metrics.json`: every metric in
+  words with its value, median, and percentile against the generic and LLM baselines, then
+  the tell rates. Calibration clusters documents on their metric vectors (k-means, k in 2-4 by
+  silhouette) into registers, summarizes each by top authors, median length and distinguishing
+  metrics, and the model writes the description under the instruction that every claim agree
+  with the facts and that the registers be named. `voice show --clusters` lists the registers.
+- Exemplars are drawn from every register in proportion to its share of the corpus; each
+  exemplar heading names its register.
+- `voice pack` and `voice unpack`: a zip of the voice directory with a sha256 checksum in
+  `voice.yaml`, verified on unpack. Every `--voice` accepts the `.zip`, extracted read-only to
+  a temporary directory.
 - `corpus add DIR SOURCE --from-manifest` bulk-adds every row of `SOURCE/manifest.jsonl`
   (`file`, `author`, `title`, optional `date`/`year`, `weight`, `license`); near duplicates are
   skipped and counted instead of aborting.

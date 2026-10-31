@@ -31,6 +31,7 @@ class VoiceMeta(BaseModel):
     author_shares: dict[str, float] = Field(default_factory=dict)
     max_share: float = 0.25
     profile_source: str = "template"
+    checksum: str | None = None  # set by `voice pack`; verified on unpack and load
 
 
 class LexiconEntry(BaseModel):
@@ -76,6 +77,7 @@ class Voice(BaseModel):
     profile: str
     exemplars: str
     path: Path | None = None
+    read_only: bool = False  # True when loaded from a packed .zip
 
     @property
     def name(self) -> str:
@@ -83,7 +85,13 @@ class Voice(BaseModel):
 
     def save(self, path: Path | str) -> Path:
         """Write the six voice files into `path` (created if needed) and remember it."""
+        from deslop.voice.pack import PackError
+
         root = Path(path)
+        if self.read_only and self.path is not None and root.resolve() == self.path.resolve():
+            raise PackError(
+                "this voice was loaded from a packed .zip and is read-only; unpack it first"
+            )
         root.mkdir(parents=True, exist_ok=True)
         (root / "voice.yaml").write_text(
             yaml.safe_dump(self.meta.model_dump(), sort_keys=False, allow_unicode=True),
@@ -99,8 +107,16 @@ class Voice(BaseModel):
 
     @classmethod
     def load(cls, path: Path | str) -> Voice:
-        """Read a voice directory; raises `FileNotFoundError` if it has no `voice.yaml`."""
+        """Read a voice directory, or a packed `.zip` (extracted read-only to a temporary
+        directory with its checksum verified); raises `FileNotFoundError` if it has no
+        `voice.yaml`."""
+        from deslop.voice.pack import extract_read_only, is_packed
+
         root = Path(path)
+        read_only = False
+        if is_packed(root):
+            root = extract_read_only(root)
+            read_only = True
         if not (root / "voice.yaml").exists():
             raise FileNotFoundError(f"not a voice directory: {root}")
         meta = VoiceMeta.model_validate(
@@ -118,6 +134,7 @@ class Voice(BaseModel):
             profile=(root / "profile.md").read_text(encoding="utf-8"),
             exemplars=(root / "exemplars.md").read_text(encoding="utf-8"),
             path=root,
+            read_only=read_only,
         )
 
     @classmethod
