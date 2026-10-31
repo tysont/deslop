@@ -1,0 +1,35 @@
+name: critical_prose_small
+language: en
+documents:
+- path: johnson_preface_to_shakespeare.txt
+  author: Samuel Johnson
+  title: Preface to Shakespeare
+  year: 1765
+  weight: 1.0
+  license: Public domain (Project Gutenberg)
+  simhash: 3415099059279202364
+  words: 15056
+- path: hazlitt_characters_of_shakespeare_s_plays.txt
+  author: William Hazlitt
+  title: Characters of Shakespeare's Plays
+  year: 1817
+  weight: 1.0
+  license: Public domain (Project Gutenberg)
+  simhash: 4040451595423759040
+  words: 14314
+- path: arnold_the_function_of_criticism_at_the_present_time.txt
+  author: Matthew Arnold
+  title: The Function of Criticism at the Present Time
+  year: 1865
+  weight: 1.0
+  license: Public domain (Project Gutenberg)
+  simhash: 12019582450864249589
+  words: 13998
+- path: bradley_shakespearean_tragedy_lecture_i.txt
+  author: A. C. Bradley
+  title: Shakespearean Tragedy, Lecture I
+  year: 1904
+  weight: 1.0
+  license: Public domain (Project Gutenberg)
+  simhash: 6152639198891961908
+  words: 14403

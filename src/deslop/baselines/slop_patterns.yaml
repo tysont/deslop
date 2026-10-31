@@ -1,0 +1,368 @@
+# ABOUTME: Catalog of structural and lexical tells measured against every voice.
+# ABOUTME: Detector types: regex (data only), dep-pattern and metric (functions in metrics/tells.py).
+lexicons:
+  text_nouns:
+    - chapter
+    - text
+    - passage
+    - narrator
+    - book
+    - verse
+    - scene
+    - section
+    - story
+    - account
+    - data
+    - study
+    - poem
+    - play
+    - novel
+    - essay
+    - line
+    - stanza
+    - sentence
+    - paragraph
+    - image
+    - metaphor
+    - ending
+    - opening
+    - argument
+    - prose
+    - language
+    - syntax
+    - grammar
+    - structure
+    - form
+  abstract_nouns:
+    - absence
+    - appetite
+    - arithmetic
+    - balance
+    - beauty
+    - beginning
+    - burden
+    - calculus
+    - claim
+    - clarity
+    - cost
+    - courage
+    - danger
+    - death
+    - desire
+    - doubt
+    - economy
+    - end
+    - faith
+    - fear
+    - force
+    - form
+    - freedom
+    - geometry
+    - gift
+    - grammar
+    - grief
+    - history
+    - hope
+    - idea
+    - innocence
+    - justice
+    - knowledge
+    - language
+    - life
+    - limit
+    - logic
+    - loss
+    - love
+    - meaning
+    - measure
+    - memory
+    - mercy
+    - music
+    - nature
+    - order
+    - pattern
+    - power
+    - presence
+    - price
+    - promise
+    - question
+    - reason
+    - risk
+    - sense
+    - shape
+    - silence
+    - space
+    - strength
+    - surface
+    - syntax
+    - tension
+    - texture
+    - time
+    - truth
+    - violence
+    - weight
+    - wisdom
+    - world
+  abstract_suffixes:
+    - ness
+    - ity
+    - tion
+    - sion
+    - ment
+    - ance
+    - ence
+    - ism
+    - ship
+    - hood
+    - dom
+  hedges:
+    - perhaps
+    - in some sense
+    - in a sense
+    - arguably
+    - a kind of
+    - a sort of
+    - in a way
+    - to some extent
+    - to a degree
+    - something like
+    - in part
+    - partly
+    - possibly
+    - seems to
+    - seem to
+    - may well
+    - almost
+    - nearly
+    - somewhat
+    - it could be
+    - one might say
+  role_nouns:
+    - prince
+    - king
+    - queen
+    - poet
+    - author
+    - philosopher
+    - patriarch
+    - hero
+    - heroine
+    - villain
+    - playwright
+    - dramatist
+    - critic
+    - general
+    - emperor
+    - thane
+    - moor
+    - dane
+    - scientist
+    - novelist
+    - bard
+    - physicist
+    - statesman
+    - soldier
+    - lover
+    - father
+    - mother
+    - brother
+    - sister
+    - daughter
+    - son
+    - usurper
+    - tyrant
+    - lawgiver
+    - prophet
+    - apostle
+    - evangelist
+    - theologian
+    - reformer
+    - essayist
+    - lexicographer
+    - sage
+
+patterns:
+  - id: T1
+    name: text_as_agent
+    description: A text noun is the subject of an intentional verb (the chapter asks, the passage insists).
+    detector: dep-pattern
+    function: text_as_agent
+    params:
+      verbs:
+        - ask
+        - invite
+        - hold
+        - hinge
+        - turn
+        - spend
+        - soften
+        - name
+        - offer
+        - insist
+        - refuse
+        - suggest
+        - remind
+        - reward
+        - answer
+        - raise
+        - press
+        - announce
+        - arrange
+        - reveal
+        - tell
+        - want
+        - know
+        - understand
+        - resist
+        - earn
+        - withhold
+        - linger
+        - stage
+        - frame
+  - id: T2
+    name: negative_parallelism
+    description: Contrastive framing by negation (not X; Y / not X but Y / X, not Y / rather than / less X than Y / without Ving).
+    detector: regex
+    params:
+      patterns:
+        - "\\bnot\\s+(?!only\\b)\\w[^;.?!]{1,60};\\s*\\w"
+        - "\\bnot\\s+(?!only\\b)\\w[^,;.?!]{1,60},?\\s+but\\s+(?!also\\b)"
+        - ",\\s*not\\s+\\w[^,;.?!]{0,40}[.;:]"
+        - "\\brather\\s+than\\b"
+        - "\\bless\\s+\\w[^,;.?!]{0,40}\\s+than\\b"
+        - "\\bwithout\\s+(?:ever\\s+|once\\s+|quite\\s+)?\\w+ing\\b"
+  - id: T3
+    name: balance_markers
+    description: Words that assert a poised both-ness instead of taking a side.
+    detector: regex
+    params:
+      patterns:
+        - "\\bat once\\b"
+        - "\\bboth\\s+\\w[^,;.?!]{0,40}\\s+and\\b"
+        - "\\btensions?\\b"
+        - "\\bhinges?\\b"
+        - "\\bat the same time\\b"
+        - "\\bcomplicates?\\b"
+        - "\\bnarrows?\\b"
+        - "\\bholds? together\\b"
+  - id: T4
+    name: triad
+    description: Three parallel conjuncts in one sentence.
+    detector: dep-pattern
+    function: triad
+    params:
+      min_conjuncts: 3
+  - id: T5
+    name: aphoristic_close
+    description: Paragraph-final sentence with no anchor and an antithetical shape or high abstract-noun density.
+    detector: dep-pattern
+    function: aphoristic_close
+    params:
+      max_words: 30
+      abstract_density: 0.3
+      min_abstract: 2
+  - id: T6
+    name: invented_label
+    description: Possessive abstract noun modifying another abstract noun (appetite's arithmetic).
+    detector: dep-pattern
+    function: invented_label
+  - id: T7
+    name: meta_commentary
+    description: The predicate describes what the text or author is doing rather than asserting content.
+    detector: dep-pattern
+    function: meta_commentary
+    params:
+      subjects:
+        - this
+        - what follows
+        - we
+      verbs:
+        - argue
+        - show
+        - explore
+        - examine
+        - consider
+        - trace
+        - note
+        - observe
+        - describe
+        - discuss
+        - address
+        - focus
+        - highlight
+        - outline
+        - illustrate
+        - demonstrate
+        - see
+        - notice
+        - return
+        - begin
+        - move
+        - turn
+        - arrive
+        - dwell
+        - attend
+  - id: T8
+    name: epithet_substitution
+    description: A definite descriptive phrase stands in for an already-introduced proper name (the Danish prince).
+    detector: dep-pattern
+    function: epithet_substitution
+  - id: T9
+    name: unanswered_question
+    description: A question the next two sentences do not answer.
+    detector: dep-pattern
+    function: unanswered_question
+    params:
+      answer_openers:
+        - "yes"
+        - "no"
+        - because
+        - perhaps
+        - the answer
+        - it is
+        - it does
+        - it depends
+        - not quite
+        - partly
+        - in part
+  - id: T10
+    name: formula_openers
+    description: Stock sentence openers (So, Then, Against that, Set X beside Y, It is worth noting, Importantly).
+    detector: regex
+    params:
+      patterns:
+        - "^(?:So|Then),?\\s"
+        - "^Against (?:that|this)\\b"
+        - "^Set\\s+[^,;.]{1,40}\\s+beside\\b"
+        - "^It is worth (?:noting|remembering|pausing|asking)\\b"
+        - "^(?:Importantly|Crucially|Notably|Ultimately|Tellingly|Significantly)\\b"
+        - "^(?:Put|Stated)\\s+(?:simply|differently|another way)\\b"
+  - id: T11
+    name: hedge_stack
+    description: Two or more hedges in one sentence.
+    detector: dep-pattern
+    function: hedge_stack
+    params:
+      min_hedges: 2
+  - id: T12
+    name: intensifier_cluster
+    description: Sincerity intensifiers (deeply, truly, fundamentally, inherently, genuinely).
+    detector: regex
+    params:
+      patterns:
+        - "\\b(?:deeply|truly|fundamentally|inherently|genuinely|profoundly|remarkably|strikingly)\\b"
+  - id: T13
+    name: colon_reveal
+    description: A colon followed by a single abstract noun phrase as the reveal.
+    detector: dep-pattern
+    function: colon_reveal
+    params:
+      max_words: 7
+  - id: T14
+    name: tidy_summary_close
+    description: Final paragraph restates earlier paragraphs with no new anchors.
+    detector: metric
+    function: tidy_summary_close
+    params:
+      min_paragraphs: 3
+      min_overlap: 0.75
