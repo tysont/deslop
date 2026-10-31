@@ -164,17 +164,37 @@ def triad(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
             hits.append(_token_hit(pattern, sent, tok, chain[-1], note=f"{len(chain)}"))
     if hits:
         return hits
-    m = SURFACE_TRIAD_RE.search(sent.text)
-    if m:
-        hits.append(
-            _hit(pattern, sent, sent.start + m.start(), sent.start + m.end(), m.group(0), "surface")
-        )
+    for m in SURFACE_TRIAD_RE.finditer(sent.text):
+        if _parallel_items(sent, m):
+            hits.append(
+                _hit(
+                    pattern,
+                    sent,
+                    sent.start + m.start(),
+                    sent.start + m.end(),
+                    m.group(0),
+                    "surface",
+                )
+            )
     return hits
+
+
+def _parallel_items(sent: Sentence, m: re.Match[str]) -> bool:
+    """Surface triads count only when the three items end in the same part of speech."""
+    ends = [m.end(1), m.end(2), m.end(3)]
+    pos = []
+    for end in ends:
+        char = sent.span.start_char + end - 1
+        tok = next((t for t in sent.span if t.idx <= char < t.idx + len(t.text)), None)
+        if tok is None:
+            return False
+        pos.append(tok.pos_)
+    return len(set(pos)) == 1
 
 
 CHAIN_DEPS = ("conj", "parataxis")
 SURFACE_TRIAD_RE = re.compile(
-    r"(?<![,;])\b[^,;:.?!]{2,40},\s[^,;:.?!]{2,40},\s(?:and|or)\s[^,;:.?!]{2,40}"
+    r"(?<![,;])\b([^,;:.?!]{2,40}),\s([^,;:.?!]{2,40}),\s(?:and|or)\s([^,;:.?!]{2,40})"
 )
 
 

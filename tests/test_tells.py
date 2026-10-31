@@ -43,6 +43,10 @@ def test_T4_triad():
     assert ids("He hesitates, he broods, and he stalls.", "T4")
     assert ids("Johnson wrote prefaces, dictionaries, and lives.", "T4")
     assert not ids("Johnson wrote prefaces and lives.", "T4")
+    clauses = (
+        "Abraham is told to take his son, whom he loves, and the text withholds any account of it."
+    )
+    assert not ids(clauses, "T4")
 
 
 def test_T5_aphoristic_close():

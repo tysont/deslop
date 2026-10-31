@@ -1,1 +1,74 @@
 # deslop
+
+Voice calibration, scoring, and conversion for prose. deslop compiles a corpus
+of human writing into a reusable **voice**, scores any text against that voice
+(how far it deviates and exactly where), and in later phases rewrites only the
+deviating spans while locking content.
+
+The primary use is removing the structural and lexical tells of LLM-generated
+prose, but a voice is any measured writer or register.
+
+## Install
+
+```sh
+make install          # uv sync; installs the spaCy en_core_web_sm model too
+```
+
+pandoc is required to ingest epub/docx; pypdf handles PDF.
+
+## Quick start
+
+```sh
+deslop corpus init my.corpus
+deslop corpus add my.corpus essays.txt --author "A. Writer" --title "Essays" --year 1911
+deslop corpus stats my.corpus
+deslop calibrate my.corpus --out writer.voice --no-llm
+deslop score draft.md --voice writer.voice            # exit 0 PASS, 2 FAIL
+deslop score draft.md --voice writer.voice --json
+deslop score draft.md --voice writer.voice --annotate draft.annotated.md
+deslop voice show writer.voice
+```
+
+`calibrate` without `--no-llm` asks a configured provider (ANTHROPIC_API_KEY,
+OPENAI_API_KEY, or DESLOP_COMPATIBLE_BASE_URL in the environment or `.env`) to
+write `profile.md`; everything else is deterministic.
+
+## What a voice is
+
+`name.voice/` holds six hand-editable files:
+
+| file | contents |
+| --- | --- |
+| `voice.yaml` | name, version, corpus hash, author shares |
+| `metrics.json` | mean/std/p10/p50/p90 for every metric over 500-word chunks, tell rates, per-author samples |
+| `lexicon.json` | words and bigrams over-represented vs generic English; per-pattern rates vs the LLM reference; banned patterns |
+| `rules.md` | default rules plus rules justified by the numbers |
+| `profile.md` | positive description of the voice |
+| `exemplars.md` | 1,500-3,000 words of verbatim excerpts |
+
+## Python API
+
+```python
+from deslop import Corpus, Voice, score
+
+corpus = Corpus.load("my.corpus")
+voice = Voice.calibrate(corpus, use_llm=False)
+voice.save("writer.voice")
+report = score(open("draft.md").read(), Voice.load("writer.voice"))
+print(report.verdict, report.fixes)
+print(report.to_json())
+```
+
+## Development
+
+```sh
+make test             # pytest
+make cov              # coverage report
+make lint             # ruff
+make english-generic  # rebuild baselines/english_generic.json from Gutenberg
+make llm-reference    # rebuild baselines/llm_reference.json (needs API keys)
+uv run python scripts/build_fixtures.py .cache/gutenberg   # rebuild test corpus
+```
+
+The pattern catalog lives in `src/deslop/baselines/slop_patterns.yaml`; regex
+patterns can be added there or via `--patterns extra.yaml` with no code change.
