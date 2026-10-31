@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from deslop.corpus.dedupe import fingerprint, is_duplicate
-from deslop.corpus.ingest import ingest
+from deslop.corpus.ingest import IngestError, ingest
 from deslop.nlp import count_words
 
 MANIFEST = "corpus.yaml"
@@ -47,6 +48,15 @@ class AuthorShare(BaseModel):
     words: int
     share: float
     documents: int
+
+
+class AddReport(BaseModel):
+    """Outcome of a bulk add: entries added, titles skipped as near-duplicates, and
+    (title, reason) pairs for sources that could not be ingested."""
+
+    added: list[DocumentEntry] = Field(default_factory=list)
+    duplicates: list[str] = Field(default_factory=list)
+    failed: list[tuple[str, str]] = Field(default_factory=list)
 
 
 class CorpusStats(BaseModel):
@@ -159,6 +169,36 @@ class Corpus:
         self.save()
         return entry
 
+    def add_manifest(self, directory: Path) -> AddReport:
+        """Add every row of `directory/manifest.jsonl`. Each row names a `file` relative to
+        the directory plus `author` and `title`; `year` (or the year of a `date` string),
+        `weight` and `license` are optional. Near-duplicates are skipped, not fatal."""
+        manifest = directory / "manifest.jsonl"
+        if not manifest.is_file():
+            raise IngestError(f"no manifest.jsonl in {directory}")
+        report = AddReport()
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            title = str(row.get("title") or row.get("file"))
+            try:
+                entry = self.add(
+                    str(directory / row["file"]),
+                    author=row["author"],
+                    title=title,
+                    year=row.get("year") or year_of(row.get("date")),
+                    weight=float(row.get("weight", 1.0)),
+                    license=str(row.get("license") or ""),
+                )
+            except DuplicateError:
+                report.duplicates.append(title)
+            except (IngestError, KeyError) as exc:
+                report.failed.append((title, str(exc)))
+            else:
+                report.added.append(entry)
+        return report
+
     def content_hash(self) -> str:
         h = hashlib.sha256()
         for entry in sorted(self.manifest.documents, key=lambda d: d.path):
@@ -184,3 +224,11 @@ class Corpus:
         ]
         over = [a.author for a in authors if a.share > max_share]
         return CorpusStats(total_words=total, authors=authors, over_cap=over, max_share=max_share)
+
+
+def year_of(date: str | None) -> int | None:
+    """The four-digit year that starts a date string such as 2001-05-04, else None."""
+    if not date:
+        return None
+    m = re.match(r"\s*(\d{4})", str(date))
+    return int(m.group(1)) if m else None

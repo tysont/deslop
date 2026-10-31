@@ -124,13 +124,37 @@ def corpus_add(
     year: int | None = typer.Option(None, "--year"),
     weight: float | None = typer.Option(None, "--weight", help="Default 1.0"),
     license: str | None = typer.Option(None, "--license"),
+    from_manifest: bool = typer.Option(
+        False, "--from-manifest", help="SOURCE is a directory with a manifest.jsonl"
+    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     s = Settings(ctx, "corpus_add")
+    corpus = Corpus.load(directory)
+    if from_manifest:
+        if len(sources) != 1:
+            fail("--from-manifest takes exactly one directory")
+        try:
+            report = corpus.add_manifest(Path(sources[0]))
+        except IngestError as exc:
+            fail(str(exc))
+        if json_out:
+            print_json(report.model_dump_json())
+        else:
+            for entry in report.added:
+                console.print(
+                    f"added [bold]{entry.title}[/] by {entry.author}: {entry.words} words"
+                )
+            for title, reason in report.failed:
+                console.print(f"[red]failed[/] {title}: {reason}")
+            console.print(
+                f"added {len(report.added)}, {len(report.duplicates)} duplicate(s) skipped, "
+                f"{len(report.failed)} failed"
+            )
+        return
     author = s.get("author", author)
     if not author:
         fail("--author is required")
-    corpus = Corpus.load(directory)
     added = []
     for source in sources:
         try:

@@ -2,6 +2,12 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## Unreleased
+
+- `corpus add DIR SOURCE --from-manifest` bulk-adds every row of `SOURCE/manifest.jsonl`
+  (`file`, `author`, `title`, optional `date`/`year`, `weight`, `license`); near duplicates are
+  skipped and counted instead of aborting.
+
 ## v1.0.1 - 2026-10-31
 
 - `blind --min-overlap` defaults to 0.03 instead of 0.15. Content-word Jaccard between a

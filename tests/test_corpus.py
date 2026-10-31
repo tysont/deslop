@@ -1,5 +1,7 @@
 # ABOUTME: Tests for corpus init/add/stats and simhash dedupe.
 # ABOUTME: Uses temporary directories; never touches the shipped fixture corpus.
+import json
+
 import pytest
 import yaml
 
@@ -70,3 +72,34 @@ def test_unsupported_type(tmp_path):
     bad.write_text("x")
     with pytest.raises(IngestError):
         ingest(str(bad))
+
+
+def test_add_manifest_adds_skips_duplicates_and_reports_failures(tmp_path, heldout_texts):
+    src = tmp_path / "crawl"
+    src.mkdir()
+    (src / "a.txt").write_text(heldout_texts[0], encoding="utf-8")
+    (src / "b.txt").write_text(heldout_texts[0].replace("poetry", "verse", 3), encoding="utf-8")
+    (src / "c.txt").write_text(PROSE, encoding="utf-8")
+    rows = [
+        {
+            "file": "a.txt",
+            "author": "Ann Author",
+            "title": "First",
+            "date": "2001-05-04",
+            "license": "CC BY 4.0",
+            "url": "https://example.org/a",
+        },
+        {"file": "b.txt", "author": "Bob Byline", "title": "Near duplicate", "year": 2002},
+        {"file": "c.txt", "author": "Cy Writer", "title": "Foxes"},
+        {"file": "missing.txt", "author": "Dee", "title": "Gone"},
+    ]
+    (src / "manifest.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+    corpus = Corpus.init(tmp_path / "c")
+    report = corpus.add_manifest(src)
+    assert [e.title for e in report.added] == ["First", "Foxes"]
+    assert report.added[0].year == 2001 and report.added[0].license == "CC BY 4.0"
+    assert report.duplicates == ["Near duplicate"]
+    assert [title for title, _reason in report.failed] == ["Gone"]
+    assert len(Corpus.load(tmp_path / "c").manifest.documents) == 2

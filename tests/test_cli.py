@@ -2,6 +2,7 @@
 # ABOUTME: Checks exit codes and --json output shapes.
 import json
 
+import yaml
 from typer.testing import CliRunner
 
 from deslop.cli.app import app
@@ -309,3 +310,23 @@ def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path)
     fixture_voice.save(voice_dir)
     r = runner.invoke(app, ["score", str(tmp_path / "missing.md"), "--voice", str(voice_dir)])
     assert r.exit_code == 1 and "missing.md" in r.output and "Traceback" not in r.output
+
+
+def test_corpus_add_from_manifest(tmp_path):
+    src = tmp_path / "crawl"
+    src.mkdir()
+    (src / "a.txt").write_text(("Plain prose about foxes and dogs by the river. " * 40).strip())
+    (src / "manifest.jsonl").write_text(
+        json.dumps({"file": "a.txt", "author": "Ann Author", "title": "Foxes", "date": "2003"})
+        + "\n"
+        + json.dumps({"file": "a.txt", "author": "Ann Author", "title": "Foxes again"})
+        + "\n"
+    )
+    c = tmp_path / "c"
+    assert runner.invoke(app, ["corpus", "init", str(c)]).exit_code == 0
+    r = runner.invoke(app, ["corpus", "add", str(c), str(src), "--from-manifest"])
+    assert r.exit_code == 0, r.output
+    assert "added 1" in r.stdout and "1 duplicate" in r.stdout
+    assert yaml.safe_load((c / "corpus.yaml").read_text())["documents"][0]["year"] == 2003
+    r = runner.invoke(app, ["corpus", "add", str(c), str(tmp_path / "nope"), "--from-manifest"])
+    assert r.exit_code == 1

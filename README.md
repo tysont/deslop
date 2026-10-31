@@ -102,6 +102,12 @@ Ingest one or more files or URLs (text, markdown, HTML, epub, PDF) into the corp
 
 A near-duplicate of an existing document is refused with exit 1.
 
+With `--from-manifest`, the single SOURCE is a directory holding a `manifest.jsonl` whose rows
+name a `file` (relative to the directory), `author` and `title`, plus optional `year` (or a
+`date` string starting with the year), `weight` and `license`. Every row is added; near
+duplicates are skipped and counted, rows that cannot be read are reported, and the command
+prints `added N, M duplicate(s) skipped, K failed`.
+
 ### `deslop corpus stats DIR [--max-share 0.25]`
 
 Word counts and shares per author, and which authors exceed `--max-share` and will be
