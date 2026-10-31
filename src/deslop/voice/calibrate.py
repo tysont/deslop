@@ -2,12 +2,14 @@
 # ABOUTME: Deterministic except for the optional LLM-written profile.md.
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from deslop import __version__
 from deslop.baselines import english_generic, has_baseline, llm_reference
 from deslop.corpus import Corpus
 from deslop.patterns import load_catalog
+from deslop.providers.base import CachingProvider
 from deslop.stats import (
     DEFAULT_CHUNK_WORDS,
     AuthorSamples,
@@ -31,11 +33,11 @@ def calibrate(
     exemplar_words: int = 2000,
     use_llm: bool = True,
     llm_model: str | None = None,
-    provider=None,
+    provider: CachingProvider | None = None,
     patterns: tuple[str, ...] = (),
     ban_ratio: float = 10.0,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
-    progress=None,
+    progress: Callable[[str], None] | None = None,
 ) -> Voice:
     catalog = load_catalog(patterns)
     generic = english_generic()

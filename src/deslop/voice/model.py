@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from pydantic import BaseModel, Field
 
 from deslop.stats import MetricsProfile
+
+if TYPE_CHECKING:
+    from deslop.corpus import Corpus
 
 SCHEMA_VERSION = 1
 
@@ -107,7 +111,7 @@ class Voice(BaseModel):
         )
 
     @classmethod
-    def calibrate(cls, corpus, **opts) -> Voice:
+    def calibrate(cls, corpus: Corpus, **opts: Any) -> Voice:
         from deslop.voice.calibrate import calibrate
 
         return calibrate(corpus, **opts)

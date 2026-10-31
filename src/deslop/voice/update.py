@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from deslop.corpus import Corpus, DuplicateError
+from deslop.providers.base import CachingProvider
 from deslop.voice.calibrate import calibrate
 from deslop.voice.model import Voice
 
@@ -87,7 +88,7 @@ def update(
     weight: float = 0.5,
     regenerate: bool = False,
     use_llm: bool = True,
-    provider=None,
+    provider: CachingProvider | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> UpdateResult:
     """Add accepted texts to the voice's corpus at `weight`, snapshot the voice, and rewrite

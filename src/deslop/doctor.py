@@ -25,7 +25,7 @@ def check_spacy() -> Check:
     try:
         nlp = load_nlp()
     except OSError as exc:
-        return Check(name="spacy", status="fail", detail=str(exc).splitlines()[0][:200])
+        return Check(name="spacy", status="fail", detail=" ".join(str(exc).split()))
     return Check(name="spacy", status="ok", detail=f"{SPACY_MODEL} {nlp.meta.get('version', '')}")
 
 

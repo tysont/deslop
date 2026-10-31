@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from dotenv import load_dotenv
 
@@ -162,7 +162,7 @@ def list_providers() -> dict[str, bool]:
     }
 
 
-def get_provider(name: str, **kwargs) -> CachingProvider:
+def get_provider(name: str, **kwargs: Any) -> CachingProvider:
     from deslop.providers.anthropic import AnthropicProvider
     from deslop.providers.openai import CompatibleProvider, OpenAIProvider
 

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from deslop.lock import LOCK_CLASSES, check, inventory
 from deslop.metrics import compute_all, detect_tells
 from deslop.nlp import Analysis, Sentence, analyze
-from deslop.patterns import load_catalog
+from deslop.patterns import Catalog, load_catalog
 from deslop.providers.base import CachingProvider, ProviderError, Usage, get_provider
 from deslop.report import Report, TellHitResult
 from deslop.score import score
@@ -79,7 +79,7 @@ class ConvertResult(BaseModel):
 
     @property
     def changed(self) -> bool:
-        return self.text != self.report_before and any(u.accepted for u in self.units)
+        return any(u.accepted for u in self.units)
 
 
 # ---------------------------------------------------------------- units
@@ -290,7 +290,7 @@ FIX_HINTS = {
 }
 
 
-def _problems(unit: Unit, catalog) -> str:
+def _problems(unit: Unit, catalog: Catalog) -> str:
     lines = []
     for pid in unit.tell_ids:
         p = catalog.by_id(pid)
@@ -342,7 +342,7 @@ def build_prompt(
     exemplars: ExemplarIndex,
     lock_classes: tuple[str, ...],
     preserve_length: float,
-    catalog,
+    catalog: Catalog,
     rejected: list[tuple[str, str]] | None = None,
 ) -> tuple[str, str]:
     """Build (system, user) prompts. `rejected` lists (candidate, reason) pairs from earlier
@@ -384,7 +384,7 @@ def build_prompt(
     return system, user
 
 
-def _rejected_section(rejected: list[tuple[str, str]], catalog) -> str:
+def _rejected_section(rejected: list[tuple[str, str]], catalog: Catalog) -> str:
     if not rejected:
         return ""
     lines = []
@@ -421,7 +421,7 @@ def validate(
     context_after: str,
     lock_classes: tuple[str, ...],
     preserve_length: float,
-    catalog,
+    catalog: Catalog,
     allowed_names: set[str] | None = None,
 ) -> str | None:
     """Return a rejection reason, or None when the candidate is acceptable."""
@@ -452,7 +452,7 @@ def validate(
     return None
 
 
-def _tell_counts(text: str, catalog) -> dict[str, int]:
+def _tell_counts(text: str, catalog: Catalog) -> dict[str, int]:
     counts: dict[str, int] = {}
     for h in detect_tells(analyze(text), catalog):
         counts[h.pattern_id] = counts.get(h.pattern_id, 0) + 1
@@ -555,8 +555,9 @@ def convert(
     progress: Callable[[str], None] | None = None,
 ) -> ConvertResult:
     catalog = load_catalog(patterns)
-    score_opts = dict(sigma=sigma, tell_mult=tell_mult, tell_floor=tell_floor, patterns=patterns)
-    report_before = score(text, voice, **score_opts)
+    report_before = score(
+        text, voice, sigma=sigma, tell_mult=tell_mult, tell_floor=tell_floor, patterns=patterns
+    )
     pool = ProviderPool(models, provider_factory)
     exemplars = ExemplarIndex(voice)
     iterations: list[IterationLog] = []
@@ -659,7 +660,14 @@ def convert(
         if stopped == "budget":
             break
         current = _splice(current, units, replacements)
-        report = score(current, voice, **score_opts)
+        report = score(
+            current,
+            voice,
+            sigma=sigma,
+            tell_mult=tell_mult,
+            tell_floor=tell_floor,
+            patterns=patterns,
+        )
         iterations.append(
             IterationLog(
                 index=i + 1,

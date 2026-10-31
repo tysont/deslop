@@ -6,6 +6,7 @@ import json
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -54,5 +55,5 @@ def has_baseline(name: str) -> bool:
     return baseline_path(name).exists()
 
 
-def dump_json(data: dict, path: Path) -> None:
+def dump_json(data: dict[str, Any], path: Path) -> None:
     path.write_text(json.dumps(data, indent=1), encoding="utf-8")

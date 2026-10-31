@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from collections import Counter
 
+from spacy.tokens import Span
+
 from deslop.metrics.base import mean, metric, pct, stdev
 from deslop.nlp import Analysis
 
@@ -69,7 +71,7 @@ def max_run_similar_len(a: Analysis) -> float:
     return float(best)
 
 
-def coordinating_joins(sent) -> int:
+def coordinating_joins(sent: Span) -> int:
     return sum(1 for t in sent if t.dep_ == "cc" and t.lower_ in COORDINATORS)
 
 

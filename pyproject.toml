@@ -1,10 +1,26 @@
 [project]
 name = "deslop"
-version = "0.3.0"
-description = "Voice calibration, scoring, and conversion for prose"
+version = "1.0.0"
+description = "Voice calibration, scoring, conversion, and drafting for prose: remove the tells of machine-written text"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Tyson Trautmann" }]
+keywords = ["writing", "style", "voice", "llm", "prose", "editing", "nlp"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
 dependencies = [
     "typer>=0.12",
     "pydantic>=2.7",
@@ -17,18 +33,33 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.50",
     "python-dotenv>=1.0",
-    "en-core-web-sm",
     "pypdf>=6.21.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/tysont/deslop"
+Documentation = "https://github.com/tysont/deslop#readme"
+Repository = "https://github.com/tysont/deslop"
+Issues = "https://github.com/tysont/deslop/issues"
+Changelog = "https://github.com/tysont/deslop/blob/main/CHANGELOG.md"
 
 [project.scripts]
 deslop = "deslop.cli.app:app"
 
+# The spaCy model is a GitHub release wheel, which PyPI metadata cannot reference, so it is a
+# dev-group dependency here and a documented post-install step for pip/pipx users.
 [dependency-groups]
 dev = [
+    "en-core-web-sm",
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.6",
+    "mypy>=1.13",
+    "types-pyyaml",
+]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
 ]
 
 [tool.uv.sources]
@@ -44,6 +75,21 @@ packages = ["src/deslop"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.coverage.run]
+source = ["deslop"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src"]
+[[tool.mypy.overrides]]
+module = ["spacy.*", "thinc.*", "simhash", "trafilatura", "pypdf", "typer.*", "rich.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

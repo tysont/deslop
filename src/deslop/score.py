@@ -2,6 +2,8 @@
 # ABOUTME: Produces a Report with z-scores, tell rates, paragraph deviations, and a verdict.
 from __future__ import annotations
 
+from typing import Literal
+
 from deslop.baselines import has_baseline, llm_reference
 from deslop.metrics import METRICS, compute_all, detect_tells
 from deslop.nlp import Analysis, analyze
@@ -139,7 +141,9 @@ def score(
     # ---- verdict, fixes, distance
     flagged_metrics = [m for m in metric_results if m.flagged]
     flagged_tells = [t for t in tell_results if t.flagged]
-    verdict = "PASS" if not flagged_metrics and not flagged_tells else "FAIL"
+    verdict: Literal["PASS", "FAIL"] = (
+        "PASS" if not flagged_metrics and not flagged_tells else "FAIL"
+    )
     fixes: list[str] = []
     for t in sorted(flagged_tells, key=lambda t: -(t.rate_per_1k / max(t.threshold, 1e-9))):
         fixes.append(

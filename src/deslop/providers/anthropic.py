@@ -33,15 +33,17 @@ class AnthropicProvider(CachingProvider):
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
         # Current Claude models take no sampling temperature; depth is set by effort.
         import anthropic
+        from anthropic.types import MessageParam, OutputConfigParam
 
-        effort = "low" if temperature < 0.5 else "medium"
+        output_config: OutputConfigParam = {"effort": "low" if temperature < 0.5 else "medium"}
+        messages: list[MessageParam] = [{"role": "user", "content": user}]
         try:
             resp = self.client.messages.create(
                 model=model,
                 max_tokens=8192,
                 system=system,
-                output_config={"effort": effort},
-                messages=[{"role": "user", "content": user}],
+                output_config=output_config,
+                messages=messages,
             )
         except (anthropic.AuthenticationError, anthropic.BadRequestError, TypeError) as exc:
             raise NonRetryableError(f"anthropic: {exc}") from exc

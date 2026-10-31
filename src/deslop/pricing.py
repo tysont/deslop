@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -22,14 +24,14 @@ class Pricing:
     sources: dict[str, str] = field(default_factory=dict)
     fetched: str = ""
 
-    def match(self, model: str, table: dict[str, object]) -> str | None:
+    def match(self, model: str, table: Mapping[str, object]) -> str | None:
         for prefix in sorted(table, key=len, reverse=True):
             if model.startswith(prefix):
                 return prefix
         return None
 
 
-def _read(path: Path) -> dict:
+def _read(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return data if isinstance(data, dict) else {}
 

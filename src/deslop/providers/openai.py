@@ -31,16 +31,18 @@ class OpenAIProvider(CachingProvider):
         self.client = OpenAI()
 
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
-        kwargs = {}
-        if not model.startswith(("gpt-5", "o1", "o3", "o4")):
-            kwargs["temperature"] = temperature
         import openai
+        from openai.types.chat import ChatCompletionMessageParam
 
+        # Reasoning models reject a sampling temperature.
+        sampling = openai.omit if model.startswith(("gpt-5", "o1", "o3", "o4")) else temperature
+        messages: list[ChatCompletionMessageParam] = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
         try:
             resp = self.client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                **kwargs,
+                model=model, messages=messages, temperature=sampling
             )
         except (openai.AuthenticationError, openai.BadRequestError) as exc:
             raise NonRetryableError(f"openai: {exc}") from exc

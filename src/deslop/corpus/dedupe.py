@@ -15,7 +15,7 @@ TOKEN_RE = re.compile(r"[a-z']+")
 def fingerprint(text: str) -> int:
     tokens = TOKEN_RE.findall(text.lower())
     shingles = [" ".join(tokens[i : i + 3]) for i in range(max(len(tokens) - 2, 1))]
-    return Simhash(shingles, f=64).value
+    return int(Simhash(shingles, f=64).value)
 
 
 def distance(a: int, b: int) -> int:

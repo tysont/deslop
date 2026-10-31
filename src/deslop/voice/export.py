@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -97,6 +98,7 @@ def chunk_text(text: str, lo: int = CHUNK_MIN, hi: int = CHUNK_MAX) -> list[str]
 
 
 def to_line(record: ExportRecord, fmt: str, system: str) -> str:
+    payload: dict[str, Any]
     if fmt == "openai-ft":
         payload = {
             "messages": [

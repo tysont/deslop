@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
-from spacy.tokens import Span, Token
+from spacy.tokens import Doc, Span, Token
 
 from deslop.metrics.anchors import CITATION_PATTERNS, NUMBER_RE, QUOTE_RE
 from deslop.nlp import WORD_RE, Analysis, Sentence
@@ -32,7 +32,7 @@ SENTENCE_DETECTORS: dict[str, SentenceDetector] = {}
 DOCUMENT_DETECTORS: dict[str, DocumentDetector] = {}
 
 
-def sentence_detector(name: str):
+def sentence_detector(name: str) -> Callable[[SentenceDetector], SentenceDetector]:
     def register(fn: SentenceDetector) -> SentenceDetector:
         SENTENCE_DETECTORS[name] = fn
         return fn
@@ -40,7 +40,7 @@ def sentence_detector(name: str):
     return register
 
 
-def document_detector(name: str):
+def document_detector(name: str) -> Callable[[DocumentDetector], DocumentDetector]:
     def register(fn: DocumentDetector) -> DocumentDetector:
         DOCUMENT_DETECTORS[name] = fn
         return fn
@@ -51,18 +51,22 @@ def document_detector(name: str):
 # ---------------------------------------------------------------- helpers
 
 
-def _hit(pattern: Pattern, sent: Sentence, start: int, end: int, text: str, note: str = ""):
+def _hit(
+    pattern: Pattern, sent: Sentence, start: int, end: int, text: str, note: str = ""
+) -> TellHit:
     return TellHit(pattern.id, sent.index, sent.para_index, start, end, text, note)
 
 
-def _token_hit(pattern: Pattern, sent: Sentence, first: Token, last: Token, note: str = ""):
+def _token_hit(
+    pattern: Pattern, sent: Sentence, first: Token, last: Token, note: str = ""
+) -> TellHit:
     start = sent.start - sent.span.start_char + first.idx
     end = sent.start - sent.span.start_char + last.idx + len(last.text)
     text = sent.span.doc.text[first.idx : last.idx + len(last.text)]
     return _hit(pattern, sent, start, end, text, note)
 
 
-def _span_hit(pattern: Pattern, sent: Sentence, span: Span, note: str = ""):
+def _span_hit(pattern: Pattern, sent: Sentence, span: Span, note: str = "") -> TellHit:
     return _token_hit(pattern, sent, span[0], span[-1], note)
 
 
@@ -107,7 +111,7 @@ def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern, re.IGNORECASE | re.MULTILINE)
 
 
-def content_lemmas(span) -> set[str]:
+def content_lemmas(span: Span | Doc) -> set[str]:
     return {
         t.lemma_.lower()
         for t in span
@@ -118,7 +122,9 @@ def content_lemmas(span) -> set[str]:
 # ---------------------------------------------------------------- regex
 
 
-def regex_detector(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def regex_detector(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
     hits = []
     text = sent.text
     for raw in pattern.params.get("patterns", []):
@@ -133,7 +139,7 @@ def regex_detector(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catal
 
 
 @sentence_detector("text_as_agent")
-def text_as_agent(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def text_as_agent(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog) -> list[TellHit]:
     nouns = catalog.lexicon("text_nouns")
     verbs = set(pattern.params.get("verbs", []))
     hits = []
@@ -153,7 +159,7 @@ def text_as_agent(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalo
 
 
 @sentence_detector("triad")
-def triad(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def triad(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog) -> list[TellHit]:
     minimum = int(pattern.params.get("min_conjuncts", 3))
     hits = []
     for tok in sent.span:
@@ -234,7 +240,9 @@ def is_chiastic(sent: Sentence) -> bool:
 
 
 @sentence_detector("aphoristic_close")
-def aphoristic_close(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def aphoristic_close(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
     para = a.paragraphs[sent.para_index]
     if para.sentences[-1] is not sent or len(para.sentences) < 2:
         return []
@@ -256,7 +264,9 @@ def aphoristic_close(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Cat
 
 
 @sentence_detector("invented_label")
-def invented_label(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def invented_label(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
     hits = []
     for tok in sent.span:
         if tok.dep_ != "poss" or not is_abstract(tok, catalog):
@@ -272,7 +282,9 @@ def invented_label(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catal
 
 
 @sentence_detector("meta_commentary")
-def meta_commentary(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def meta_commentary(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
     verbs = set(pattern.params.get("verbs", []))
     we_verbs = set(pattern.params.get("we_verbs", []))
     subjects = set(pattern.params.get("subjects", []))
@@ -302,7 +314,9 @@ def meta_commentary(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Cata
 
 
 @sentence_detector("epithet_substitution")
-def epithet_substitution(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def epithet_substitution(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
     roles = catalog.lexicon("role_nouns")
     introduced = any(t.pos_ == "PROPN" for s in a.sentences[: sent.index] for t in s.span)
     if not introduced:
@@ -321,7 +335,9 @@ def epithet_substitution(a: Analysis, sent: Sentence, pattern: Pattern, catalog:
 
 
 @sentence_detector("unanswered_question")
-def unanswered_question(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def unanswered_question(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
     if not sent.text.rstrip().endswith("?") or QUOTE_RE.search(sent.text) or is_verse(sent):
         return []
     following = a.sentences[sent.index + 1 : sent.index + 3]
@@ -339,7 +355,7 @@ def unanswered_question(a: Analysis, sent: Sentence, pattern: Pattern, catalog: 
 
 
 @sentence_detector("hedge_stack")
-def hedge_stack(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def hedge_stack(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog) -> list[TellHit]:
     minimum = int(pattern.params.get("min_hedges", 2))
     found = []
     lowered = sent.text.lower()
@@ -352,7 +368,7 @@ def hedge_stack(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog)
 
 
 @sentence_detector("colon_reveal")
-def colon_reveal(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog):
+def colon_reveal(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog) -> list[TellHit]:
     max_words = int(pattern.params.get("max_words", 7))
     hits = []
     for tok in sent.span:
@@ -376,7 +392,7 @@ def colon_reveal(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
 
 
 @document_detector("tidy_summary_close")
-def tidy_summary_close(a: Analysis, pattern: Pattern, catalog: Catalog):
+def tidy_summary_close(a: Analysis, pattern: Pattern, catalog: Catalog) -> list[TellHit]:
     if len(a.paragraphs) < int(pattern.params.get("min_paragraphs", 3)):
         return []
     last = a.paragraphs[-1]
@@ -416,7 +432,7 @@ def tidy_summary_close(a: Analysis, pattern: Pattern, catalog: Catalog):
 
 
 @document_detector("monotone_run")
-def monotone_run(a: Analysis, pattern: Pattern, catalog: Catalog):
+def monotone_run(a: Analysis, pattern: Pattern, catalog: Catalog) -> list[TellHit]:
     """Runs of >= min_run consecutive prose sentences within one paragraph whose word
     counts all sit within `tolerance` of each other. The span is the whole run."""
     min_run = int(pattern.params.get("min_run", 3))

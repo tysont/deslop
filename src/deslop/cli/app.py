@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -13,6 +14,7 @@ from rich.table import Table
 
 from deslop import __version__
 from deslop.cli.config import Config, ConfigError, load_config, resolve_voice
+from deslop.converter import ConvertResult
 from deslop.corpus import Corpus, DuplicateError
 from deslop.corpus.ingest import IngestError
 
@@ -70,7 +72,7 @@ class Settings:
         except ConfigError as exc:
             fail(str(exc))
 
-    def progress(self, json_out: bool):
+    def progress(self, json_out: bool) -> Callable[[str], None] | None:
         return None if json_out else (lambda msg: err.print(f"[dim]{msg}[/]"))
 
 
@@ -241,7 +243,13 @@ def read_input(path: Path | None) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def score_options(s: Settings, sigma, tell_mult, tell_floor, patterns) -> dict[str, Any]:
+def score_options(
+    s: Settings,
+    sigma: float | None,
+    tell_mult: float | None,
+    tell_floor: float | None,
+    patterns: list[Path],
+) -> dict[str, Any]:
     return dict(
         sigma=float(s.get("sigma", sigma, 1.5)),
         tell_mult=float(s.get("tell_mult", tell_mult, 2.0)),
@@ -291,7 +299,13 @@ def score_cmd(
 
 
 def convert_options(
-    s: Settings, mode, max_iter, models, budget, lock, preserve_length
+    s: Settings,
+    mode: str | None,
+    max_iter: int | None,
+    models: str | None,
+    budget: float | None,
+    lock: str | None,
+    preserve_length: float | None,
 ) -> dict[str, Any]:
     from deslop.lock import LOCK_CLASSES
 
@@ -316,7 +330,7 @@ def convert_options(
     )
 
 
-def print_convert_summary(result, show_diff: bool, out: Path | None) -> None:
+def print_convert_summary(result: ConvertResult, show_diff: bool, out: Path | None) -> None:
     before, after = result.report_before, result.report_after
     color = "green" if after.verdict == "PASS" else "red"
     accepted = sum(1 for u in result.units if u.accepted)

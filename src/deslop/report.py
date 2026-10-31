@@ -6,7 +6,7 @@ from io import StringIO
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.table import Table
 
 Verdict = Literal["PASS", "FAIL"]
@@ -89,8 +89,8 @@ class Report(BaseModel):
     def all_hits(self) -> list[TellHitResult]:
         return sorted((h for t in self.tells for h in t.hits), key=lambda h: h.start)
 
-    def renderables(self, *, show_hits: bool = True, max_hits: int = 40) -> list:
-        items: list = []
+    def renderables(self, *, show_hits: bool = True, max_hits: int = 40) -> list[RenderableType]:
+        items: list[RenderableType] = []
         color = "green" if self.verdict == "PASS" else "red"
         items.append(
             f"[bold {color}]{self.verdict}[/] against voice [bold]{self.voice}[/]  "

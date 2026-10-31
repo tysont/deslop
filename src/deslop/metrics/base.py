@@ -26,7 +26,9 @@ class MetricSpec:
 METRICS: dict[str, MetricSpec] = {}
 
 
-def metric(name: str, *, group: str, slop_side: SlopSide, description: str):
+def metric(
+    name: str, *, group: str, slop_side: SlopSide, description: str
+) -> Callable[[MetricFn], MetricFn]:
     """Register a metric function under `name`."""
 
     def register(fn: MetricFn) -> MetricFn:

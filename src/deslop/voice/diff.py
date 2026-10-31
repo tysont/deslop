@@ -7,7 +7,7 @@ import difflib
 from pydantic import BaseModel, Field
 
 from deslop.metrics import METRICS
-from deslop.voice.model import Voice
+from deslop.voice.model import PatternRate, Voice
 
 
 class MetricDelta(BaseModel):
@@ -104,7 +104,7 @@ def diff_voices(a: Voice, b: Voice) -> VoiceDiff:
         d.tells.append(
             TellDelta(
                 id=pid,
-                name=(pb or pa).name,
+                name=(pb or pa or PatternRate(id=pid, name=pid, corpus_per_1k=0.0)).name,
                 before=pa.corpus_per_1k if pa else 0.0,
                 after=pb.corpus_per_1k if pb else 0.0,
                 banned_before=bool(pa and pa.banned),

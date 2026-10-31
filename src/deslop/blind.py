@@ -8,6 +8,7 @@ import os
 import random
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -172,8 +173,8 @@ def shown(pair: Pair) -> tuple[str, str]:
 
 def record(
     voice: str, pair: Pair, guess: str, reason: str, *, log_path: Path | None = None
-) -> dict:
-    entry = {
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
         "timestamp": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "voice": voice,
         "candidate_source": pair.candidate_source,
@@ -191,7 +192,9 @@ def record(
     return entry
 
 
-def summarize(voice: str, session: list[dict], *, log_path: Path | None = None) -> Summary:
+def summarize(
+    voice: str, session: list[dict[str, Any]], *, log_path: Path | None = None
+) -> Summary:
     target = log_path or (BLIND_DIR / f"{voice}.jsonl")
     history = []
     if target.exists():

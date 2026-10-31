@@ -21,7 +21,8 @@ class Inventory:
     proper_nouns: Counter[str] = field(default_factory=Counter)
 
     def by_class(self, name: str) -> Counter[str]:
-        return getattr(self, name)
+        counter: Counter[str] = getattr(self, name)
+        return counter
 
     def is_empty(self) -> bool:
         return not any(self.by_class(c) for c in LOCK_CLASSES)
