@@ -42,13 +42,14 @@ def test_build_lexicon_bans_patterns_and_discourages_words():
         }
     )
     llm_words = {"the": 5000, "tapestry": 400, "delve": 300, "poet": 50, "nature": 50}
-    llm = synthetic_llm({"T1": 5.0, "T2": 3.0, "T5": 2.0}, llm_words)
+    llm = synthetic_llm({"T1": 5.0, "T2": 3.0, "T5": 2.0, "T14": 0.01}, llm_words)
     lex = build_lexicon(counts, profile, english_generic(), llm, catalog, ban_ratio=10.0)
     by_id = {p.id: p for p in lex.patterns}
     assert by_id["T1"].banned and by_id["T1"].ratio == 50.0
     assert not by_id["T2"].banned and by_id["T2"].ratio == 1.5
     assert by_id["T5"].banned and by_id["T5"].ratio == 999.0  # absent from corpus
     assert by_id["T3"].llm_per_1k is None and not by_id["T3"].banned
+    assert not by_id["T14"].banned  # absent from corpus but too rare in LLM prose to mean anything
     assert lex.banned_ids() == ["T1", "T5"]
     discouraged = {e.term for e in lex.discouraged_words}
     assert {"tapestry", "delve"} <= discouraged

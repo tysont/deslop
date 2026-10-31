@@ -13,6 +13,9 @@ from deslop.voice.model import Lexicon, LexiconEntry, PatternRate
 TOP_TERMS = 500
 MIN_COUNT = 5
 STOPLIKE_MAX_LEN = 2
+MIN_LLM_RATE_TO_BAN = 0.1  # per 1k words; below this a ratio is noise
+DISCOURAGE_RATE_MULT = 5.0  # LLM rate must exceed corpus rate by this factor
+DISCOURAGE_MIN_Z = 3.0
 
 
 def log_odds_with_prior(
@@ -72,6 +75,40 @@ def _entries(
     return out
 
 
+def discouraged_words(
+    counts: WordCounts, generic: ReferenceProfile, llm: ReferenceProfile, top: int = 200
+) -> list[LexiconEntry]:
+    """Words LLM prose over-uses relative to generic English that this voice rarely uses."""
+    from spacy.lang.en.stop_words import STOP_WORDS
+
+    gen_words = Counter(generic.word_freq)
+    llm_words = Counter(llm.word_freq)
+    scores = log_odds_with_prior(
+        llm_words, llm.total_words, gen_words, generic.total_words, gen_words, generic.total_words
+    )
+    out = []
+    for term, z in sorted(scores.items(), key=lambda kv: -kv[1]):
+        if z < DISCOURAGE_MIN_Z:
+            break
+        if term in STOP_WORDS or len(term) <= 3:
+            continue
+        llm_pm = 1e6 * llm_words[term] / max(llm.total_words, 1)
+        corpus_pm = 1e6 * counts.unigrams.get(term, 0) / max(counts.total, 1)
+        if llm_pm < DISCOURAGE_RATE_MULT * corpus_pm:
+            continue
+        out.append(
+            LexiconEntry(
+                term=term,
+                log_odds=round(z, 3),
+                corpus_per_million=round(corpus_pm, 2),
+                baseline_per_million=round(llm_pm, 2),
+            )
+        )
+        if len(out) >= top:
+            break
+    return out
+
+
 def build_lexicon(
     counts: WordCounts,
     profile: MetricsProfile,
@@ -110,19 +147,7 @@ def build_lexicon(
         positive=True,
     )
     if llm is not None and llm.word_freq:
-        llm_words = Counter(llm.word_freq)
-        llm_scores = log_odds_with_prior(
-            llm_words, llm.total_words, counts.unigrams, counts.total, gen_words, gen_total
-        )
-        lexicon.discouraged_words = _entries(
-            llm_scores,
-            llm_words,
-            llm.total_words,
-            counts.unigrams,
-            counts.total,
-            top=200,
-            positive=True,
-        )
+        lexicon.discouraged_words = discouraged_words(counts, generic, llm)
     for pattern in catalog.patterns:
         corpus_rate = profile.tells.get(pattern.id)
         corpus_per_1k = corpus_rate.rate_per_1k if corpus_rate else 0.0
@@ -135,7 +160,7 @@ def build_lexicon(
                 if corpus_per_1k > 0
                 else (math.inf if llm_per_1k > 0 else 1.0)
             )
-            banned = ratio > ban_ratio
+            banned = ratio > ban_ratio and llm_per_1k >= MIN_LLM_RATE_TO_BAN
         lexicon.patterns.append(
             PatternRate(
                 id=pattern.id,
