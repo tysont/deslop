@@ -90,8 +90,10 @@ def test_within_author_std_ignores_between_author_spread():
         DocSamples(title="b2", author="b", metrics={"x": 102.0}),
     ]
     assert within_author_std(docs, "x") == pytest.approx(math.sqrt(2.0))
-    singles = [DocSamples(title="c", author="c", metrics={"x": 1.0}),
-               DocSamples(title="d", author="d", metrics={"x": 3.0})]
+    singles = [
+        DocSamples(title="c", author="c", metrics={"x": 1.0}),
+        DocSamples(title="d", author="d", metrics={"x": 3.0}),
+    ]
     assert within_author_std(singles, "x") == pytest.approx(math.sqrt(2.0))
 
 
@@ -99,8 +101,12 @@ def test_aggregate_with_documents_adds_within_std_and_ci():
     from deslop.stats import DocSamples
 
     per = {
-        "a": AuthorSamples(words=1000, chunks=2, metrics={"x": [1.0, 3.0]}, tells={"T1": [0.0, 2.0]}),
-        "b": AuthorSamples(words=1000, chunks=2, metrics={"x": [5.0, 7.0]}, tells={"T1": [4.0, 6.0]}),
+        "a": AuthorSamples(
+            words=1000, chunks=2, metrics={"x": [1.0, 3.0]}, tells={"T1": [0.0, 2.0]}
+        ),
+        "b": AuthorSamples(
+            words=1000, chunks=2, metrics={"x": [5.0, 7.0]}, tells={"T1": [4.0, 6.0]}
+        ),
     }
     docs = [
         DocSamples(title="a1", author="a", words=500, metrics={"x": 1.0}),

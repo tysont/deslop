@@ -21,6 +21,7 @@ from deslop.stats import (
     merge_samples,
     sample_text,
 )
+from deslop.thresholds import calibrate_thresholds
 from deslop.voice.clusters import DocumentVector, cluster_documents, with_voice_means
 from deslop.voice.exemplars import build_exemplars
 from deslop.voice.lexicon import build_lexicon
@@ -93,6 +94,11 @@ def calibrate(
     profile.clusters = with_voice_means(clusters, profile)
     registers = {title: clusters[i].label for title, i in assignment.items()}
     lexicon = build_lexicon(counts, profile, generic, llm, catalog, ban_ratio=ban_ratio)
+    if progress:
+        progress("calibrating thresholds against held-out and LLM-reference documents")
+    profile.thresholds = calibrate_thresholds(
+        profile, llm.documents if llm else [], banned=set(lexicon.banned_ids())
+    )
     rules = build_rules(profile, generic, lexicon)
     if progress:
         progress("selecting exemplars")
@@ -161,6 +167,10 @@ def recalibrate_metrics(voice: Voice, *, max_share: float | None = None) -> Voic
         per_document=voice.metrics.per_document,
     )
     profile.clusters = voice.metrics.clusters
+    llm = llm_reference() if has_baseline("llm_reference") else None
+    profile.thresholds = calibrate_thresholds(
+        profile, llm.documents if llm else [], banned=set(voice.lexicon.banned_ids())
+    )
     return voice.model_copy(update={"metrics": profile})
 
 

@@ -104,9 +104,20 @@ def test_recalibrate_without_corpus(fixture_voice):
     assert v2.metrics.total_words == fixture_voice.metrics.total_words
 
 
-def test_score_options_change_verdict(fixture_voice, slop_text):
-    lenient = score(slop_text, fixture_voice, sigma=50, tell_mult=100, tell_floor=1000)
-    assert lenient.verdict == "PASS"
+def test_thresholds_are_calibrated_and_distance_is_rescaled(
+    fixture_voice, slop_text, heldout_texts
+):
+    th = fixture_voice.metrics.thresholds
+    assert th.stats is not None and th.stats.llm_docs > 200
+    assert th.stats.llm_fail_rate >= 0.95
+    assert th.stats.heldout_pass_rate >= 0.90
+    assert "em_dashes_per_1k" in th.metrics and "sent_len_mean" not in th.metrics
+    slop = score(slop_text, fixture_voice)
+    held = score(heldout_texts[0], fixture_voice)
+    assert slop.separation is not None and slop.separation.llm_median == 70.0
+    assert slop.distance > held.distance
+    assert held.distance < 20.0
+    assert slop.distance >= 40.0
 
 
 def test_profile_has_facts_block_and_clusters(fixture_voice):

@@ -13,6 +13,9 @@ Verdict = Literal["PASS", "FAIL"]
 
 
 class MetricResult(BaseModel):
+    """One metric measured on the text against its calibrated band. `overshoot` is how far
+    outside the band the value sits, in band half-widths, on the slop side only."""
+
     name: str
     group: str
     value: float
@@ -20,6 +23,9 @@ class MetricResult(BaseModel):
     voice_std: float
     z: float
     slop_side: str
+    band_low: float | None = None
+    band_high: float | None = None
+    overshoot: float = 0.0
     flagged: bool
 
 
@@ -57,20 +63,43 @@ class ParagraphResult(BaseModel):
     tells: list[str] = Field(default_factory=list)
 
 
-class ScoreOptions(BaseModel):
-    sigma: float = 1.5
-    tell_mult: float = 2.0
-    tell_floor: float = 1.0
+class Separation(BaseModel):
+    """How well the voice's thresholds separate its own held-out documents from LLM-reference
+    prose, so the composite distance can be read against something."""
+
+    method: str
+    heldout_docs: int
+    llm_docs: int
+    heldout_pass_rate: float
+    llm_fail_rate: float
+    heldout_p90: float  # rescaled distance of the 90th-percentile held-out document
+    llm_median: float  # rescaled distance of the median LLM-reference document
+
+
+class JudgeScores(BaseModel):
+    """Rubric scores from an LLM judge, 1-5 each: `voice` (reads as this voice), `model_prose`
+    (reads as model prose; lower is better), `fidelity` (keeps the propositions), and
+    `overall`, the mean of voice, 6 - model_prose and fidelity."""
+
+    voice: int
+    model_prose: int
+    fidelity: int
+    overall: float
+    provider: str = ""
+    model: str = ""
+    note: str = ""
 
 
 class Report(BaseModel):
     """The result of scoring one text against one voice.
 
-    `verdict` is PASS or FAIL; `distance` is 0-100, where 0 means every metric sits at the
-    voice's mean and no tell exceeds its threshold. `metrics` and `tells` carry every
-    measurement with its threshold and whether it was flagged; `paragraphs` locate the hits;
-    `fixes` are the one-line suggestions the CLI prints. `annotate(text)` returns the input
-    with inline `[Tn]` markers.
+    `verdict` is PASS when every metric sits inside its calibrated band and no tell exceeds
+    its limit. `distance` is 0-100, rescaled so the voice's own held-out documents sit below
+    20 and LLM-reference prose centres on 70; `separation` carries the calibration behind
+    that scale. `metrics` and `tells` carry every measurement with its band or limit and
+    whether it was flagged; `paragraphs` locate the hits; `fixes` are the one-line suggestions
+    the CLI prints; `judge` is filled only when an LLM judge was asked for.
+    `annotate(text)` returns the input with inline `[Tn]` markers.
     """
 
     voice: str
@@ -83,7 +112,9 @@ class Report(BaseModel):
     tells: list[TellResult]
     paragraphs: list[ParagraphResult]
     fixes: list[str]
-    options: ScoreOptions
+    distance_raw: float = 0.0
+    separation: Separation | None = None
+    judge: JudgeScores | None = None
 
     # ------------------------------------------------------------ output
     def to_json(self, indent: int | None = 1) -> str:

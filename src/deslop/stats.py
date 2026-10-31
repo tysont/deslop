@@ -81,6 +81,36 @@ class Cluster(BaseModel):
     distinguishing: list[ClusterMetric] = Field(default_factory=list)
 
 
+class Band(BaseModel):
+    """Allowed range for one metric. A side is None when deviation that way is not slop."""
+
+    low: float | None = None
+    high: float | None = None
+    k: float = 3.0  # half-width in within-author standard deviations
+
+
+class CalibrationStats(BaseModel):
+    method: str
+    heldout_docs: int
+    heldout_authors: list[str] = Field(default_factory=list)
+    llm_docs: int
+    heldout_pass_rate: float
+    llm_fail_rate: float
+    raw_heldout_p90: float
+    raw_llm_median: float
+    raw_heldout_median: float = 0.0
+    raw_llm_p90: float = 0.0
+
+
+class Thresholds(BaseModel):
+    """What `score` compares a text against: a band per metric, a rate limit per tell, and
+    the calibration statistics that make the composite distance meaningful."""
+
+    metrics: dict[str, Band] = Field(default_factory=dict)
+    tells: dict[str, float] = Field(default_factory=dict)
+    stats: CalibrationStats | None = None
+
+
 class MetricsProfile(BaseModel):
     """metrics.json: aggregate stats plus the per-author samples they came from, and the
     registers (document clusters) found at calibration."""
@@ -92,6 +122,7 @@ class MetricsProfile(BaseModel):
     per_author: dict[str, AuthorSamples] = Field(default_factory=dict)
     per_document: list[DocSamples] = Field(default_factory=list)
     clusters: list[Cluster] = Field(default_factory=list)
+    thresholds: Thresholds = Field(default_factory=Thresholds)
 
 
 @dataclass
@@ -181,9 +212,7 @@ def sample_text(
     return samples
 
 
-def doc_samples(
-    samples: AuthorSamples, *, title: str, author: str, source: str = ""
-) -> DocSamples:
+def doc_samples(samples: AuthorSamples, *, title: str, author: str, source: str = "") -> DocSamples:
     """Collapse one document's chunk samples to chunk-mean metrics and document tell rates."""
     metrics = {k: sum(v) / len(v) for k, v in samples.metrics.items() if v}
     tells = {k: sum(v) / len(v) for k, v in samples.tells.items() if v}

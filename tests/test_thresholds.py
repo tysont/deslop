@@ -109,10 +109,12 @@ def test_rescale_anchors():
         llm_fail_rate=1,
         raw_heldout_p90=0.1,
         raw_llm_median=0.5,
+        raw_llm_p90=0.7,
     )
     assert rescale(0.1, stats) == 20.0
     assert rescale(0.5, stats) == 70.0
-    assert rescale(0.9, stats) == 100.0
+    assert rescale(0.7, stats) == 89.0
+    assert 95.0 < rescale(1.5, stats) <= 100.0
     assert rescale(0.0, stats) == 7.5
     assert rescale(0.3, None) == 30.0
     assert Thresholds().stats is None

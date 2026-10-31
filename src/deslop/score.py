@@ -12,14 +12,13 @@ from deslop.report import (
     MetricResult,
     ParagraphResult,
     Report,
-    ScoreOptions,
+    Separation,
     TellHitResult,
     TellResult,
 )
-from deslop.stats import chunk_analysis
+from deslop.stats import Band, chunk_analysis
+from deslop.thresholds import metric_deviation, raw_distance, rescale
 from deslop.voice.model import Voice
-
-Z_CAP = 3.0
 
 
 def slop_z(z: float, side: str) -> float:
@@ -37,24 +36,21 @@ def score(
     text: str,
     voice: Voice,
     *,
-    sigma: float = 1.5,
-    tell_mult: float = 2.0,
-    tell_floor: float = 1.0,
     patterns: tuple[str, ...] = (),
     analysis: Analysis | None = None,
 ) -> Report:
     """Score `text` against `voice` and return a [`Report`][deslop.Report].
 
-    A metric is flagged when it sits more than `sigma` standard deviations from the voice's
-    mean on its slop side. A tell is flagged when its rate per 1k words exceeds
-    `max(voice_rate * tell_mult, tell_floor)`, or at all if the voice bans it. `patterns`
-    names extra pattern catalogs (yaml) to load beside the built-in one.
+    A metric is flagged when its chunk-averaged value falls outside the band the voice
+    calibrated for it; a tell is flagged when its rate per 1k words exceeds the voice's
+    tuned limit. `patterns` names extra pattern catalogs (yaml) to load beside the built-in
+    one.
     """
     catalog = load_catalog(patterns)
     a = analysis or analyze(text)
-    options = ScoreOptions(sigma=sigma, tell_mult=tell_mult, tell_floor=tell_floor)
     llm = llm_reference() if has_baseline("llm_reference") else None
     banned = set(voice.lexicon.banned_ids())
+    thresholds = voice.metrics.thresholds
 
     # ---- metrics: averaged over chunks of the same size the voice was measured on,
     # so length-sensitive metrics (max runs, extremes) stay comparable.
@@ -68,7 +64,8 @@ def score(
         if stat is None:
             continue
         z = (value - stat.mean) / stat.std if stat.std > 0 else 0.0
-        flagged = slop_z(z, spec.slop_side) > sigma
+        band = thresholds.metrics.get(name, Band())
+        dev = metric_deviation(name, value, band, stat.mean)
         metric_results.append(
             MetricResult(
                 name=name,
@@ -78,7 +75,10 @@ def score(
                 voice_std=stat.std,
                 z=z,
                 slop_side=spec.slop_side,
-                flagged=flagged,
+                band_low=band.low,
+                band_high=band.high,
+                overshoot=dev.overshoot,
+                flagged=dev.flagged,
             )
         )
 
@@ -96,9 +96,7 @@ def score(
             else 0.0
         )
         llm_rate = llm.tells[pattern.id].rate_per_1k if llm and pattern.id in llm.tells else None
-        threshold = max(voice_rate * tell_mult, tell_floor)
-        if pattern.id in banned:
-            threshold = min(threshold, tell_floor)
+        threshold = thresholds.tells.get(pattern.id, max(voice_rate * 2.0, 1.0))
         tell_results.append(
             TellResult(
                 id=pattern.id,
@@ -158,25 +156,33 @@ def score(
             f"voice {t.voice_rate:.1f}/1k, "
             f"limit {t.threshold:.1f})"
         )
-    for m in sorted(flagged_metrics, key=lambda m: -slop_z(m.z, m.slop_side)):
+    for m in sorted(flagged_metrics, key=lambda m: -m.overshoot):
         direction = "too high" if m.z > 0 else "too low"
+        edge = m.band_high if m.z > 0 else m.band_low
         fixes.append(
-            f"{m.name} {direction}: {m.value:.2f} vs voice {m.voice_mean:.2f} (z={m.z:+.1f})"
+            f"{m.name} {direction}: {m.value:.2f} vs voice {m.voice_mean:.2f} "
+            f"(band edge {edge:.2f})"
         )
 
-    slop_metrics = [m for m in metric_results if m.slop_side != "none"]
-    metric_component = (
-        sum(min(slop_z(m.z, m.slop_side), Z_CAP) / Z_CAP for m in slop_metrics) / len(slop_metrics)
-        if slop_metrics
-        else 0.0
+    raw = raw_distance(
+        values,
+        {t.id: t.rate_per_1k for t in tell_results},
+        thresholds,
+        {n: s.mean for n, s in voice.metrics.metrics.items()},
     )
-    tell_component = (
-        sum(min(t.rate_per_1k / max(t.threshold, 1e-9), 2.0) / 2.0 for t in tell_results)
-        / len(tell_results)
-        if tell_results
-        else 0.0
-    )
-    distance = round(100.0 * (0.5 * metric_component + 0.5 * tell_component), 1)
+    distance = rescale(raw, thresholds.stats)
+    separation = None
+    if thresholds.stats is not None:
+        st = thresholds.stats
+        separation = Separation(
+            method=st.method,
+            heldout_docs=st.heldout_docs,
+            llm_docs=st.llm_docs,
+            heldout_pass_rate=st.heldout_pass_rate,
+            llm_fail_rate=st.llm_fail_rate,
+            heldout_p90=rescale(st.raw_heldout_p90, st),
+            llm_median=rescale(st.raw_llm_median, st),
+        )
 
     return Report(
         voice=voice.name,
@@ -189,5 +195,6 @@ def score(
         tells=tell_results,
         paragraphs=para_results,
         fixes=fixes,
-        options=options,
+        distance_raw=round(raw, 4),
+        separation=separation,
     )

@@ -2,13 +2,12 @@
 # ABOUTME: held-out corpus documents pass; also the composite distance and its rescaling.
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field
-
 from deslop.metrics import METRICS
-from deslop.stats import DocSamples, MetricsProfile
+from deslop.stats import Band, CalibrationStats, DocSamples, MetricsProfile, Thresholds
 
 LLM_FAIL_TARGET = 0.95
 HELDOUT_PASS_TARGET = 0.90
@@ -18,39 +17,12 @@ MIN_DOCS_FOR_SPLIT = 10
 K_STEPS = (6.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.25, 1.0)  # band half-widths in within-author std
 TELL_STEPS = (6.0, 4.0, 3.0, 2.0, 1.5, 1.0)  # multiples of the voice rate
 TELL_FLOORS = (2.0, 1.5, 1.0, 0.75, 0.5)  # per 1k words, for tells the voice barely uses
+K_FREE_MIN = 2.0  # the second, zero-cost tightening phase never goes below this
+TELL_FREE_MIN = 2.0
 METRIC_CAP = 3.0  # overshoots beyond this many band widths count no further
 TELL_CAP = 2.0  # rates beyond this many limits count no further
 DISTANCE_HELDOUT = 20.0  # where the 90th percentile of held-out documents lands
 DISTANCE_LLM = 70.0  # where the median LLM-reference document lands
-
-
-class Band(BaseModel):
-    """Allowed range for one metric. A side is None when deviation that way is not slop."""
-
-    low: float | None = None
-    high: float | None = None
-    k: float = 3.0  # half-width in within-author standard deviations
-
-
-class CalibrationStats(BaseModel):
-    method: str
-    heldout_docs: int
-    heldout_authors: list[str] = Field(default_factory=list)
-    llm_docs: int
-    heldout_pass_rate: float
-    llm_fail_rate: float
-    raw_heldout_p90: float
-    raw_llm_median: float
-    raw_heldout_median: float = 0.0
-
-
-class Thresholds(BaseModel):
-    """What `score` compares a text against: a band per metric, a rate limit per tell, and
-    the calibration statistics that make the composite distance meaningful."""
-
-    metrics: dict[str, Band] = Field(default_factory=dict)
-    tells: dict[str, float] = Field(default_factory=dict)
-    stats: CalibrationStats | None = None
 
 
 # ---------------------------------------------------------------- evaluation
@@ -118,14 +90,20 @@ def passes(
 
 
 def rescale(raw: float, stats: CalibrationStats | None) -> float:
-    """Map a raw composite onto 0-100 so held-out documents sit below DISTANCE_HELDOUT and
-    LLM-reference documents centre on DISTANCE_LLM."""
+    """Map a raw composite onto 0-100: linear from the 90th-percentile held-out document
+    (DISTANCE_HELDOUT) to the median LLM-reference document (DISTANCE_LLM), then saturating
+    toward 100 with the LLM 90th percentile landing near 89."""
     if stats is None or stats.raw_llm_median <= stats.raw_heldout_p90:
         return round(min(100.0, 100.0 * raw), 1)
     span = stats.raw_llm_median - stats.raw_heldout_p90
-    value = (
-        DISTANCE_HELDOUT + (DISTANCE_LLM - DISTANCE_HELDOUT) * (raw - stats.raw_heldout_p90) / span
-    )
+    if raw <= stats.raw_llm_median:
+        scale = (DISTANCE_LLM - DISTANCE_HELDOUT) / span
+        value = DISTANCE_HELDOUT + scale * (raw - stats.raw_heldout_p90)
+    else:
+        tail = max(stats.raw_llm_p90 - stats.raw_llm_median, span * 0.5, 1e-9)
+        value = DISTANCE_LLM + (100.0 - DISTANCE_LLM) * (
+            1.0 - math.exp(-(raw - stats.raw_llm_median) / tail)
+        )
     return round(max(0.0, min(100.0, value)), 1)
 
 
@@ -231,6 +209,35 @@ def calibrate_thresholds(
         _, key, th, heldout_pass, llm_fail = best
         position[key] += 1
 
+    # Second phase: keep tightening wherever it costs no held-out document, so the margin
+    # over the target grows and a text cannot pass by avoiding one tell alone. Bands stop at
+    # K_FREE_MIN and limits at TELL_FREE_MIN times the voice rate: with few held-out
+    # documents a free step is weak evidence, and tighter settings would fit the sample.
+    changed = method.startswith("20%")  # only with a real split is a free step evidence
+    while changed:
+        changed = False
+        for key in list(position):
+            steps = metric_steps.get(key) or tell_steps.get(key)
+            if steps is None or position[key] + 1 >= len(steps):
+                continue
+            nxt = steps[position[key] + 1]
+            if isinstance(nxt, Band) and nxt.k < K_FREE_MIN:
+                continue
+            if isinstance(nxt, float) and nxt < max(
+                TELL_FREE_MIN * profile.tells[key].rate_per_1k, TELL_FLOORS[2]
+            ):
+                continue
+            trial = th.model_copy(deep=True)
+            if key in trial.metrics:
+                trial.metrics[key] = nxt  # type: ignore[assignment]
+            else:
+                trial.tells[key] = nxt  # type: ignore[assignment]
+            hp, lf = rates(trial)
+            if hp >= heldout_pass and lf >= llm_fail:
+                th, heldout_pass, llm_fail = trial, hp, lf
+                position[key] += 1
+                changed = True
+
     raw_h = sorted(
         raw_distance(d.metrics, d.tells, th, {n: s.mean for n, s in profile.metrics.items()})
         for d in heldout
@@ -249,5 +256,6 @@ def calibrate_thresholds(
         raw_heldout_p90=raw_h[int(0.9 * (len(raw_h) - 1))] if raw_h else 0.0,
         raw_heldout_median=raw_h[len(raw_h) // 2] if raw_h else 0.0,
         raw_llm_median=raw_l[len(raw_l) // 2] if raw_l else 0.0,
+        raw_llm_p90=raw_l[int(0.9 * (len(raw_l) - 1))] if raw_l else 0.0,
     )
     return th
