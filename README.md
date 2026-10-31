@@ -44,6 +44,24 @@ is free and reproducible.
 OPENAI_API_KEY, or DESLOP_COMPATIBLE_BASE_URL in the environment or `.env`) to
 write `profile.md`; everything else is deterministic.
 
+## Configuration file
+
+Every option can live in a `deslop.yaml` in the working directory (or `~/.deslop/config.yaml`,
+or a file named with `--config`). Top-level keys apply to every command and a key named after a
+command holds that command's settings. Flags always win over the file:
+
+```yaml
+voice: voices/johnson.voice     # used by score, convert, draft, blind
+sigma: 1.5
+convert:
+  mode: rewrite
+  max-iter: 3
+  models: [claude, gpt]
+  budget: 2.0
+score:
+  tell-floor: 0.5
+```
+
 ## Cost and pricing
 
 Every model call is cached under `~/.deslop/cache`, so rerunning the same conversion is free.

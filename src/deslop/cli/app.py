@@ -1,16 +1,18 @@
 # ABOUTME: Typer CLI for deslop. Every command wraps the public API and supports --json.
-# ABOUTME: Subcommands: corpus, calibrate, score, voice, providers.
+# ABOUTME: Options resolve as flag > deslop.yaml command section > top-level key > default.
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from deslop import __version__
+from deslop.cli.config import Config, ConfigError, load_config
 from deslop.corpus import Corpus, DuplicateError
 from deslop.corpus.ingest import IngestError
 
@@ -44,11 +46,54 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+class Settings:
+    """Per-invocation option resolver bound to one command name."""
+
+    def __init__(self, ctx: typer.Context, command: str):
+        self.cfg: Config = ctx.obj if isinstance(ctx.obj, Config) else Config()
+        self.command = command
+
+    def get(self, key: str, value: Any, default: Any = None) -> Any:
+        return self.cfg.get(self.command, key, value, default=default)
+
+    def path(self, key: str, value: Path | None, default: Path | None = None) -> Path | None:
+        got = self.get(key, value, default)
+        return None if got is None else Path(got)
+
+    def paths(self, key: str, value: list[Path] | None) -> tuple[str, ...]:
+        got = self.get(key, value or None, [])
+        return tuple(str(p) for p in _as_list(got))
+
+    def voice(self, value: Path | None) -> Path:
+        got = self.path("voice", value)
+        if got is None:
+            fail("no voice given: pass --voice or set `voice:` in deslop.yaml")
+        return got
+
+    def progress(self, json_out: bool):
+        return None if json_out else (lambda msg: err.print(f"[dim]{msg}[/]"))
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [x.strip() for x in value.split(",") if x.strip()]
+    return list(value)
+
+
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(False, "--version", callback=version_callback, is_eager=True),
+    config: Path | None = typer.Option(
+        None, "--config", help="Settings file (default: ./deslop.yaml or ~/.deslop/config.yaml)"
+    ),
 ) -> None:
-    pass
+    try:
+        ctx.obj = load_config(config)
+    except ConfigError as exc:
+        fail(str(exc))
 
 
 # ------------------------------------------------------------------ corpus
@@ -69,15 +114,20 @@ def corpus_init(
 
 @corpus_app.command("add")
 def corpus_add(
+    ctx: typer.Context,
     directory: Path,
     sources: list[str] = typer.Argument(..., help="Files or URLs: txt, md, html, epub, pdf"),
-    author: str = typer.Option(..., "--author"),
+    author: str | None = typer.Option(None, "--author"),
     title: str | None = typer.Option(None, "--title"),
     year: int | None = typer.Option(None, "--year"),
-    weight: float = typer.Option(1.0, "--weight"),
-    license: str = typer.Option("", "--license"),
+    weight: float | None = typer.Option(None, "--weight", help="Default 1.0"),
+    license: str | None = typer.Option(None, "--license"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    s = Settings(ctx, "corpus_add")
+    author = s.get("author", author)
+    if not author:
+        fail("--author is required")
     corpus = Corpus.load(directory)
     added = []
     for source in sources:
@@ -86,9 +136,9 @@ def corpus_add(
                 source,
                 author=author,
                 title=title if len(sources) == 1 else None,
-                year=year,
-                weight=weight,
-                license=license,
+                year=s.get("year", year),
+                weight=float(s.get("weight", weight, 1.0)),
+                license=s.get("license", license, ""),
             )
         except (DuplicateError, IngestError) as exc:
             fail(str(exc))
@@ -104,10 +154,13 @@ def corpus_add(
 
 @corpus_app.command("stats")
 def corpus_stats(
+    ctx: typer.Context,
     directory: Path,
-    max_share: float = typer.Option(0.25, "--max-share"),
+    max_share: float | None = typer.Option(None, "--max-share", help="Default 0.25"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    s = Settings(ctx, "corpus_stats")
+    max_share = float(s.get("max_share", max_share, 0.25))
     corpus = Corpus.load(directory)
     stats = corpus.stats(max_share=max_share)
     if json_out:
@@ -139,31 +192,35 @@ def corpus_stats(
 
 @app.command("calibrate")
 def calibrate_cmd(
+    ctx: typer.Context,
     corpus_dir: Path,
-    out: Path = typer.Option(..., "--out", help="Output voice directory, e.g. name.voice"),
+    out: Path | None = typer.Option(None, "--out", help="Output voice directory, e.g. name.voice"),
     name: str | None = typer.Option(None, "--name"),
     no_llm: bool = typer.Option(
         False, "--no-llm", help="Write a templated profile.md instead of calling a model"
     ),
-    max_share: float = typer.Option(0.25, "--max-share"),
-    exemplar_words: int = typer.Option(2000, "--exemplar-words"),
+    max_share: float | None = typer.Option(None, "--max-share", help="Default 0.25"),
+    exemplar_words: int | None = typer.Option(None, "--exemplar-words", help="Default 2000"),
     llm_model: str | None = typer.Option(None, "--llm-model"),
     patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     from deslop.voice.calibrate import calibrate
 
+    s = Settings(ctx, "calibrate")
+    out = s.path("out", out)
+    if out is None:
+        fail("--out is required")
     corpus = Corpus.load(corpus_dir)
-    progress = None if json_out else (lambda msg: err.print(f"[dim]{msg}[/]"))
     voice = calibrate(
         corpus,
-        name=name or out.name.removesuffix(".voice"),
-        max_share=max_share,
-        exemplar_words=exemplar_words,
-        use_llm=not no_llm,
-        llm_model=llm_model,
-        patterns=tuple(str(p) for p in patterns),
-        progress=progress,
+        name=s.get("name", name) or out.name.removesuffix(".voice"),
+        max_share=float(s.get("max_share", max_share, 0.25)),
+        exemplar_words=int(s.get("exemplar_words", exemplar_words, 2000)),
+        use_llm=not s.get("no_llm", no_llm or None, False),
+        llm_model=s.get("llm_model", llm_model),
+        patterns=s.paths("patterns", patterns),
+        progress=s.progress(json_out),
     )
     voice.save(out)
     if json_out:
@@ -184,14 +241,24 @@ def read_input(path: Path | None) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def score_options(s: Settings, sigma, tell_mult, tell_floor, patterns) -> dict[str, Any]:
+    return dict(
+        sigma=float(s.get("sigma", sigma, 1.5)),
+        tell_mult=float(s.get("tell_mult", tell_mult, 2.0)),
+        tell_floor=float(s.get("tell_floor", tell_floor, 1.0)),
+        patterns=s.paths("patterns", patterns),
+    )
+
+
 @app.command("score")
 def score_cmd(
+    ctx: typer.Context,
     file: Path | None = typer.Argument(None, help="Text file to score (default: stdin)"),
-    voice: Path = typer.Option(..., "--voice", "-v"),
-    sigma: float = typer.Option(1.5, "--sigma"),
-    tell_mult: float = typer.Option(2.0, "--tell-mult"),
-    tell_floor: float = typer.Option(
-        1.0, "--tell-floor", help="Minimum tell rate per 1k words before flagging"
+    voice: Path | None = typer.Option(None, "--voice", "-v"),
+    sigma: float | None = typer.Option(None, "--sigma", help="Default 1.5"),
+    tell_mult: float | None = typer.Option(None, "--tell-mult", help="Default 2.0"),
+    tell_floor: float | None = typer.Option(
+        None, "--tell-floor", help="Minimum tell rate per 1k words before flagging (1.0)"
     ),
     patterns: list[Path] = typer.Option([], "--patterns"),
     annotate: Path | None = typer.Option(
@@ -203,16 +270,11 @@ def score_cmd(
     from deslop.score import score
     from deslop.voice import Voice
 
+    s = Settings(ctx, "score")
     text = read_input(file)
-    v = Voice.load(voice)
-    report = score(
-        text,
-        v,
-        sigma=sigma,
-        tell_mult=tell_mult,
-        tell_floor=tell_floor,
-        patterns=tuple(str(p) for p in patterns),
-    )
+    v = Voice.load(s.voice(voice))
+    report = score(text, v, **score_options(s, sigma, tell_mult, tell_floor, patterns))
+    annotate = s.path("annotate", annotate)
     if annotate is not None:
         annotate.write_text(report.annotate(text), encoding="utf-8")
     if json_out:
@@ -228,81 +290,100 @@ def score_cmd(
 # ------------------------------------------------------------------ convert
 
 
+def convert_options(
+    s: Settings, mode, max_iter, models, budget, lock, preserve_length
+) -> dict[str, Any]:
+    from deslop.lock import LOCK_CLASSES
+
+    mode = s.get("mode", mode, "edit")
+    if mode not in ("edit", "rewrite"):
+        fail("--mode must be edit or rewrite")
+    lock = s.get("lock", lock, ",".join(LOCK_CLASSES))
+    lock_classes: tuple[str, ...] = ()
+    if not (isinstance(lock, str) and lock.strip().lower() == "none"):
+        lock_classes = tuple(_as_list(lock))
+        bad = [c for c in lock_classes if c not in LOCK_CLASSES]
+        if bad:
+            fail(f"unknown lock class(es): {', '.join(bad)}; choose from {', '.join(LOCK_CLASSES)}")
+    budget = s.get("budget", budget)
+    return dict(
+        mode=mode,
+        max_iter=int(s.get("max_iter", max_iter, 4)),
+        models=tuple(_as_list(s.get("models", models, "claude,gpt,claude,gpt"))),
+        budget=None if budget is None else float(budget),
+        lock=lock_classes,
+        preserve_length=float(s.get("preserve_length", preserve_length, 15.0)) / 100.0,
+    )
+
+
+def print_convert_summary(result, show_diff: bool, out: Path | None) -> None:
+    before, after = result.report_before, result.report_after
+    color = "green" if after.verdict == "PASS" else "red"
+    accepted = sum(1 for u in result.units if u.accepted)
+    unpriced = (
+        f" ({result.cost.unpriced_calls} unpriced calls)" if result.cost.unpriced_calls else ""
+    )
+    console.print(
+        f"[bold {color}]{after.verdict}[/] after {len(result.iterations)} iteration(s): "
+        f"distance {before.distance:.0f} -> {after.distance:.0f}, "
+        f"{accepted}/{len(result.units)} rewrites accepted, "
+        f"${result.cost.usd:.3f}{unpriced}, stopped: {result.stopped}"
+    )
+    if after.fixes:
+        console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
+    if show_diff:
+        console.print(result.diff, markup=False, highlight=False)
+    elif out is None:
+        console.print(result.text, markup=False, highlight=False)
+
+
 @app.command("convert")
 def convert_cmd(
+    ctx: typer.Context,
     file: Path | None = typer.Argument(None, help="Text file to convert (default: stdin)"),
-    voice: Path = typer.Option(..., "--voice", "-v"),
-    mode: str = typer.Option("edit", "--mode", help="edit (sentences) or rewrite (paragraphs)"),
-    max_iter: int = typer.Option(4, "--max-iter"),
-    models: str = typer.Option(
-        "claude,gpt,claude,gpt", "--models", help="Providers to alternate per iteration"
+    voice: Path | None = typer.Option(None, "--voice", "-v"),
+    mode: str | None = typer.Option(
+        None, "--mode", help="edit (sentences, default) or rewrite (paragraphs)"
+    ),
+    max_iter: int | None = typer.Option(None, "--max-iter", help="Default 4"),
+    models: str | None = typer.Option(
+        None, "--models", help="Providers to alternate per iteration (claude,gpt,claude,gpt)"
     ),
     budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
-    sigma: float = typer.Option(1.5, "--sigma"),
-    tell_mult: float = typer.Option(2.0, "--tell-mult"),
-    tell_floor: float = typer.Option(1.0, "--tell-floor"),
-    lock: str = typer.Option(
-        "citations,quotes,numbers,proper_nouns", "--lock", help="Lock classes, or 'none'"
+    sigma: float | None = typer.Option(None, "--sigma"),
+    tell_mult: float | None = typer.Option(None, "--tell-mult"),
+    tell_floor: float | None = typer.Option(None, "--tell-floor"),
+    lock: str | None = typer.Option(
+        None, "--lock", help="Lock classes (default all four), or 'none'"
     ),
-    preserve_length: float = typer.Option(15.0, "--preserve-length", help="Max +/- percent"),
+    preserve_length: float | None = typer.Option(
+        None, "--preserve-length", help="Max +/- percent (15)"
+    ),
     patterns: list[Path] = typer.Option([], "--patterns"),
     out: Path | None = typer.Option(None, "--out", "-o", help="Write converted text here"),
     show_diff: bool = typer.Option(False, "--diff", help="Print the unified diff"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     from deslop.converter import convert
-    from deslop.lock import LOCK_CLASSES
     from deslop.voice import Voice
 
-    if mode not in ("edit", "rewrite"):
-        fail("--mode must be edit or rewrite")
-    lock_classes: tuple[str, ...] = ()
-    if lock.strip().lower() != "none":
-        lock_classes = tuple(x.strip() for x in lock.split(",") if x.strip())
-        bad = [c for c in lock_classes if c not in LOCK_CLASSES]
-        if bad:
-            fail(f"unknown lock class(es): {', '.join(bad)}; choose from {', '.join(LOCK_CLASSES)}")
+    s = Settings(ctx, "convert")
     text = read_input(file)
-    v = Voice.load(voice)
-    progress = None if json_out else (lambda msg: err.print(f"[dim]{msg}[/]"))
+    v = Voice.load(s.voice(voice))
     result = convert(
         text,
         v,
-        mode=mode,  # type: ignore[arg-type]
-        max_iter=max_iter,
-        models=tuple(m.strip() for m in models.split(",") if m.strip()),
-        budget=budget,
-        sigma=sigma,
-        tell_mult=tell_mult,
-        tell_floor=tell_floor,
-        lock=lock_classes,
-        preserve_length=preserve_length / 100.0,
-        patterns=tuple(str(p) for p in patterns),
-        progress=progress,
+        **convert_options(s, mode, max_iter, models, budget, lock, preserve_length),
+        **score_options(s, sigma, tell_mult, tell_floor, patterns),
+        progress=s.progress(json_out),
     )
+    out = s.path("out", out)
     if out is not None:
         out.write_text(result.text, encoding="utf-8")
     if json_out:
         print_json(result.to_json())
     else:
-        before, after = result.report_before, result.report_after
-        color = "green" if after.verdict == "PASS" else "red"
-        accepted = sum(1 for u in result.units if u.accepted)
-        unpriced = (
-            f" ({result.cost.unpriced_calls} unpriced calls)" if result.cost.unpriced_calls else ""
-        )
-        console.print(
-            f"[bold {color}]{after.verdict}[/] after {len(result.iterations)} iteration(s): "
-            f"distance {before.distance:.0f} -> {after.distance:.0f}, "
-            f"{accepted}/{len(result.units)} rewrites accepted, "
-            f"${result.cost.usd:.3f}{unpriced}, stopped: {result.stopped}"
-        )
-        if after.fixes:
-            console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
-        if show_diff:
-            console.print(result.diff, markup=False, highlight=False)
-        elif out is None:
-            console.print(result.text, markup=False, highlight=False)
+        print_convert_summary(result, s.get("diff", show_diff or None, False), out)
     raise typer.Exit(0 if result.report_after.verdict == "PASS" else 2)
 
 
