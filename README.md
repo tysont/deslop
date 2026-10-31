@@ -27,7 +27,18 @@ deslop score draft.md --voice writer.voice            # exit 0 PASS, 2 FAIL
 deslop score draft.md --voice writer.voice --json
 deslop score draft.md --voice writer.voice --annotate draft.annotated.md
 deslop voice show writer.voice
+deslop convert draft.md --voice writer.voice --out draft.voiced.md --diff
 ```
+
+`convert` rewrites only the flagged sentences (`--mode edit`) or paragraphs
+(`--mode rewrite`), alternating providers per iteration (`--models
+claude,gpt,claude,gpt`), and rejects any rewrite that changes a locked
+citation, quotation, number, or proper noun, drifts outside `--preserve-length`,
+repeats its context, or introduces a new tell. It stops on PASS, `--max-iter`,
+or `--budget`, returns the best iteration by distance, and appends every
+(before, after, tells, accepted) pair to `~/.deslop/pairs/<voice>.jsonl`.
+Responses are cached under `~/.deslop/cache`, so a rerun with the same inputs
+is free and reproducible.
 
 `calibrate` without `--no-llm` asks a configured provider (ANTHROPIC_API_KEY,
 OPENAI_API_KEY, or DESLOP_COMPATIBLE_BASE_URL in the environment or `.env`) to
@@ -57,12 +68,17 @@ voice.save("writer.voice")
 report = score(open("draft.md").read(), Voice.load("writer.voice"))
 print(report.verdict, report.fixes)
 print(report.to_json())
+
+from deslop import convert
+result = convert(open("draft.md").read(), Voice.load("writer.voice"), mode="edit")
+print(result.report_after.verdict, result.cost.usd)
+print(result.diff)
 ```
 
 ## Development
 
 ```sh
-make test             # pytest
+make test             # pytest (tests/e2e needs provider keys; skipped otherwise)
 make cov              # coverage report
 make lint             # ruff
 make english-generic  # rebuild baselines/english_generic.json from Gutenberg

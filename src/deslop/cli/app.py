@@ -225,6 +225,87 @@ def score_cmd(
     raise typer.Exit(0 if report.verdict == "PASS" else 2)
 
 
+# ------------------------------------------------------------------ convert
+
+
+@app.command("convert")
+def convert_cmd(
+    file: Path | None = typer.Argument(None, help="Text file to convert (default: stdin)"),
+    voice: Path = typer.Option(..., "--voice", "-v"),
+    mode: str = typer.Option("edit", "--mode", help="edit (sentences) or rewrite (paragraphs)"),
+    max_iter: int = typer.Option(4, "--max-iter"),
+    models: str = typer.Option(
+        "claude,gpt,claude,gpt", "--models", help="Providers to alternate per iteration"
+    ),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
+    sigma: float = typer.Option(1.5, "--sigma"),
+    tell_mult: float = typer.Option(2.0, "--tell-mult"),
+    tell_floor: float = typer.Option(1.0, "--tell-floor"),
+    lock: str = typer.Option(
+        "citations,quotes,numbers,proper_nouns", "--lock", help="Lock classes, or 'none'"
+    ),
+    preserve_length: float = typer.Option(15.0, "--preserve-length", help="Max +/- percent"),
+    patterns: list[Path] = typer.Option([], "--patterns"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Write converted text here"),
+    show_diff: bool = typer.Option(False, "--diff", help="Print the unified diff"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    from deslop.convert import convert
+    from deslop.lock import LOCK_CLASSES
+    from deslop.voice import Voice
+
+    if mode not in ("edit", "rewrite"):
+        fail("--mode must be edit or rewrite")
+    lock_classes: tuple[str, ...] = ()
+    if lock.strip().lower() != "none":
+        lock_classes = tuple(x.strip() for x in lock.split(",") if x.strip())
+        bad = [c for c in lock_classes if c not in LOCK_CLASSES]
+        if bad:
+            fail(f"unknown lock class(es): {', '.join(bad)}; choose from {', '.join(LOCK_CLASSES)}")
+    text = read_input(file)
+    v = Voice.load(voice)
+    progress = None if json_out else (lambda msg: err.print(f"[dim]{msg}[/]"))
+    result = convert(
+        text,
+        v,
+        mode=mode,  # type: ignore[arg-type]
+        max_iter=max_iter,
+        models=tuple(m.strip() for m in models.split(",") if m.strip()),
+        budget=budget,
+        sigma=sigma,
+        tell_mult=tell_mult,
+        tell_floor=tell_floor,
+        lock=lock_classes,
+        preserve_length=preserve_length / 100.0,
+        patterns=tuple(str(p) for p in patterns),
+        progress=progress,
+    )
+    if out is not None:
+        out.write_text(result.text, encoding="utf-8")
+    if json_out:
+        print_json(result.to_json())
+    else:
+        before, after = result.report_before, result.report_after
+        color = "green" if after.verdict == "PASS" else "red"
+        accepted = sum(1 for u in result.units if u.accepted)
+        unpriced = (
+            f" ({result.cost.unpriced_calls} unpriced calls)" if result.cost.unpriced_calls else ""
+        )
+        console.print(
+            f"[bold {color}]{after.verdict}[/] after {len(result.iterations)} iteration(s): "
+            f"distance {before.distance:.0f} -> {after.distance:.0f}, "
+            f"{accepted}/{len(result.units)} rewrites accepted, "
+            f"${result.cost.usd:.3f}{unpriced}, stopped: {result.stopped}"
+        )
+        if after.fixes:
+            console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
+        if show_diff:
+            console.print(result.diff, markup=False, highlight=False)
+        elif out is None:
+            console.print(result.text, markup=False, highlight=False)
+    raise typer.Exit(0 if result.report_after.verdict == "PASS" else 2)
+
+
 # ------------------------------------------------------------------ voice
 
 

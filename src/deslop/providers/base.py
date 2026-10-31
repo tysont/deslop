@@ -12,7 +12,7 @@ from typing import Protocol
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)  # a project .env beats stale shell exports
 
 CACHE_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "cache"
 
@@ -33,7 +33,7 @@ PRICING: dict[str, tuple[float, float]] = {
 
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-5-5",
-    "openai": "gpt-4.1",
+    "openai": "gpt-5.5",
     "compatible": os.environ.get("DESLOP_COMPATIBLE_MODEL", "default"),
 }
 
@@ -53,6 +53,7 @@ class Usage:
     cost_usd: float = 0.0
     calls: int = 0
     cached: int = 0
+    unpriced: int = 0  # calls to models missing from PRICING; their cost is not counted
 
     def add(self, other: Usage) -> None:
         self.input_tokens += other.input_tokens
@@ -60,6 +61,7 @@ class Usage:
         self.cost_usd += other.cost_usd
         self.calls += other.calls
         self.cached += other.cached
+        self.unpriced += other.unpriced
 
 
 @dataclass
@@ -71,8 +73,12 @@ class Completion:
     from_cache: bool = False
 
 
+def is_priced(model: str) -> bool:
+    return any(model.startswith(prefix) for prefix in PRICING)
+
+
 def price(model: str, input_tokens: int, output_tokens: int) -> float:
-    for prefix, (pin, pout) in PRICING.items():
+    for prefix, (pin, pout) in sorted(PRICING.items(), key=lambda kv: -len(kv[0])):
         if model.startswith(prefix):
             return (input_tokens * pin + output_tokens * pout) / 1e6
     return 0.0

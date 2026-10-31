@@ -91,3 +91,41 @@ def test_providers_test_runs_without_keys(monkeypatch):
     r = runner.invoke(app, ["providers", "test", "--json"])
     assert r.exit_code == 0
     assert all(not v["configured"] for v in json.loads(r.stdout).values())
+
+
+def test_convert_command_with_fake_provider(fixture_voice, tmp_path, monkeypatch):
+    import deslop.convert as convert_module
+    from tests.test_convert import FakeProvider
+
+    text = "Abraham climbs the hill in Genesis 22. The chapter asks what he owes. He builds the altar there."
+    script = {"The chapter asks what he owes.": "What he owes is never said."}
+    fake = FakeProvider("claude", script)
+    monkeypatch.setattr(convert_module, "get_provider", lambda name, **kw: fake)
+    monkeypatch.setattr(convert_module, "PAIRS_DIR", tmp_path / "pairs")
+    voice_dir = tmp_path / "v.voice"
+    fixture_voice.save(voice_dir)
+    src = tmp_path / "in.md"
+    src.write_text(text)
+    out = tmp_path / "out.md"
+    r = runner.invoke(
+        app,
+        [
+            "convert",
+            str(src),
+            "--voice",
+            str(voice_dir),
+            "--models",
+            "claude",
+            "--out",
+            str(out),
+            "--json",
+        ],
+    )
+    assert r.exit_code in (0, 2), r.output
+    data = json.loads(r.stdout)
+    assert data["text"] == out.read_text()
+    assert "What he owes is never said." in data["text"]
+    assert data["cost"]["calls"] >= 1
+    assert (tmp_path / "pairs" / "fixture.jsonl").exists()
+    r = runner.invoke(app, ["convert", str(src), "--voice", str(voice_dir), "--lock", "bogus"])
+    assert r.exit_code == 1 and "unknown lock class" in r.output

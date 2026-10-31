@@ -11,6 +11,7 @@ from deslop.providers.base import (
     NonRetryableError,
     ProviderError,
     Usage,
+    is_priced,
     price,
 )
 
@@ -50,5 +51,6 @@ class AnthropicProvider(CachingProvider):
             output_tokens=resp.usage.output_tokens,
             cost_usd=price(model, resp.usage.input_tokens, resp.usage.output_tokens),
             calls=1,
+            unpriced=0 if is_priced(model) else 1,
         )
         return Completion(text=text, model=model, provider=self.name, usage=usage)

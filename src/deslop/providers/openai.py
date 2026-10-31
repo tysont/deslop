@@ -11,6 +11,7 @@ from deslop.providers.base import (
     NonRetryableError,
     ProviderError,
     Usage,
+    is_priced,
     price,
 )
 
@@ -49,6 +50,7 @@ class OpenAIProvider(CachingProvider):
             output_tokens=out_tok,
             cost_usd=price(model, in_tok, out_tok),
             calls=1,
+            unpriced=0 if is_priced(model) else 1,
         )
         return Completion(text=text, model=model, provider=self.name, usage=usage)
 
