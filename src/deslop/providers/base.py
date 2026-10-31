@@ -18,9 +18,11 @@ CACHE_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "cach
 
 # USD per million tokens (input, output). Unknown models fall back to zero cost.
 PRICING: dict[str, tuple[float, float]] = {
-    "claude-sonnet-4-5": (3.0, 15.0),
-    "claude-opus-4-1": (15.0, 75.0),
-    "claude-haiku-4-5": (1.0, 5.0),
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-haiku-5-5": (0.1, 0.5),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
     "gpt-4o": (2.5, 10.0),
     "gpt-4o-mini": (0.15, 0.6),
     "gpt-4.1": (2.0, 8.0),
@@ -30,7 +32,7 @@ PRICING: dict[str, tuple[float, float]] = {
 }
 
 DEFAULT_MODELS = {
-    "anthropic": "claude-sonnet-4-5",
+    "anthropic": "claude-opus-5-5",
     "openai": "gpt-4.1",
     "compatible": os.environ.get("DESLOP_COMPATIBLE_MODEL", "default"),
 }
@@ -38,6 +40,10 @@ DEFAULT_MODELS = {
 
 class ProviderError(Exception):
     pass
+
+
+class NonRetryableError(ProviderError):
+    """Auth, bad-request, and programming errors: fail fast instead of backing off."""
 
 
 @dataclass
@@ -123,6 +129,8 @@ class CachingProvider:
             try:
                 result = self._raw_complete(system, user, model, temperature)
                 break
+            except NonRetryableError:
+                raise
             except Exception as exc:  # noqa: BLE001 - retry any transport/API error
                 last = exc
                 time.sleep(delay)

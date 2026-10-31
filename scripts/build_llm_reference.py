@@ -7,15 +7,17 @@ import itertools
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from deslop.baselines import ReferenceProfile, baseline_path
 from deslop.corpus.normalize import normalize
 from deslop.providers.base import get_provider, list_providers
-from deslop.stats import WordCounts, aggregate, sample_text
+from deslop.stats import WordCounts, aggregate, merge_samples, sample_text
 
 TARGET_WORDS = int(os.environ.get("DESLOP_LLM_REF_WORDS", "200000"))
 ESSAY_WORDS = 700
+WORKERS = int(os.environ.get("DESLOP_LLM_REF_WORKERS", "8"))
 CACHE = Path(".cache/llm_reference")
 
 TOPICS = [
@@ -139,47 +141,74 @@ def prompt_for(topic: str, style: str) -> str:
     return f"Write {style} of about {ESSAY_WORDS} words on {topic}. Prose only."
 
 
+# provider:model pairs; override with
+# DESLOP_LLM_REF_SOURCES="anthropic:claude-opus-5-5,openai:gpt-4.1"
+DEFAULT_SOURCES = [
+    ("anthropic", "claude-opus-5-5"),
+    ("anthropic", "claude-sonnet-5-5"),
+    ("openai", "gpt-4.1"),
+]
+
+
+def working_sources() -> list[tuple[str, str, object]]:
+    """Return (provider name, model, provider) for every source that answers a ping."""
+    configured = list_providers()
+    raw = os.environ.get("DESLOP_LLM_REF_SOURCES")
+    pairs = [tuple(x.split(":", 1)) for x in raw.split(",")] if raw else DEFAULT_SOURCES
+    out = []
+    for name, model in pairs:
+        if not configured.get(name):
+            print(f"skip {name}:{model}: not configured", file=sys.stderr)
+            continue
+        provider = get_provider(name, cache_dir=CACHE / "responses")
+        try:
+            provider.complete(
+                "Reply with the single word OK.", "ping", model=model, temperature=0.0
+            )
+        except Exception as exc:  # noqa: BLE001 - report and move on
+            print(f"skip {name}:{model}: {str(exc)[:120]}", file=sys.stderr)
+            continue
+        out.append((name, model, provider))
+    return out
+
+
 def main() -> None:
-    available = [n for n, ok in list_providers().items() if ok and n != "compatible"]
-    if not available:
-        print(
-            "no providers configured (set ANTHROPIC_API_KEY and/or OPENAI_API_KEY)", file=sys.stderr
-        )
+    sources = working_sources()
+    if not sources:
+        print("no working providers (set ANTHROPIC_API_KEY and/or OPENAI_API_KEY)", file=sys.stderr)
         sys.exit(1)
-    providers = {n: get_provider(n, cache_dir=CACHE / "responses") for n in available}
-    models = {
-        "anthropic": os.environ.get("DESLOP_LLM_REF_ANTHROPIC_MODEL"),
-        "openai": os.environ.get("DESLOP_LLM_REF_OPENAI_MODEL"),
-    }
+    print("sources: " + ", ".join(f"{n}:{m}" for n, m, _ in sources), flush=True)
     counts = WordCounts()
     per_source = {}
     words = 0
     jobs = list(itertools.product(TOPICS, STYLES))
-    cycle = itertools.cycle(available)
-    for i, (topic, style) in enumerate(jobs):
-        if words >= TARGET_WORDS:
-            break
-        name = next(cycle)
-        provider = providers[name]
-        completion = provider.complete(
-            SYSTEM, prompt_for(topic, style), model=models.get(name), temperature=0.8
-        )
-        text = normalize(completion.text, gutenberg=False)
-        n = len(text.split())
-        if n < 200:
-            continue
-        words += n
-        counts.add(text)
-        key = f"{name}:{completion.model}"
-        samples = sample_text(text)
-        if key in per_source:
-            from deslop.stats import merge_samples
+    # ~ESSAY_WORDS per job; request a little more than needed and stop at the target.
+    needed = int(TARGET_WORDS / ESSAY_WORDS * 1.15) + 1
+    assigned = [(job, sources[i % len(sources)]) for i, job in enumerate(jobs[:needed])]
 
-            per_source[key] = merge_samples(per_source[key], samples)
-        else:
-            per_source[key] = samples
-        if i % 10 == 0:
-            print(f"{i:4d} {words:7d} words  ${provider.usage.cost_usd:.2f} {key}", flush=True)
+    def run(item):
+        (topic, style), (name, model, provider) = item
+        completion = provider.complete(
+            SYSTEM, prompt_for(topic, style), model=model, temperature=0.8
+        )
+        return name, completion.model, normalize(completion.text, gutenberg=False)
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for i, (name, model, text) in enumerate(pool.map(run, assigned)):
+            n = len(text.split())
+            if n < 200 or words >= TARGET_WORDS:
+                continue
+            words += n
+            counts.add(text)
+            key = f"{name}:{model}"
+            samples = sample_text(text)
+            if key in per_source:
+                per_source[key] = merge_samples(per_source[key], samples)
+            else:
+                per_source[key] = samples
+            if i % 10 == 0:
+                spent = sum(p.usage.cost_usd for _, _, p in sources)
+                print(f"{i:4d} {words:7d} words  ${spent:.2f} {key}", flush=True)
     profile = aggregate(per_source, max_share=1.0, chunk_words=500)
     ref = ReferenceProfile(
         name="llm_reference",

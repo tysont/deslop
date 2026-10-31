@@ -8,6 +8,7 @@ from deslop.providers.base import (
     DEFAULT_MODELS,
     CachingProvider,
     Completion,
+    NonRetryableError,
     ProviderError,
     Usage,
     price,
@@ -30,11 +31,16 @@ class OpenAIProvider(CachingProvider):
         kwargs = {}
         if not model.startswith(("gpt-5", "o1", "o3", "o4")):
             kwargs["temperature"] = temperature
-        resp = self.client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            **kwargs,
-        )
+        import openai
+
+        try:
+            resp = self.client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                **kwargs,
+            )
+        except (openai.AuthenticationError, openai.BadRequestError) as exc:
+            raise NonRetryableError(f"openai: {exc}") from exc
         text = resp.choices[0].message.content or ""
         in_tok = resp.usage.prompt_tokens if resp.usage else 0
         out_tok = resp.usage.completion_tokens if resp.usage else 0

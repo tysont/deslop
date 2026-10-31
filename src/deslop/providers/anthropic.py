@@ -8,6 +8,7 @@ from deslop.providers.base import (
     DEFAULT_MODELS,
     CachingProvider,
     Completion,
+    NonRetryableError,
     ProviderError,
     Usage,
     price,
@@ -27,14 +28,23 @@ class AnthropicProvider(CachingProvider):
         self.client = Anthropic()
 
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
-        resp = self.client.messages.create(
-            model=model,
-            max_tokens=4096,
-            temperature=temperature,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        text = "".join(block.text for block in resp.content if getattr(block, "type", "") == "text")
+        # Current Claude models take no sampling temperature; depth is set by effort.
+        import anthropic
+
+        effort = "low" if temperature < 0.5 else "medium"
+        try:
+            resp = self.client.messages.create(
+                model=model,
+                max_tokens=8192,
+                system=system,
+                output_config={"effort": effort},
+                messages=[{"role": "user", "content": user}],
+            )
+        except (anthropic.AuthenticationError, anthropic.BadRequestError, TypeError) as exc:
+            raise NonRetryableError(f"anthropic: {exc}") from exc
+        if resp.stop_reason == "refusal":
+            raise NonRetryableError("anthropic: request refused by safety classifier")
+        text = "".join(block.text for block in resp.content if block.type == "text")
         usage = Usage(
             input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens,
