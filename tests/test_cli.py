@@ -1,332 +1,288 @@
-# ABOUTME: CLI smoke tests via typer's runner: corpus, calibrate, score, voice show.
-# ABOUTME: Checks exit codes and --json output shapes.
+# ABOUTME: CLI tests via typer's runner: voice build/show/diff/validate/pack, score, apply with
+# ABOUTME: scripted providers, lab commands, and clean errors. Checks exit codes and --json shapes.
+from __future__ import annotations
+
 import json
+import sys
+from pathlib import Path
 
 import yaml
 from typer.testing import CliRunner
 
 from deslop.cli.app import app
+from tests.test_apply import Scripted
 
 runner = CliRunner()
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def scripted_factory(monkeypatch, providers=None, **kw):
+    providers = providers or {
+        "anthropic": Scripted("anthropic", **kw),
+        "openai": Scripted("openai", **kw),
+    }
+    aliases = {"claude": "anthropic", "gpt": "openai"}
+    # `deslop.apply` names the function in the package namespace; patch the module itself.
+    monkeypatch.setattr(
+        sys.modules["deslop.apply"],
+        "get_provider",
+        lambda name, **_: providers[aliases.get(name, name)],
+    )
+    return providers
 
 
 def test_version():
-    result = runner.invoke(app, ["--version"])
-    assert result.exit_code == 0 and "deslop" in result.stdout
+    r = runner.invoke(app, ["--version"])
+    assert r.exit_code == 0 and "deslop 2." in r.stdout
 
 
-def test_corpus_init_add_stats(tmp_path):
-    src = tmp_path / "a.txt"
-    src.write_text(("Plain prose sentence number one here. " * 40).strip())
-    c = tmp_path / "corpus"
-    assert runner.invoke(app, ["corpus", "init", str(c), "--name", "t"]).exit_code == 0
+def test_voice_build_show_validate(tmp_path):
+    amap = tmp_path / "authors.yaml"
+    amap.write_text(
+        yaml.safe_dump(
+            {
+                "johnson_*": "Samuel Johnson",
+                "hazlitt_*": "William Hazlitt",
+                "arnold_*": "Matthew Arnold",
+                "bradley_*": "A. C. Bradley",
+            }
+        )
+    )
+    out = tmp_path / "critics.voice"
     r = runner.invoke(
-        app, ["corpus", "add", str(c), str(src), "--author", "Ann Author", "--title", "T", "--json"]
+        app,
+        [
+            "voice",
+            str(FIXTURES / "corpus_small"),
+            "-o",
+            str(out),
+            "--author-map",
+            str(amap),
+            "--no-llm",
+            "--exemplar-words",
+            "1500",
+        ],
     )
     assert r.exit_code == 0, r.output
-    assert json.loads(r.stdout)[0]["author"] == "Ann Author"
-    r = runner.invoke(app, ["corpus", "stats", str(c), "--json"])
-    assert json.loads(r.stdout)["authors"][0]["share"] == 1.0
-    r = runner.invoke(app, ["corpus", "add", str(c), str(src), "--author", "Ann Author"])
-    assert r.exit_code == 1 and "duplicate" in r.output
+    assert out.is_file() and "4 documents" in r.stdout and "thresholds" in r.stdout
+    r = runner.invoke(app, ["voice", "show", str(out), "--clusters"])
+    assert r.exit_code == 0, r.output
+    assert "Registers" in r.stdout and "95% CI" in r.stdout and "Samuel Johnson" in r.stdout
+    r = runner.invoke(app, ["voice", "show", str(out), "--json"])
+    data = json.loads(r.stdout)
+    assert data["meta"]["document_count"] == 4 and data["metrics"]["thresholds"]["stats"]
+    r = runner.invoke(app, ["voice", "validate", str(out)])
+    assert r.exit_code == 0, r.output
+    assert "checksum" in r.stdout and "thresholds" in r.stdout
+    r = runner.invoke(app, ["voice", "--help"])
+    assert r.exit_code == 0 and "show" in r.stdout and "pack" in r.stdout
 
 
-def test_calibrate_score_show(fixture_voice, fixtures_dir, slop_text, tmp_path):
-    voice_dir = tmp_path / "v.voice"
-    fixture_voice.save(voice_dir)
+def test_voice_from_add_and_diff(fixture_voice, fixtures_dir, tmp_path):
+    base = fixture_voice.save(tmp_path / "base.voice")
+    out = tmp_path / "more.voice"
     r = runner.invoke(
-        app, ["score", str(fixtures_dir / "slop_sample.md"), "--voice", str(voice_dir), "--json"]
+        app,
+        [
+            "voice",
+            "--from",
+            str(base),
+            "--add",
+            str(fixtures_dir / "heldout_bradley.md"),
+            "-o",
+            str(out),
+        ],
     )
+    assert r.exit_code == 0, r.output
+    assert "5 documents" in r.stdout
+    r = runner.invoke(app, ["voice", "diff", str(base), str(out)])
+    assert r.exit_code == 0 and "Metric means" in r.stdout
+    r = runner.invoke(app, ["voice", "--from", str(base), "-o", str(out)])
+    assert r.exit_code == 1 and "--add" in r.output
+
+
+def test_voice_pack_unpack_strip(fixture_voice, tmp_path):
+    zipped = fixture_voice.save(tmp_path / "f.voice")
+    r = runner.invoke(app, ["voice", "unpack", str(zipped), "-o", str(tmp_path / "work")])
+    assert r.exit_code == 0 and (tmp_path / "work" / "profile.md").exists()
+    r = runner.invoke(
+        app,
+        [
+            "voice",
+            "pack",
+            str(tmp_path / "work"),
+            "-o",
+            str(tmp_path / "shared.voice"),
+            "--strip-exemplars",
+        ],
+    )
+    assert r.exit_code == 0 and "stripped" in r.stdout
+    r = runner.invoke(app, ["voice", "validate", str(tmp_path / "shared.voice")])
+    assert r.exit_code == 0 and "exemplars stripped" in r.stdout
+
+
+def test_score_exit_codes_and_json(fixture_voice, fixtures_dir, slop_text, tmp_path):
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    sample = tmp_path / "sample.md"
+    sample.write_text(slop_text)
+    r = runner.invoke(app, ["score", str(sample), "--voice", str(voice), "--json"])
     assert r.exit_code == 2
     data = json.loads(r.stdout)
-    assert data["verdict"] == "FAIL"
-    out = tmp_path / "annotated.md"
+    assert data["verdict"] == "FAIL" and data["separation"]["llm_median"] == 70.0
+    assert any(m["band_high"] is not None or m["band_low"] is not None for m in data["metrics"])
     r = runner.invoke(
         app,
         [
             "score",
             str(fixtures_dir / "heldout_bradley.md"),
             "--voice",
-            str(voice_dir),
+            str(voice),
             "--annotate",
-            str(out),
+            str(tmp_path / "a.md"),
             "-q",
         ],
     )
-    assert r.exit_code == 0 and "PASS" in r.stdout
-    assert out.exists()
-    r = runner.invoke(app, ["voice", "show", str(voice_dir)])
-    assert r.exit_code == 0 and "sent_len_mean" in r.stdout
-    r = runner.invoke(app, ["voice", "show", str(voice_dir), "--json"])
-    assert json.loads(r.stdout)["meta"]["name"] == "fixture"
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "a.md").exists()
 
 
-def test_calibrate_command_small(tmp_path, fixtures_dir):
-    # Calibrate a one-document corpus to exercise the command end to end quickly.
-    c = tmp_path / "c"
-    assert runner.invoke(app, ["corpus", "init", str(c)]).exit_code == 0
+def test_score_with_judge(fixture_voice, fixtures_dir, tmp_path, monkeypatch):
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    scripted_factory(monkeypatch)
     r = runner.invoke(
         app,
         [
-            "corpus",
-            "add",
-            str(c),
+            "score",
             str(fixtures_dir / "heldout_bradley.md"),
-            "--author",
-            "A. C. Bradley",
+            "--voice",
+            str(voice),
+            "--judge",
+            "--json",
         ],
     )
     assert r.exit_code == 0, r.output
-    r = runner.invoke(
-        app, ["calibrate", str(c), "--out", str(tmp_path / "mini.voice"), "--no-llm", "--json"]
-    )
-    assert r.exit_code == 0, r.output
-    assert json.loads(r.stdout)["name"] == "mini"
-    assert (tmp_path / "mini.voice" / "exemplars.md").exists()
+    assert json.loads(r.stdout)["judge"]["provider"] == "anthropic"
 
 
-def test_providers_test_runs_without_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("DESLOP_COMPATIBLE_BASE_URL", raising=False)
-    r = runner.invoke(app, ["providers", "test", "--json"])
-    assert r.exit_code == 0
-    assert all(not v["configured"] for v in json.loads(r.stdout).values())
-
-
-def test_convert_command_with_fake_provider(fixture_voice, tmp_path, monkeypatch):
-    import deslop.converter as convert_module
-    from tests.test_convert import FakeProvider
-
-    text = (
-        "Abraham climbs the hill in Genesis 22 with the wood on Isaac's back and the knife in his "
-        "own hand. The chapter asks what he owes. He builds the altar there."
-    )
-    script = {"The chapter asks what he owes.": "What he owes is never said."}
-    fake = FakeProvider("claude", script)
-    monkeypatch.setattr(convert_module, "get_provider", lambda name, **kw: fake)
-    monkeypatch.setattr(convert_module, "PAIRS_DIR", tmp_path / "pairs")
-    voice_dir = tmp_path / "v.voice"
-    fixture_voice.save(voice_dir)
-    src = tmp_path / "in.md"
-    src.write_text(text)
+def test_apply_rewrite_and_edit_with_scripted_providers(
+    fixture_voice, slop_text, tmp_path, monkeypatch
+):
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    sample = tmp_path / "sample.md"
+    sample.write_text(slop_text)
+    scripted_factory(monkeypatch)
     out = tmp_path / "out.md"
     r = runner.invoke(
         app,
+        ["apply", str(sample), "--voice", str(voice), "-o", str(out), "--n", "2", "--diff"],
+    )
+    assert r.exit_code in (0, 2), r.output
+    assert out.exists() and "Plainly," in out.read_text()
+    assert "Meaning" in r.stdout and "unit 1" in r.stdout and "candidate(s)" in r.stdout
+    r = runner.invoke(
+        app,
         [
-            "convert",
-            str(src),
+            "apply",
+            str(sample),
             "--voice",
-            str(voice_dir),
-            "--models",
-            "claude",
-            "--out",
-            str(out),
+            str(voice),
+            "--mode",
+            "edit",
+            "--max-iter",
+            "1",
             "--json",
         ],
     )
     assert r.exit_code in (0, 2), r.output
     data = json.loads(r.stdout)
-    assert data["text"] == out.read_text()
-    assert "What he owes is never said." in data["text"]
-    assert data["cost"]["calls"] >= 1
-    assert (tmp_path / "pairs" / "fixture.jsonl").exists()
-    r = runner.invoke(app, ["convert", str(src), "--voice", str(voice_dir), "--lock", "bogus"])
-    assert r.exit_code == 1 and "unknown lock class" in r.output
+    assert data["mode"] == "edit" and data["iterations"] and data["units"]
+    r = runner.invoke(app, ["apply", str(sample), "--voice", str(voice), "--mode", "sideways"])
+    assert r.exit_code == 1
 
 
-def _workspace(fixture_voice, tmp_path):
-    import shutil
-    from pathlib import Path
+def test_apply_brief(fixture_voice, fixtures_dir, tmp_path, monkeypatch):
+    from deslop.providers.base import Completion, Usage
 
-    fixtures = Path(__file__).parent / "fixtures"
-    corpus_dir = tmp_path / "corpus"
-    shutil.copytree(fixtures / "corpus_small", corpus_dir)
-    voice_dir = tmp_path / "v.voice"
-    v = fixture_voice.model_copy(deep=True)
-    v.meta.corpus_path = str(corpus_dir)
-    v.save(voice_dir)
-    accepted = tmp_path / "accepted.md"
-    accepted.write_text((fixtures / "heldout_hazlitt.md").read_text(encoding="utf-8"))
-    return voice_dir, corpus_dir, accepted, fixtures
+    class Drafting(Scripted):
+        def _raw_complete(self, system, user, model, temperature):
+            if "from a brief" in system:
+                return Completion(
+                    text="Abraham climbs the mountain in Gen 22:1-3. The chapter withholds its answer.",
+                    model=model,
+                    provider=self.name,
+                    usage=Usage(calls=1),
+                )
+            return super()._raw_complete(system, user, model, temperature)
+
+    scripted_factory(
+        monkeypatch, {"anthropic": Drafting("anthropic"), "openai": Drafting("openai")}
+    )
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    r = runner.invoke(
+        app,
+        [
+            "apply",
+            "--brief",
+            str(fixtures_dir / "brief_sample.yaml"),
+            "--voice",
+            str(voice),
+            "--n",
+            "1",
+            "--json",
+        ],
+    )
+    assert r.exit_code in (0, 2), r.output
+    data = json.loads(r.stdout)
+    assert data["draft"] and data["draft_text"]
 
 
-def test_voice_update_diff_validate_commands(fixture_voice, tmp_path, monkeypatch):
-    voice_dir, corpus_dir, accepted, _ = _workspace(fixture_voice, tmp_path)
+def test_lab_calibrate_thresholds_and_export(fixture_voice, tmp_path, monkeypatch):
     monkeypatch.setenv("DESLOP_HOME", str(tmp_path / "home"))
-    r = runner.invoke(app, ["voice", "validate", str(voice_dir)])
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    r = runner.invoke(
+        app, ["lab", "calibrate-thresholds", str(voice), "-o", str(tmp_path / "re.voice")]
+    )
     assert r.exit_code == 0, r.output
-    r = runner.invoke(app, ["voice", "update", str(voice_dir), "--accept", str(accepted), "--json"])
-    assert r.exit_code == 0, r.output
-    data = json.loads(r.stdout)
-    assert data["added"] == ["accepted.md"]
-    r = runner.invoke(app, ["voice", "diff", f"{voice_dir}@prev", str(voice_dir)])
-    assert r.exit_code == 0 and "sent_len_mean" in r.stdout and "(accepted)" in r.stdout
-    r = runner.invoke(app, ["voice", "diff", f"{voice_dir}@prev", str(voice_dir), "--json"])
-    assert json.loads(r.stdout)["words_after"] > json.loads(r.stdout)["words_before"]
-    r = runner.invoke(app, ["voice", "diff", f"{voice_dir}@nope", str(voice_dir)])
-    assert r.exit_code == 1
-    r = runner.invoke(app, ["voice", "validate", str(voice_dir), "--json"])
-    assert r.exit_code == 0 and json.loads(r.stdout)["ok"] is True
-    (corpus_dir / "corpus.yaml").write_text("name: broken\ndocuments: []\n")
-    r = runner.invoke(app, ["voice", "validate", str(voice_dir)])
-    assert r.exit_code == 1 and "FAIL" in r.stdout
-
-
-def test_voice_export_command(fixture_voice, tmp_path, monkeypatch):
-    import deslop.voice.export as export_module
-    from tests.test_export_blind import Summarizer, write_pairs
-
-    voice_dir, _, _, _ = _workspace(fixture_voice, tmp_path)
-    home = tmp_path / "home"
-    (home / "pairs").mkdir(parents=True)
-    write_pairs(home / "pairs" / "fixture.jsonl", "fixture")
-    monkeypatch.setattr(export_module, "PAIRS_DIR", home / "pairs")
-    monkeypatch.setattr(export_module, "first_available", lambda: Summarizer(), raising=False)
-    monkeypatch.setattr("deslop.providers.base.first_available", lambda: Summarizer())
-    out = tmp_path / "train.jsonl"
+    assert "LLM-reference documents fail" in r.stdout and (tmp_path / "re.voice").exists()
     r = runner.invoke(
         app,
-        ["voice", "export", str(voice_dir), "--out", str(out), "--max-chunks", "2", "--json"],
+        ["lab", "export", str(voice), "--out", str(tmp_path / "ft.jsonl"), "--no-chunks"],
     )
     assert r.exit_code == 0, r.output
-    data = json.loads(r.stdout)
-    assert data["pairs"] == 2 and data["chunks"] == 2 and data["estimated_training_cost"] > 0
-    assert len(out.read_text().splitlines()) == 4
-    r = runner.invoke(
-        app,
-        ["voice", "export", str(voice_dir), "--out", str(out), "--no-chunks", "--format", "jsonl"],
-    )
-    assert r.exit_code == 0 and "No job was" in r.stdout
-    r = runner.invoke(
-        app, ["voice", "export", str(voice_dir), "--out", str(out), "--format", "csv"]
-    )
-    assert r.exit_code == 1
+    assert "No job" in r.stdout and "0 pairs" in r.stdout
 
 
-def test_blind_command_logs_and_summarizes(fixture_voice, tmp_path, monkeypatch):
-    import deslop.blind as blind_module
-
-    voice_dir, _, _, fixtures = _workspace(fixture_voice, tmp_path)
-    monkeypatch.setattr(blind_module, "BLIND_DIR", tmp_path / "blind")
+def test_lab_blind_with_voice_exemplars(fixture_voice, tmp_path, monkeypatch):
+    monkeypatch.setenv("DESLOP_HOME", str(tmp_path / "home"))
+    voice = fixture_voice.save(tmp_path / "f.voice")
     cands = tmp_path / "cands"
     cands.mkdir()
-    (cands / "draft.md").write_text((fixtures / "slop_sample.md").read_text(encoding="utf-8"))
+    (cands / "d.md").write_text("The play opens on a battlement at night. " * 20)
     r = runner.invoke(
         app,
         [
+            "lab",
             "blind",
             "--voice",
-            str(voice_dir),
-            "--candidates",
-            str(cands),
-            "--n",
-            "2",
-            "--seed",
-            "3",
-        ],
-        input="A\ntoo tidy\nB\n\n",
-    )
-    assert r.exit_code == 0, r.output
-    # The default floor must admit real pairs on the fixture corpus (overlaps run 0.03-0.06).
-    assert "this session: " in r.stdout and "/2 (" in r.stdout
-    assert "(overlap 0." in r.stdout
-    assert "skipped" not in r.stdout
-    r = runner.invoke(
-        app,
-        ["blind", "--voice", str(voice_dir), "--candidates", str(cands), "--min-overlap", "0.99"],
-    )
-    assert r.exit_code == 0 and "skipped 8 pair" in r.stdout and "could not be paired" in r.stdout
-    log = (tmp_path / "blind" / "fixture.jsonl").read_text().splitlines()
-    assert len(log) == 2 and json.loads(log[0])["reason"] == "too tidy"
-    r = runner.invoke(
-        app,
-        [
-            "blind",
-            "--voice",
-            str(voice_dir),
+            str(voice),
             "--candidates",
             str(cands),
             "--n",
             "1",
             "--min-overlap",
             "0",
-            "--json",
+            "--seed",
+            "1",
         ],
-        input="B\nhmm\n",
+        input="A\nhmm\n",
     )
-    assert r.exit_code == 0 and json.loads(r.stdout[r.stdout.index("{") :])["total"] == 3
-    r = runner.invoke(
-        app, ["blind", "--voice", str(voice_dir), "--candidates", str(tmp_path / "x")]
-    )
-    assert r.exit_code == 1
-
-
-def test_draft_command_with_fake_provider(fixture_voice, tmp_path, monkeypatch):
-    import deslop.converter as convert_module
-    from deslop.draft import load_brief
-    from tests.test_draft import FIXTURES, SectionProvider
-
-    brief = load_brief(FIXTURES / "brief_sample.yaml")
-    script = {
-        s.heading: f'Johnson says "{s.quotes[0]}" (Johnson 1765), and he is right.'
-        for s in brief.sections
-    }
-    monkeypatch.setattr(convert_module, "get_provider", lambda name, **kw: SectionProvider(script))
-    monkeypatch.setattr(convert_module, "PAIRS_DIR", tmp_path / "pairs")
-    voice_dir = tmp_path / "v.voice"
-    fixture_voice.save(voice_dir)
-    out = tmp_path / "draft.md"
-    r = runner.invoke(
-        app,
-        [
-            "draft",
-            str(FIXTURES / "brief_sample.yaml"),
-            "--voice",
-            str(voice_dir),
-            "--out",
-            str(out),
-            "--max-iter",
-            "0",
-            "--json",
-        ],
-    )
-    assert r.exit_code in (0, 2), r.output
-    data = json.loads(r.stdout)
-    assert data["text"] == out.read_text() and out.read_text().startswith("# What Johnson")
-    assert len(data["sections"]) == 3 and data["convert"]["iterations"] == []
-    r = runner.invoke(app, ["draft", str(tmp_path / "nope.yaml"), "--voice", str(voice_dir)])
-    assert r.exit_code == 1
-    # Without --max-iter the convert loop runs with draft's default of two iterations.
-    r = runner.invoke(
-        app, ["draft", str(FIXTURES / "brief_sample.yaml"), "--voice", str(voice_dir), "--json"]
-    )
-    assert r.exit_code in (0, 2), r.output
-    assert len(json.loads(r.stdout)["convert"]["iterations"]) <= 2
+    assert r.exit_code == 0, r.output
+    assert "this session: " in r.stdout
 
 
 def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path):
-    voice_dir = tmp_path / "v.voice"
-    fixture_voice.save(voice_dir)
-    r = runner.invoke(app, ["score", str(tmp_path / "missing.md"), "--voice", str(voice_dir)])
-    assert r.exit_code == 1 and "missing.md" in r.output and "Traceback" not in r.output
-
-
-def test_corpus_add_from_manifest(tmp_path):
-    src = tmp_path / "crawl"
-    src.mkdir()
-    (src / "a.txt").write_text(("Plain prose about foxes and dogs by the river. " * 40).strip())
-    (src / "manifest.jsonl").write_text(
-        json.dumps({"file": "a.txt", "author": "Ann Author", "title": "Foxes", "date": "2003"})
-        + "\n"
-        + json.dumps({"file": "a.txt", "author": "Ann Author", "title": "Foxes again"})
-        + "\n"
-    )
-    c = tmp_path / "c"
-    assert runner.invoke(app, ["corpus", "init", str(c)]).exit_code == 0
-    r = runner.invoke(app, ["corpus", "add", str(c), str(src), "--from-manifest"])
-    assert r.exit_code == 0, r.output
-    assert "added 1" in r.stdout and "1 duplicate" in r.stdout
-    assert yaml.safe_load((c / "corpus.yaml").read_text())["documents"][0]["year"] == 2003
-    r = runner.invoke(app, ["corpus", "add", str(c), str(tmp_path / "nope"), "--from-manifest"])
-    assert r.exit_code == 1
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    r = runner.invoke(app, ["score", str(tmp_path / "nope.md"), "--voice", str(voice)])
+    assert r.exit_code == 1 and "cannot read" in r.output and "Traceback" not in r.output
+    r = runner.invoke(app, ["voice", str(tmp_path / "nothing"), "-o", str(tmp_path / "x.voice")])
+    assert r.exit_code == 1 and "Traceback" not in r.output

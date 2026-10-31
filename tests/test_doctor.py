@@ -58,8 +58,11 @@ def test_voice_check_resolves_and_validates(fixture_voice, tmp_path, monkeypatch
     assert ok.status == "ok", ok.detail
     monkeypatch.setenv("DESLOP_VOICE", str(tmp_path / "nope.voice"))
     assert doctor.check_voice(Config()).status == "fail"
-    (voice_dir / "metrics.json").write_text("{}")
-    monkeypatch.setenv("DESLOP_VOICE", str(voice_dir))
+    work = tmp_path / "work"
+    work.mkdir()
+    fixture_voice.save(work)
+    (work / "metrics.json").write_text("{}")
+    monkeypatch.setenv("DESLOP_VOICE", str(work))
     bad = doctor.check_voice(Config())
     assert bad.status == "fail" and "metrics" in bad.detail
 

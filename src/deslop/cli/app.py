@@ -1,4 +1,4 @@
-# ABOUTME: Typer CLI for deslop. Every command wraps the public API and supports --json.
+# ABOUTME: Typer CLI for deslop: `voice` (build and inspect), `apply`, `score`, `lab`, `doctor`.
 # ABOUTME: Options resolve as flag > deslop.yaml command section > top-level key > default.
 from __future__ import annotations
 
@@ -11,21 +11,36 @@ from typing import Any, NoReturn
 import typer
 from rich.console import Console
 from rich.table import Table
+from typer.core import TyperGroup
 
 from deslop import __version__
 from deslop.cli.config import Config, ConfigError, load_config, resolve_voice
-from deslop.converter import ConvertResult
-from deslop.corpus import Corpus, DuplicateError
-from deslop.corpus.ingest import IngestError
+
+
+class VoiceGroup(TyperGroup):
+    """`deslop voice FILES... -o NAME.voice` builds; `deslop voice show|diff|...` inspect.
+    Anything that is not a subcommand name is routed to the hidden `build` command."""
+
+    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+        if args and args[0] not in self.commands and args[0] not in ("--help", "-h"):
+            args = ["build", *args]
+        return super().parse_args(ctx, args)
+
 
 app = typer.Typer(
-    help="Voice calibration, scoring, and conversion for prose.", no_args_is_help=True
+    help="Build a voice from texts, score prose against it, apply it.", no_args_is_help=True
 )
-corpus_app = typer.Typer(help="Build and inspect a corpus directory.", no_args_is_help=True)
-voice_app = typer.Typer(help="Inspect and maintain voices.", no_args_is_help=True)
+voice_app = typer.Typer(
+    cls=VoiceGroup,
+    help="Build a voice: `deslop voice FILES... -o NAME.voice`. Subcommands inspect one.",
+    no_args_is_help=True,
+)
+lab_app = typer.Typer(
+    help="Experiments: blind tests, exports, threshold calibration.", no_args_is_help=True
+)
 providers_app = typer.Typer(help="LLM provider configuration.", no_args_is_help=True)
-app.add_typer(corpus_app, name="corpus")
 app.add_typer(voice_app, name="voice")
+app.add_typer(lab_app, name="lab")
 app.add_typer(providers_app, name="providers")
 
 console = Console()
@@ -84,6 +99,18 @@ def _as_list(value: Any) -> list[Any]:
     return list(value)
 
 
+def load_voice(path: Path) -> Any:
+    from deslop.voice import Voice
+    from deslop.voice.pack import PackError
+
+    try:
+        return Voice.load(path)
+    except FileNotFoundError as exc:
+        fail(str(exc))
+    except PackError as exc:
+        fail(str(exc))
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -98,169 +125,6 @@ def main(
         fail(str(exc))
 
 
-# ------------------------------------------------------------------ corpus
-
-
-@corpus_app.command("init")
-def corpus_init(
-    directory: Path,
-    name: str | None = typer.Option(None, help="Corpus name (default: directory name)"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    corpus = Corpus.init(directory, name=name)
-    if json_out:
-        print_json(corpus.manifest.model_dump_json())
-    else:
-        console.print(f"initialized corpus [bold]{corpus.name}[/] at {corpus.root}")
-
-
-@corpus_app.command("add")
-def corpus_add(
-    ctx: typer.Context,
-    directory: Path,
-    sources: list[str] = typer.Argument(..., help="Files or URLs: txt, md, html, epub, pdf"),
-    author: str | None = typer.Option(None, "--author"),
-    title: str | None = typer.Option(None, "--title"),
-    year: int | None = typer.Option(None, "--year"),
-    weight: float | None = typer.Option(None, "--weight", help="Default 1.0"),
-    license: str | None = typer.Option(None, "--license"),
-    from_manifest: bool = typer.Option(
-        False, "--from-manifest", help="SOURCE is a directory with a manifest.jsonl"
-    ),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    s = Settings(ctx, "corpus_add")
-    corpus = Corpus.load(directory)
-    if from_manifest:
-        if len(sources) != 1:
-            fail("--from-manifest takes exactly one directory")
-        try:
-            report = corpus.add_manifest(Path(sources[0]))
-        except IngestError as exc:
-            fail(str(exc))
-        if json_out:
-            print_json(report.model_dump_json())
-        else:
-            for entry in report.added:
-                console.print(
-                    f"added [bold]{entry.title}[/] by {entry.author}: {entry.words} words"
-                )
-            for title, reason in report.failed:
-                console.print(f"[red]failed[/] {title}: {reason}")
-            console.print(
-                f"added {len(report.added)}, {len(report.duplicates)} duplicate(s) skipped, "
-                f"{len(report.failed)} failed"
-            )
-        return
-    author = s.get("author", author)
-    if not author:
-        fail("--author is required")
-    added = []
-    for source in sources:
-        try:
-            entry = corpus.add(
-                source,
-                author=author,
-                title=title if len(sources) == 1 else None,
-                year=s.get("year", year),
-                weight=float(s.get("weight", weight, 1.0)),
-                license=s.get("license", license, ""),
-            )
-        except (DuplicateError, IngestError) as exc:
-            fail(str(exc))
-        added.append(entry)
-        if not json_out:
-            console.print(
-                f"added [bold]{entry.title}[/] by {entry.author}: "
-                f"{entry.words} words -> {entry.path}"
-            )
-    if json_out:
-        print_json(json.dumps([e.model_dump() for e in added]))
-
-
-@corpus_app.command("stats")
-def corpus_stats(
-    ctx: typer.Context,
-    directory: Path,
-    max_share: float | None = typer.Option(None, "--max-share", help="Default 0.25"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    s = Settings(ctx, "corpus_stats")
-    max_share = float(s.get("max_share", max_share, 0.25))
-    corpus = Corpus.load(directory)
-    stats = corpus.stats(max_share=max_share)
-    if json_out:
-        print_json(stats.model_dump_json())
-        return
-    table = Table(title=f"{corpus.name}: {stats.total_words} words")
-    table.add_column("author")
-    table.add_column("docs", justify="right")
-    table.add_column("words", justify="right")
-    table.add_column("share", justify="right")
-    table.add_column("")
-    for a in stats.authors:
-        flag = "[red]over cap[/]" if a.author in stats.over_cap else ""
-        table.add_row(a.author, str(a.documents), str(a.words), f"{100 * a.share:.1f}%", flag)
-    console.print(table)
-    for doc in corpus.manifest.documents:
-        console.print(
-            f"  {doc.path}: {doc.author}, {doc.title} ({doc.words} words, weight {doc.weight})"
-        )
-    if stats.over_cap:
-        console.print(
-            f"[yellow]{len(stats.over_cap)} author(s) exceed {100 * max_share:.0f}%; "
-            "calibration downweights them.[/]"
-        )
-
-
-# ------------------------------------------------------------------ calibrate
-
-
-@app.command("calibrate")
-def calibrate_cmd(
-    ctx: typer.Context,
-    corpus_dir: Path,
-    out: Path | None = typer.Option(None, "--out", help="Output voice directory, e.g. name.voice"),
-    name: str | None = typer.Option(None, "--name"),
-    no_llm: bool = typer.Option(
-        False, "--no-llm", help="Write a templated profile.md instead of calling a model"
-    ),
-    max_share: float | None = typer.Option(None, "--max-share", help="Default 0.25"),
-    exemplar_words: int | None = typer.Option(None, "--exemplar-words", help="Default 2000"),
-    llm_model: str | None = typer.Option(None, "--llm-model"),
-    patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    from deslop.voice.calibrate import calibrate
-
-    s = Settings(ctx, "calibrate")
-    out = s.path("out", out)
-    if out is None:
-        fail("--out is required")
-    corpus = Corpus.load(corpus_dir)
-    voice = calibrate(
-        corpus,
-        name=s.get("name", name) or out.name.removesuffix(".voice"),
-        max_share=float(s.get("max_share", max_share, 0.25)),
-        exemplar_words=int(s.get("exemplar_words", exemplar_words, 2000)),
-        use_llm=not s.get("no_llm", no_llm or None, False),
-        llm_model=s.get("llm_model", llm_model),
-        patterns=s.paths("patterns", patterns),
-        progress=s.progress(json_out),
-    )
-    voice.save(out)
-    if json_out:
-        print_json(voice.meta.model_dump_json())
-    else:
-        console.print(
-            f"wrote voice [bold]{voice.name}[/] to {out} "
-            f"({voice.meta.total_words} words, profile: {voice.meta.profile_source})"
-        )
-
-
-# ------------------------------------------------------------------ score
-
-
 def read_input(path: Path | None) -> str:
     if path is None or str(path) == "-":
         return sys.stdin.read()
@@ -270,254 +134,80 @@ def read_input(path: Path | None) -> str:
         fail(f"cannot read {path}: {exc.strerror or exc}")
 
 
-def score_options(
-    s: Settings,
-    sigma: float | None,
-    tell_mult: float | None,
-    tell_floor: float | None,
-    patterns: list[Path],
-) -> dict[str, Any]:
-    return dict(
-        sigma=float(s.get("sigma", sigma, 1.5)),
-        tell_mult=float(s.get("tell_mult", tell_mult, 2.0)),
-        tell_floor=float(s.get("tell_floor", tell_floor, 1.0)),
-        patterns=s.paths("patterns", patterns),
-    )
+# ------------------------------------------------------------------ voice (build)
 
 
-@app.command("score")
-def score_cmd(
+@voice_app.command("build", hidden=True)
+def voice_build(
     ctx: typer.Context,
-    file: Path | None = typer.Argument(None, help="Text file to score (default: stdin)"),
-    voice: Path | None = typer.Option(None, "--voice", "-v"),
-    sigma: float | None = typer.Option(None, "--sigma", help="Default 1.5"),
-    tell_mult: float | None = typer.Option(None, "--tell-mult", help="Default 2.0"),
-    tell_floor: float | None = typer.Option(
-        None, "--tell-floor", help="Minimum tell rate per 1k words before flagging (1.0)"
+    paths: list[Path] = typer.Argument(None, help="Text files or directories to measure"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="NAME.voice to write"),
+    author_map: Path | None = typer.Option(
+        None, "--author-map", help="yaml: filename glob -> author; `default` for the rest"
     ),
-    patterns: list[Path] = typer.Option([], "--patterns"),
-    annotate: Path | None = typer.Option(
-        None, "--annotate", help="Write the input with inline [Tn] markers here"
+    max_share: float | None = typer.Option(None, "--max-share", help="Default 0.15"),
+    exemplar_words: int | None = typer.Option(None, "--exemplar-words", help="Default 2500"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Template profile.md instead of a model"),
+    llm_model: str | None = typer.Option(None, "--llm-model"),
+    base: Path | None = typer.Option(
+        None, "--from", help="Fold --add texts into this voice instead of building anew"
     ),
+    add: list[Path] = typer.Option([], "--add", help="Texts to add with --from"),
+    patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
     json_out: bool = typer.Option(False, "--json"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Print only the verdict line"),
 ) -> None:
-    from deslop.score import score
+    """Build NAME.voice from texts, or extend an existing voice with --from/--add."""
     from deslop.voice import Voice
+    from deslop.voice.collect import load_author_map
 
-    s = Settings(ctx, "score")
-    text = read_input(file)
-    v = Voice.load(s.voice(voice))
-    report = score(text, v, **score_options(s, sigma, tell_mult, tell_floor, patterns))
-    annotate = s.path("annotate", annotate)
-    if annotate is not None:
-        annotate.write_text(report.annotate(text), encoding="utf-8")
+    s = Settings(ctx, "voice")
+    out = s.path("out", out)
+    if out is None:
+        fail("--out NAME.voice is required")
+    sources = list(paths or []) + list(add or [])
+    if base is None and not sources:
+        fail("give files or directories to measure, or --from OLD.voice --add FILES")
+    if base is not None and not add:
+        fail("--from needs --add FILES")
+    try:
+        amap = load_author_map(s.path("author_map", author_map))
+    except (OSError, ValueError) as exc:
+        fail(str(exc))
+    name = out.name.removesuffix(".voice").removesuffix(".zip")
+    try:
+        voice = Voice.from_texts(
+            [str(p) for p in sources],
+            name=name,
+            author_map=amap,
+            max_share=float(s.get("max_share", max_share, 0.15)),
+            exemplar_words=int(s.get("exemplar_words", exemplar_words, 2500)),
+            use_llm=not s.get("no_llm", no_llm or None, False),
+            llm_model=s.get("llm_model", llm_model),
+            patterns=s.paths("patterns", patterns),
+            base=load_voice(base) if base is not None else None,
+            progress=s.progress(json_out),
+        )
+    except ValueError as exc:
+        fail(str(exc))
+    voice.save(out)
     if json_out:
-        print(report.to_json())
-    elif quiet:
-        console.print(report.renderables(show_hits=False)[0])
-    else:
-        for item in report.renderables():
-            console.print(item)
-    raise typer.Exit(0 if report.verdict == "PASS" else 2)
-
-
-# ------------------------------------------------------------------ convert
-
-
-def convert_options(
-    s: Settings,
-    mode: str | None,
-    max_iter: int | None,
-    models: str | None,
-    budget: float | None,
-    lock: str | None,
-    preserve_length: float | None,
-) -> dict[str, Any]:
-    from deslop.lock import LOCK_CLASSES
-
-    mode = s.get("mode", mode, "edit")
-    if mode not in ("edit", "rewrite"):
-        fail("--mode must be edit or rewrite")
-    lock = s.get("lock", lock, ",".join(LOCK_CLASSES))
-    lock_classes: tuple[str, ...] = ()
-    if not (isinstance(lock, str) and lock.strip().lower() == "none"):
-        lock_classes = tuple(_as_list(lock))
-        bad = [c for c in lock_classes if c not in LOCK_CLASSES]
-        if bad:
-            fail(f"unknown lock class(es): {', '.join(bad)}; choose from {', '.join(LOCK_CLASSES)}")
-    budget = s.get("budget", budget)
-    return dict(
-        mode=mode,
-        max_iter=int(s.get("max_iter", max_iter, 4)),
-        models=tuple(_as_list(s.get("models", models, "claude,gpt,claude,gpt"))),
-        budget=None if budget is None else float(budget),
-        lock=lock_classes,
-        preserve_length=float(s.get("preserve_length", preserve_length, 15.0)) / 100.0,
-    )
-
-
-def print_convert_summary(result: ConvertResult, show_diff: bool, out: Path | None) -> None:
-    before, after = result.report_before, result.report_after
-    color = "green" if after.verdict == "PASS" else "red"
-    accepted = sum(1 for u in result.units if u.accepted)
-    unpriced = (
-        f" ({result.cost.unpriced_calls} unpriced calls)" if result.cost.unpriced_calls else ""
+        print_json(voice.meta.model_dump_json())
+        return
+    st = voice.metrics.thresholds.stats
+    sep = (
+        f"; thresholds: {100 * st.llm_fail_rate:.0f}% of LLM-reference documents fail, "
+        f"{100 * st.heldout_pass_rate:.0f}% of held-out documents pass"
+        if st
+        else ""
     )
     console.print(
-        f"[bold {color}]{after.verdict}[/] after {len(result.iterations)} iteration(s): "
-        f"distance {before.distance:.0f} -> {after.distance:.0f}, "
-        f"{accepted}/{len(result.units)} rewrites accepted, "
-        f"${result.cost.usd:.3f}{unpriced}, stopped: {result.stopped}"
+        f"wrote voice [bold]{voice.name}[/] to {out} ({voice.meta.document_count} documents, "
+        f"{voice.meta.total_words} words, {len(voice.meta.authors)} authors, "
+        f"{len(voice.metrics.clusters)} register(s), profile: {voice.meta.profile_source}{sep})"
     )
-    if after.fixes:
-        console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
-    if show_diff:
-        console.print(result.diff, markup=False, highlight=False)
-    elif out is None:
-        console.print(result.text, markup=False, highlight=False)
 
 
-@app.command("convert")
-def convert_cmd(
-    ctx: typer.Context,
-    file: Path | None = typer.Argument(None, help="Text file to convert (default: stdin)"),
-    voice: Path | None = typer.Option(None, "--voice", "-v"),
-    mode: str | None = typer.Option(
-        None, "--mode", help="edit (sentences, default) or rewrite (paragraphs)"
-    ),
-    max_iter: int | None = typer.Option(None, "--max-iter", help="Default 4"),
-    models: str | None = typer.Option(
-        None, "--models", help="Providers to alternate per iteration (claude,gpt,claude,gpt)"
-    ),
-    budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
-    sigma: float | None = typer.Option(None, "--sigma"),
-    tell_mult: float | None = typer.Option(None, "--tell-mult"),
-    tell_floor: float | None = typer.Option(None, "--tell-floor"),
-    lock: str | None = typer.Option(
-        None, "--lock", help="Lock classes (default all four), or 'none'"
-    ),
-    preserve_length: float | None = typer.Option(
-        None, "--preserve-length", help="Max +/- percent (15)"
-    ),
-    patterns: list[Path] = typer.Option([], "--patterns"),
-    out: Path | None = typer.Option(None, "--out", "-o", help="Write converted text here"),
-    show_diff: bool = typer.Option(False, "--diff", help="Print the unified diff"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    from deslop.converter import convert
-    from deslop.voice import Voice
-
-    s = Settings(ctx, "convert")
-    text = read_input(file)
-    v = Voice.load(s.voice(voice))
-    result = convert(
-        text,
-        v,
-        **convert_options(s, mode, max_iter, models, budget, lock, preserve_length),
-        **score_options(s, sigma, tell_mult, tell_floor, patterns),
-        progress=s.progress(json_out),
-    )
-    out = s.path("out", out)
-    if out is not None:
-        out.write_text(result.text, encoding="utf-8")
-    if json_out:
-        print_json(result.to_json())
-    else:
-        print_convert_summary(result, s.get("diff", show_diff or None, False), out)
-    raise typer.Exit(0 if result.report_after.verdict == "PASS" else 2)
-
-
-# ------------------------------------------------------------------ draft
-
-
-@app.command("draft")
-def draft_cmd(
-    ctx: typer.Context,
-    brief: Path = typer.Argument(..., help="Brief yaml: title and sections with claim/refs/quotes"),
-    voice: Path | None = typer.Option(None, "--voice", "-v"),
-    out: Path | None = typer.Option(None, "--out", "-o", help="Write the finished draft here"),
-    max_iter: int | None = typer.Option(None, "--max-iter", help="Convert iterations (2)"),
-    models: str | None = typer.Option(None, "--models"),
-    budget: float | None = typer.Option(None, "--budget"),
-    sigma: float | None = typer.Option(None, "--sigma"),
-    tell_mult: float | None = typer.Option(None, "--tell-mult"),
-    tell_floor: float | None = typer.Option(None, "--tell-floor"),
-    lock: str | None = typer.Option(None, "--lock"),
-    preserve_length: float | None = typer.Option(None, "--preserve-length"),
-    patterns: list[Path] = typer.Option([], "--patterns"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    from deslop.draft import draft, load_brief
-    from deslop.voice import Voice
-
-    s = Settings(ctx, "draft")
-    try:
-        b = load_brief(brief)
-    except (ValueError, OSError) as exc:
-        fail(str(exc))
-    v = Voice.load(s.voice(voice))
-    opts = convert_options(s, "rewrite", max_iter, models, budget, lock, preserve_length)
-    opts.pop("mode")
-    opts.pop("max_iter")  # convert defaults to 4 rounds; draft defaults to 2
-    opts["convert_max_iter"] = int(s.get("max_iter", max_iter, 2))
-    result = draft(
-        b,
-        v,
-        **opts,
-        **score_options(s, sigma, tell_mult, tell_floor, patterns),
-        progress=s.progress(json_out),
-    )
-    out = s.path("out", out)
-    if out is not None:
-        out.write_text(result.text, encoding="utf-8")
-    if json_out:
-        print_json(result.to_json())
-    else:
-        incomplete = [x.heading for x in result.sections if not x.complete]
-        stripped = sum(len(x.stripped) for x in result.sections)
-        console.print(
-            f"drafted {len(result.sections)} section(s); stripped {stripped} unlisted item(s)"
-            + (f"; incomplete: {', '.join(incomplete)}" if incomplete else "")
-        )
-        print_convert_summary(result.convert, False, out)
-        console.print(f"total cost ${result.cost.usd:.3f} over {result.cost.calls} call(s)")
-    raise typer.Exit(0 if result.report.verdict == "PASS" else 2)
-
-
-# ------------------------------------------------------------------ voice
-
-
-@voice_app.command("pack")
-def voice_pack(
-    voice: Path,
-    out: Path | None = typer.Option(None, "--out", help="Default: <voice>.zip"),
-) -> None:
-    """Zip a voice directory with a content checksum in voice.yaml."""
-    from deslop.voice.pack import PackError, pack_voice
-
-    target = out or voice.with_name(voice.name + ".zip")
-    try:
-        pack_voice(voice, target)
-    except PackError as exc:
-        fail(str(exc))
-    console.print(f"packed {voice} -> {target}")
-
-
-@voice_app.command("unpack")
-def voice_unpack(
-    archive: Path,
-    out: Path | None = typer.Option(None, "--out", help="Default: the archive name without .zip"),
-) -> None:
-    """Extract a packed voice and verify its checksum."""
-    from deslop.voice.pack import PackError, unpack_voice
-
-    target = out or archive.with_name(archive.name.removesuffix(".zip"))
-    try:
-        unpack_voice(archive, target)
-    except PackError as exc:
-        fail(str(exc))
-    console.print(f"unpacked {archive} -> {target}")
+# ------------------------------------------------------------------ voice (inspect)
 
 
 @voice_app.command("show")
@@ -526,28 +216,42 @@ def voice_show(
     clusters: bool = typer.Option(False, "--clusters", help="Show the registers found"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    from deslop.voice import Voice
-
-    v = Voice.load(voice)
+    """Metadata, provenance, metrics with confidence intervals and bands, tells, rules."""
+    v = load_voice(voice)
     if json_out:
         print_json(
             json.dumps(
                 {
                     "meta": v.meta.model_dump(),
-                    "metrics": v.metrics.model_dump(exclude={"per_author"}),
+                    "metrics": v.metrics.model_dump(exclude={"per_author", "per_document"}),
                     "lexicon": v.lexicon.model_dump(),
                 }
             )
         )
         return
+    m = v.meta
+    console.print(
+        f"[bold]{v.name}[/]  {m.document_count} documents, {m.total_words} words, "
+        f"{len(m.authors)} authors  created {m.created}  deslop {m.deslop_version}"
+        + (f"  checksum {m.checksum[:12]}" if m.checksum else "")
+    )
+    if m.licenses:
+        console.print("licenses: " + "; ".join(m.licenses))
+    top = ", ".join(
+        f"{a.name} {100 * a.share:.0f}%" + (f" ({', '.join(a.sources)})" if a.sources else "")
+        for a in m.authors[:12]
+    )
+    console.print(f"top authors: {top}" + (" ..." if len(m.authors) > 12 else ""))
+    if not m.has_exemplars:
+        console.print("[yellow]exemplars stripped from this voice[/]")
     if clusters:
         ct = Table(title="Registers")
         for col in ("register", "docs", "words", "median doc", "top authors", "distinguished by"):
             ct.add_column(col)
         for c in v.metrics.clusters:
             marks = "; ".join(
-                f"{m.metric} {m.cluster_mean:.2f} vs {m.voice_mean:.2f} (z {m.z:+.1f})"
-                for m in c.distinguishing
+                f"{x.metric} {x.cluster_mean:.2f} vs {x.voice_mean:.2f} (z {x.z:+.1f})"
+                for x in c.distinguishing
             )
             ct.add_row(
                 c.label,
@@ -558,37 +262,66 @@ def voice_show(
                 marks,
             )
         console.print(ct)
-        if not v.metrics.clusters:
-            console.print("no registers recorded (voice calibrated before clustering existed)")
-    console.print(
-        f"[bold]{v.name}[/]  corpus {v.meta.corpus_name} ({v.meta.corpus_hash})  "
-        f"{v.meta.total_words} words  created {v.meta.created}"
-    )
-    console.print(
-        "author shares: "
-        + ", ".join(f"{a} {100 * s:.0f}%" for a, s in v.meta.author_shares.items())
-    )
-    table = Table(title="Metrics")
-    for col in ("metric", "mean", "std", "p10", "p50", "p90"):
+    table = Table(title="Metrics (band: calibrated PASS range; CI: 95% document bootstrap)")
+    for col in ("metric", "mean", "95% CI", "within-author sd", "band", "CI width / band"):
         table.add_column(col, justify="right" if col != "metric" else "left")
-    for name, s in v.metrics.metrics.items():
+    warnings = []
+    for name, stat in v.metrics.metrics.items():
+        band = v.metrics.thresholds.metrics.get(name)
+        band_text = "-"
+        ratio_text = "-"
+        if band is not None:
+            lo = f"{band.low:.2f}" if band.low is not None else "-inf"
+            hi = f"{band.high:.2f}" if band.high is not None else "inf"
+            band_text = f"{lo} .. {hi}"
+            if band.high is not None:
+                half = band.high - stat.mean
+            elif band.low is not None:
+                half = stat.mean - band.low
+            else:
+                half = 0.0
+            ci_width = stat.ci_high - stat.ci_low
+            if half > 0:
+                ratio = ci_width / half
+                ratio_text = f"{ratio:.2f}"
+                if ratio > 1.0:
+                    needed = int(m.total_words * ratio * ratio) - m.total_words
+                    warnings.append(
+                        f"{name}: CI width {ci_width:.2f} exceeds the band half-width {half:.2f}; "
+                        f"about {max(needed, 0):,} more words would narrow it to fit"
+                    )
         table.add_row(
-            name, f"{s.mean:.2f}", f"{s.std:.2f}", f"{s.p10:.2f}", f"{s.p50:.2f}", f"{s.p90:.2f}"
+            name,
+            f"{stat.mean:.2f}",
+            f"{stat.ci_low:.2f} .. {stat.ci_high:.2f}",
+            f"{stat.within_std:.2f}",
+            band_text,
+            ratio_text,
         )
     console.print(table)
+    for w in warnings:
+        console.print(f"[yellow]warning:[/] {w}")
     tt = Table(title="Tell rates (/1k words)")
-    for col in ("id", "pattern", "voice", "llm", "ratio", "banned"):
+    for col in ("id", "pattern", "voice", "limit", "llm", "ratio", "banned"):
         tt.add_column(col)
     for p in v.lexicon.patterns:
         tt.add_row(
             p.id,
             p.name,
             f"{p.corpus_per_1k:.2f}",
+            f"{v.metrics.thresholds.tells.get(p.id, 0.0):.2f}",
             "-" if p.llm_per_1k is None else f"{p.llm_per_1k:.2f}",
             "-" if p.ratio is None else f"{p.ratio:.1f}",
             "yes" if p.banned else "",
         )
     console.print(tt)
+    st = v.metrics.thresholds.stats
+    if st:
+        console.print(
+            f"thresholds: {100 * st.llm_fail_rate:.0f}% of {st.llm_docs} LLM-reference documents "
+            f"fail, {100 * st.heldout_pass_rate:.0f}% of {st.heldout_docs} held-out documents "
+            f"pass ({st.method})"
+        )
     console.print(
         "[bold]Encouraged words:[/] " + ", ".join(e.term for e in v.lexicon.encouraged_words[:40])
     )
@@ -601,71 +334,16 @@ def voice_show(
     console.print(v.rules)
 
 
-@voice_app.command("edit")
-def voice_edit(voice: Path) -> None:
-    import os
-    import subprocess
-
-    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
-    files = [str(voice / f) for f in ("profile.md", "rules.md", "exemplars.md")]
-    subprocess.run([editor, *files], check=False)
-
-
-@voice_app.command("update")
-def voice_update(
-    ctx: typer.Context,
-    voice: Path,
-    accept: list[Path] = typer.Option(..., "--accept", help="Accepted texts to fold in"),
-    corpus: Path | None = typer.Option(None, "--corpus", help="Corpus dir (default: recorded)"),
-    weight: float | None = typer.Option(None, "--weight", help="Weight for accepted docs (0.5)"),
-    regenerate: bool = typer.Option(
-        False, "--regenerate", help="Also rewrite profile.md, rules.md and exemplars.md"
-    ),
-    no_llm: bool = typer.Option(False, "--no-llm", help="Template profile when regenerating"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    from deslop.voice.pack import is_packed
-    from deslop.voice.update import update
-
-    if is_packed(voice):
-        fail("packed voices are read-only; `deslop voice unpack` first")
-
-    s = Settings(ctx, "voice_update")
-    try:
-        res = update(
-            voice,
-            accept,
-            corpus=s.path("corpus", corpus),
-            weight=float(s.get("weight", weight, 0.5)),
-            regenerate=bool(s.get("regenerate", regenerate or None, False)),
-            use_llm=not s.get("no_llm", no_llm or None, False),
-            progress=s.progress(json_out),
-        )
-    except (FileNotFoundError, ValueError) as exc:
-        fail(str(exc))
-    if json_out:
-        print_json(res.model_dump_json())
-        return
-    console.print(
-        f"updated [bold]{res.voice}[/]: added {len(res.added)}, skipped {len(res.skipped)}, "
-        f"now {res.total_words} words; previous voice saved to {res.snapshot}"
-    )
-
-
 @voice_app.command("diff")
 def voice_diff(
-    a: str = typer.Argument(..., help="Voice dir, or dir@prev, or dir@<snapshot stamp>"),
-    b: str = typer.Argument(...),
+    a: Path = typer.Argument(..., help="A voice (.voice zip or directory)"),
+    b: Path = typer.Argument(...),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    from deslop.voice import Voice
+    """Metric, tell, lexicon, share and rule differences between two voices."""
     from deslop.voice.diff import diff_voices
-    from deslop.voice.update import resolve_ref
 
-    try:
-        va, vb = Voice.load(resolve_ref(a)), Voice.load(resolve_ref(b))
-    except FileNotFoundError as exc:
-        fail(str(exc))
+    va, vb = load_voice(a), load_voice(b)
     d = diff_voices(va, vb)
     if json_out:
         print_json(d.to_json())
@@ -724,16 +402,11 @@ def voice_diff(
 
 
 @voice_app.command("validate")
-def voice_validate(
-    ctx: typer.Context,
-    voice: Path,
-    corpus: Path | None = typer.Option(None, "--corpus", help="Corpus dir (default: recorded)"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
+def voice_validate(voice: Path, json_out: bool = typer.Option(False, "--json")) -> None:
+    """Schema and checksum, calibrated thresholds, and the exemplars' own score."""
     from deslop.voice.validate import validate
 
-    s = Settings(ctx, "voice_validate")
-    result = validate(voice, corpus=s.path("corpus", corpus))
+    result = validate(voice)
     if json_out:
         print_json(result.to_json())
     else:
@@ -743,97 +416,301 @@ def voice_validate(
     raise typer.Exit(0 if result.ok else 1)
 
 
-@voice_app.command("export")
-def voice_export(
-    ctx: typer.Context,
+@voice_app.command("pack")
+def voice_pack(
     voice: Path,
-    out: Path | None = typer.Option(None, "--out", "-o", help="JSONL file to write"),
-    fmt: str | None = typer.Option(None, "--format", help="openai-ft (default) or jsonl"),
-    corpus: Path | None = typer.Option(None, "--corpus"),
-    no_pairs: bool = typer.Option(False, "--no-pairs", help="Skip accepted convert pairs"),
-    no_chunks: bool = typer.Option(False, "--no-chunks", help="Skip summarized corpus chunks"),
-    max_chunks: int | None = typer.Option(None, "--max-chunks"),
-    cost_model: str | None = typer.Option(
-        None, "--cost-model", help="Model whose training price to estimate with (gpt-4.1)"
+    out: Path | None = typer.Option(None, "--out", "-o", help="Default: <dir>.voice"),
+    strip_exemplars: bool = typer.Option(
+        False, "--strip-exemplars", help="Share the voice without its corpus excerpts"
     ),
-    json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    from deslop.voice import Voice
-    from deslop.voice.export import export, write_jsonl
+    """Zip an unpacked voice directory (plumbing; `voice` writes zips directly)."""
+    import tempfile
 
-    s = Settings(ctx, "voice_export")
-    out = s.path("out", out)
-    if out is None:
-        fail("--out is required")
-    v = Voice.load(voice)
+    from deslop.voice.pack import PackError, pack_voice
+
+    target = out or voice.with_name(voice.name.removesuffix(".voice") + ".voice")
+    if voice.is_file():
+        work = Path(tempfile.mkdtemp(prefix="deslop-voice-"))
+        load_voice(voice).write_dir(work)
+        voice = work
     try:
-        res = export(
-            v,
-            fmt=s.get("format", fmt, "openai-ft"),
-            corpus=s.path("corpus", corpus),
-            include_pairs=not s.get("no_pairs", no_pairs or None, False),
-            include_chunks=not s.get("no_chunks", no_chunks or None, False),
-            max_chunks=s.get("max_chunks", max_chunks),
-            cost_model=s.get("cost_model", cost_model, "gpt-4.1"),
-            progress=s.progress(json_out),
-        )
-    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        pack_voice(voice, target, strip_exemplars=strip_exemplars)
+    except PackError as exc:
         fail(str(exc))
-    n = write_jsonl(res, v, out)
+    console.print(f"packed -> {target}" + (" (exemplars stripped)" if strip_exemplars else ""))
+
+
+@voice_app.command("unpack")
+def voice_unpack(
+    archive: Path,
+    out: Path | None = typer.Option(None, "--out", "-o", help="Default: <name>.voice.d"),
+) -> None:
+    """Extract a .voice zip into a working directory, verifying its checksum (plumbing)."""
+    from deslop.voice.pack import PackError, unpack_voice
+
+    target = out or archive.with_name(archive.name + ".d")
+    try:
+        unpack_voice(archive, target)
+    except PackError as exc:
+        fail(str(exc))
+    console.print(f"unpacked {archive} -> {target}")
+
+
+@voice_app.command("edit")
+def voice_edit(voice: Path) -> None:
+    """Open profile.md, rules.md and exemplars.md in $VISUAL or $EDITOR; a zip is unpacked
+    to a temporary directory and repacked when the editor closes."""
+    import os
+    import subprocess
+    import tempfile
+
+    from deslop.voice.pack import PackError, is_packed, pack_voice, unpack_voice
+
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
+    work = voice
+    if is_packed(voice):
+        work = Path(tempfile.mkdtemp(prefix="deslop-edit-"))
+        try:
+            unpack_voice(voice, work)
+        except PackError as exc:
+            fail(str(exc))
+    files = [str(work / f) for f in ("profile.md", "rules.md", "exemplars.md")]
+    subprocess.run([editor, *files], check=False)
+    if work != voice:
+        pack_voice(work, voice)
+        console.print(f"repacked {voice}")
+
+
+# ------------------------------------------------------------------ score
+
+
+@app.command("score")
+def score_cmd(
+    ctx: typer.Context,
+    file: Path | None = typer.Argument(None, help="Text file to score (default: stdin)"),
+    voice: Path | None = typer.Option(None, "--voice", "-v"),
+    patterns: list[Path] = typer.Option([], "--patterns"),
+    annotate: Path | None = typer.Option(
+        None, "--annotate", help="Write the input with inline [Tn] markers here"
+    ),
+    judge: bool = typer.Option(False, "--judge", help="Also ask an LLM judge (costs a call)"),
+    models: str | None = typer.Option(None, "--models", help="Provider for --judge (claude,gpt)"),
+    json_out: bool = typer.Option(False, "--json"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Print only the verdict line"),
+) -> None:
+    """Score a text against a voice. Exit 0 on PASS, 2 on FAIL."""
+    from deslop.score import score
+
+    s = Settings(ctx, "score")
+    text = read_input(file)
+    v = load_voice(s.voice(voice))
+    report = score(text, v, patterns=s.paths("patterns", patterns))
+    if s.get("judge", judge or None, False):
+        from deslop.apply import ExemplarIndex, ProviderPool
+        from deslop.judge import judge_paragraph
+        from deslop.providers.base import ProviderError
+
+        pool = ProviderPool(tuple(_as_list(s.get("models", models, "claude,gpt"))))
+        try:
+            provider = pool.for_iteration(0)
+        except ProviderError as exc:
+            fail(str(exc))
+        report.judge = judge_paragraph(
+            text, v, provider, exemplars=ExemplarIndex(v).closest(text, 2)
+        )
+    annotate = s.path("annotate", annotate)
+    if annotate is not None:
+        annotate.write_text(report.annotate(text), encoding="utf-8")
     if json_out:
-        print_json(res.to_json())
-        return
-    cost = (
-        f"${res.estimated_training_cost:.2f} to train {res.cost_model}"
-        if res.estimated_training_cost is not None
-        else f"no training price for {res.cost_model} in pricing.yaml"
+        print(report.to_json())
+    elif quiet:
+        console.print(report.renderables(show_hits=False)[0])
+    else:
+        for item in report.renderables():
+            console.print(item)
+        if report.judge:
+            j = report.judge
+            console.print(
+                f"judge ({j.provider}): voice {j.voice}/5, model prose {j.model_prose}/5, "
+                f"fidelity {j.fidelity}/5, overall {j.overall:.1f}. {j.note}"
+            )
+    raise typer.Exit(0 if report.verdict == "PASS" else 2)
+
+
+# ------------------------------------------------------------------ apply
+
+
+def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
+    before, after = result.report_before, result.report_after
+    color = "green" if after.verdict == "PASS" else "red"
+    rewritten = sum(1 for u in result.units if not u.kept_original)
+    fallbacks = [u for u in result.units if u.kept_original and "already" not in u.reason]
+    unpriced = (
+        f" ({result.cost.unpriced_calls} unpriced calls)" if result.cost.unpriced_calls else ""
+    )
+    sep = after.separation
+    context = (
+        f" (held-out p90 {sep.heldout_p90:.0f}, LLM median {sep.llm_median:.0f})" if sep else ""
     )
     console.print(
-        f"wrote {n} record(s) to {out} ({res.pairs} pairs, {res.chunks} chunks); "
-        f"about {res.tokens:,} tokens, estimated {cost}; "
-        f"summaries cost ${res.summary_cost:.3f}. No job was launched."
+        f"[bold {color}]{after.verdict}[/]: distance {before.distance:.0f} -> "
+        f"{after.distance:.0f}{context}; {rewritten}/{len(result.units)} unit(s) rewritten"
+        + (f", {len(fallbacks)} kept original" if fallbacks else "")
+        + f"; ${result.cost.usd:.3f} over {result.cost.calls} call(s){unpriced}; "
+        f"stopped: {result.stopped}"
+    )
+    if not result.exemplars_used:
+        console.print("[yellow]this voice has no exemplars; wrote from profile and rules alone[/]")
+    for u in result.units:
+        tried = len([c for c in u.candidates if c.text])
+        console.print(f"  unit {u.index + 1} ({u.kind}): {tried} candidate(s); {u.reason}")
+    if after.fixes:
+        console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
+    if show_diff:
+        console.print(result.diff, markup=False, highlight=False)
+        console.print("[bold]Meaning[/]")
+        console.print(result.meaning_diff, markup=False, highlight=False)
+    elif out is None:
+        console.print(result.text, markup=False, highlight=False)
+
+
+@app.command("apply")
+def apply_cmd(
+    ctx: typer.Context,
+    file: Path | None = typer.Argument(None, help="Text file to rewrite (default: stdin)"),
+    voice: Path | None = typer.Option(None, "--voice", "-v"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Write the result here"),
+    brief: Path | None = typer.Option(
+        None, "--brief", help="Draft from this brief yaml instead of rewriting a file"
+    ),
+    mode: str | None = typer.Option(
+        None, "--mode", help="rewrite (paragraphs, default) or edit (flagged sentences)"
+    ),
+    models: str | None = typer.Option(None, "--models", help="Providers in rotation (claude,gpt)"),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
+    n: int | None = typer.Option(None, "--n", help="Candidates per unit in rewrite mode (3)"),
+    judge_min: float | None = typer.Option(None, "--judge-min", help="Acceptance gate (4)"),
+    max_iter: int | None = typer.Option(None, "--max-iter", help="Edit-mode iterations (4)"),
+    patterns: list[Path] = typer.Option([], "--patterns"),
+    show_diff: bool = typer.Option(False, "--diff", help="Print the unified diff and meaning diff"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Write a text, or a piece from a brief, in a voice. Exit 0 on PASS, 2 on FAIL."""
+    from deslop.apply import apply
+    from deslop.draft import load_brief
+
+    s = Settings(ctx, "apply")
+    v = load_voice(s.voice(voice))
+    brief = s.path("brief", brief)
+    if brief is not None:
+        try:
+            source: Any = load_brief(brief)
+        except (ValueError, OSError) as exc:
+            fail(str(exc))
+    else:
+        source = read_input(file)
+    mode = s.get("mode", mode, "rewrite")
+    if mode not in ("edit", "rewrite"):
+        fail("--mode must be rewrite or edit")
+    budget = s.get("budget", budget)
+    result = apply(
+        source,
+        v,
+        mode="edit" if mode == "edit" else "rewrite",
+        models=tuple(_as_list(s.get("models", models, "claude,gpt"))),
+        budget=None if budget is None else float(budget),
+        n=int(s.get("n", n, 3)),
+        judge_min=float(s.get("judge_min", judge_min, 4.0)),
+        max_iter=int(s.get("max_iter", max_iter, 4)),
+        patterns=s.paths("patterns", patterns),
+        progress=s.progress(json_out),
+    )
+    out = s.path("out", out)
+    if out is not None:
+        out.write_text(result.text, encoding="utf-8")
+    if json_out:
+        print_json(result.to_json())
+    else:
+        if result.draft is not None:
+            incomplete = [x.heading for x in result.draft if not x.complete]
+            console.print(
+                f"drafted {len(result.draft)} section(s)"
+                + (f"; incomplete: {', '.join(incomplete)}" if incomplete else "")
+            )
+        print_apply_summary(result, s.get("diff", show_diff or None, False), out)
+    raise typer.Exit(0 if result.report_after.verdict == "PASS" else 2)
+
+
+# ------------------------------------------------------------------ lab
+
+
+@lab_app.command("calibrate-thresholds")
+def lab_calibrate_thresholds(
+    voice: Path,
+    out: Path | None = typer.Option(None, "--out", "-o", help="Write the retuned voice here"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Retune the voice's per-metric bands and per-tell limits against its held-out documents
+    and the LLM-reference documents, and report the separation."""
+    from deslop.baselines import has_baseline, llm_reference
+    from deslop.thresholds import calibrate_thresholds
+
+    v = load_voice(voice)
+    llm = llm_reference() if has_baseline("llm_reference") else None
+    v.metrics.thresholds = calibrate_thresholds(
+        v.metrics, llm.documents if llm else [], banned=set(v.lexicon.banned_ids())
+    )
+    st = v.metrics.thresholds.stats
+    target = out or (voice if not v.read_only else None)
+    if target is not None:
+        v.read_only = False
+        v.save(target)
+    if json_out:
+        print_json(v.metrics.thresholds.model_dump_json())
+        return
+    assert st is not None
+    console.print(
+        f"{100 * st.llm_fail_rate:.0f}% of {st.llm_docs} LLM-reference documents fail; "
+        f"{100 * st.heldout_pass_rate:.0f}% of {st.heldout_docs} held-out documents pass "
+        f"({st.method}); raw held-out p90 {st.raw_heldout_p90:.3f}, LLM median "
+        f"{st.raw_llm_median:.3f}"
+        + (f"; written to {target}" if target else "; not written (read-only voice; use --out)")
     )
 
 
-# ------------------------------------------------------------------ blind
-
-
-@app.command("blind")
-def blind_cmd(
+@lab_app.command("blind")
+def lab_blind(
     ctx: typer.Context,
     voice: Path | None = typer.Option(None, "--voice", "-v"),
     candidates: Path | None = typer.Option(None, "--candidates", help="Dir of .md/.txt drafts"),
+    texts: Path | None = typer.Option(
+        None, "--texts", help="Human texts to pair against (default: the voice's exemplars)"
+    ),
     n: int | None = typer.Option(None, "--n", help="Pairs to judge (5)"),
-    corpus: Path | None = typer.Option(None, "--corpus"),
     seed: int | None = typer.Option(None, "--seed"),
     min_overlap: float | None = typer.Option(
         None, "--min-overlap", help="Skip pairs whose lexical overlap is below this (0.03)"
     ),
     json_out: bool = typer.Option(False, "--json", help="Print the summary as JSON at the end"),
 ) -> None:
+    """Can you tell a draft from the real thing? Pairs candidate paragraphs with human ones."""
     from deslop import blind
-    from deslop.voice import Voice
-    from deslop.voice.update import corpus_for
 
     s = Settings(ctx, "blind")
-    v = Voice.load(s.voice(voice))
+    v = load_voice(s.voice(voice))
     candidates = s.path("candidates", candidates)
     if candidates is None or not candidates.is_dir():
         fail("--candidates must be a directory of .md or .txt files")
-    try:
-        corp = corpus_for(v, s.path("corpus", corpus))
-    except FileNotFoundError as exc:
-        fail(str(exc))
     cands = blind.candidates_from_dir(candidates)
     if not cands:
         fail(f"no paragraphs of {blind.MIN_WORDS}+ words under {candidates}")
+    pool = blind.control_pool(v, s.path("texts", texts))
+    if not pool:
+        fail("no human paragraphs to pair with; give --texts DIR or a voice with exemplars")
     min_overlap = float(s.get("min_overlap", min_overlap, blind.MIN_OVERLAP))
     pairing = blind.make_pairs(
-        cands,
-        blind.corpus_pool(corp),
-        int(s.get("n", n, 5)),
-        seed=s.get("seed", seed),
-        min_overlap=min_overlap,
+        cands, pool, int(s.get("n", n, 5)), seed=s.get("seed", seed), min_overlap=min_overlap
     )
     pairs = pairing.pairs
     session = []
@@ -883,7 +760,59 @@ def blind_cmd(
         )
 
 
-# ------------------------------------------------------------------ doctor
+@lab_app.command("export")
+def lab_export(
+    ctx: typer.Context,
+    voice: Path,
+    out: Path | None = typer.Option(None, "--out", "-o", help="JSONL file to write"),
+    fmt: str | None = typer.Option(None, "--format", help="openai-ft (default) or jsonl"),
+    corpus: Path | None = typer.Option(None, "--corpus", help="Texts to summarize into chunks"),
+    no_pairs: bool = typer.Option(False, "--no-pairs", help="Skip accepted apply pairs"),
+    no_chunks: bool = typer.Option(False, "--no-chunks", help="Skip summarized corpus chunks"),
+    max_chunks: int | None = typer.Option(None, "--max-chunks"),
+    cost_model: str | None = typer.Option(
+        None, "--cost-model", help="Model whose training price to estimate with (gpt-4.1)"
+    ),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Write fine-tuning data from accepted pairs and summarized corpus chunks."""
+    from deslop.voice.export import export, write_jsonl
+
+    s = Settings(ctx, "voice_export")
+    out = s.path("out", out)
+    if out is None:
+        fail("--out is required")
+    v = load_voice(voice)
+    try:
+        res = export(
+            v,
+            fmt=s.get("format", fmt, "openai-ft"),
+            corpus=s.path("corpus", corpus),
+            include_pairs=not s.get("no_pairs", no_pairs or None, False),
+            include_chunks=not s.get("no_chunks", no_chunks or None, False),
+            max_chunks=s.get("max_chunks", max_chunks),
+            cost_model=s.get("cost_model", cost_model, "gpt-4.1"),
+            progress=s.progress(json_out),
+        )
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        fail(str(exc))
+    n = write_jsonl(res, v, out)
+    if json_out:
+        print_json(res.to_json())
+        return
+    cost = (
+        f"${res.estimated_training_cost:.2f} to train {res.cost_model}"
+        if res.estimated_training_cost is not None
+        else f"no training price for {res.cost_model} in pricing.yaml"
+    )
+    console.print(
+        f"wrote {n} record(s) to {out} ({res.pairs} pairs, {res.chunks} chunks); "
+        f"about {res.tokens:,} tokens, estimated {cost}; "
+        f"summaries cost ${res.summary_cost:.3f}. No job was launched."
+    )
+
+
+# ------------------------------------------------------------------ doctor, providers
 
 
 @app.command("doctor")
@@ -901,9 +830,6 @@ def doctor_cmd(ctx: typer.Context, json_out: bool = typer.Option(False, "--json"
         for c in checks:
             console.print(f"[{colors[c.status]}]{c.status:4s}[/] {c.name:10s} {c.detail}")
     raise typer.Exit(0 if ok else 1)
-
-
-# ------------------------------------------------------------------ providers
 
 
 @providers_app.command("test")

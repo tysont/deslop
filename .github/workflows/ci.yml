@@ -37,7 +37,7 @@ jobs:
       - name: Test with coverage gate
         run: uv run pytest --cov=deslop --cov-report=term-missing --cov-fail-under=85
       - name: Worked example replays from the committed cache
-        run: uv run python examples/convert_example.py
+        run: uv run python examples/apply_example.py
         env:
           DESLOP_CACHE_ONLY: "1"
       - name: Build docs

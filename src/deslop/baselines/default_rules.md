@@ -1,7 +1,7 @@
 # Rules
 
-These rules are enforced by the converter. Calibration appends voice-derived
-rules below the default set. Edit freely; the converter reads whatever is here.
+These rules are enforced when a voice is applied. Calibration appends voice-derived
+rules below the default set. Edit freely; apply reads whatever is here.
 
 ## Default
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -79,7 +80,7 @@ def extract_propositions(text: str, provider: CachingProvider) -> list[str]:
     return props or [line.strip() for line in completion.text.splitlines() if line.strip()]
 
 
-def _json_block(text: str) -> dict:
+def _json_block(text: str) -> dict[str, Any]:
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
         raise ValueError("no JSON object in response")

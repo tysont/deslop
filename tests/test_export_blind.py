@@ -157,12 +157,12 @@ def test_blind_record_and_summary(tmp_path):
     assert blind.summarize("v", [], log_path=tmp_path / "none.jsonl").accuracy is None
 
 
-def test_candidates_from_dir_and_corpus_pool(tmp_path):
+def test_candidates_from_dir_and_control_pool(tmp_path, fixture_voice):
     (tmp_path / "a.md").write_text("# Title\n\n" + "Plain prose words here. " * 12 + "\n\nshort\n")
     (tmp_path / "b.py").write_text("print('no')")
     cands = blind.candidates_from_dir(tmp_path)
     assert len(cands) == 1 and cands[0][0] == "a.md"
-    from deslop.corpus import Corpus
-
-    pool = blind.corpus_pool(Corpus.load(FIXTURES / "corpus_small"))
+    pool = blind.control_pool(fixture_voice, FIXTURES / "corpus_small")
     assert len(pool) > 50 and all(blind.count_words(p) >= blind.MIN_WORDS for _, p in pool)
+    from_exemplars = blind.control_pool(fixture_voice, None)
+    assert from_exemplars and all(src.startswith("exemplar") for src, _ in from_exemplars)

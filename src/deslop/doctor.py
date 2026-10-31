@@ -104,8 +104,8 @@ def check_voice(cfg: Config) -> Check:
         voice_dir = resolve_voice(cfg, "doctor", None)
     except ConfigError as exc:
         return Check(name="voice", status="warn", detail=str(exc))
-    if not voice_dir.is_dir():
-        return Check(name="voice", status="fail", detail=f"{voice_dir} is not a directory")
+    if not voice_dir.exists():
+        return Check(name="voice", status="fail", detail=f"{voice_dir} does not exist")
     result = validate(voice_dir)
     failed = [f"{c.name}: {c.detail}" for c in result.checks if not c.ok]
     if failed:

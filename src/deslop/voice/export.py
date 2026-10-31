@@ -9,8 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from deslop.converter import PAIRS_DIR
-from deslop.corpus import Corpus
+from deslop.apply import pairs_dir
 from deslop.nlp import count_words, is_prose_paragraph, split_paragraphs
 from deslop.pricing import training_price
 from deslop.providers.base import CachingProvider
@@ -54,7 +53,7 @@ def estimate_tokens(text: str) -> int:
 
 
 def load_pairs(voice: Voice, path: Path | None = None) -> list[tuple[str, str]]:
-    target = path or (PAIRS_DIR / f"{voice.name}.jsonl")
+    target = path or (pairs_dir() / f"{voice.name}.jsonl")
     if not target.exists():
         return []
     seen: set[tuple[str, str]] = set()
@@ -141,9 +140,13 @@ def export(
             )
         result.pairs = len(result.records)
     if include_chunks:
-        from deslop.voice.update import corpus_for
+        from deslop.voice.collect import gather_files
 
-        corp: Corpus = corpus_for(voice, corpus)
+        if corpus is None:
+            raise FileNotFoundError(
+                "corpus chunks need --corpus DIR (the texts the voice was built from)"
+            )
+        files = [p for p in gather_files([corpus]) if p.is_file()]
         if provider is None:
             from deslop.providers.base import first_available
 
@@ -151,7 +154,9 @@ def export(
         if provider is None:
             raise RuntimeError("corpus chunks need a provider to write summaries")
         chunks = [
-            (doc.entry.path, chunk) for doc in corp.documents() for chunk in chunk_text(doc.text)
+            (path.name, chunk)
+            for path in files
+            for chunk in chunk_text(path.read_text(encoding="utf-8", errors="ignore"))
         ]
         if max_chunks is not None:
             chunks = chunks[:max_chunks]

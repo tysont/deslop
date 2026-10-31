@@ -12,8 +12,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from deslop.corpus import Corpus
 from deslop.nlp import WORD_RE, count_words, is_prose_paragraph, split_paragraphs
+from deslop.voice.collect import gather_files
+from deslop.voice.exemplars import parse_exemplars
+from deslop.voice.model import Voice
 
 BLIND_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "blind"
 MIN_WORDS = 40
@@ -94,10 +96,17 @@ def candidates_from_dir(directory: Path) -> list[tuple[str, str]]:
     return out
 
 
-def corpus_pool(corpus: Corpus) -> list[tuple[str, str]]:
+def control_pool(voice: Voice, texts: Path | None) -> list[tuple[str, str]]:
+    """Human-written paragraphs to pair candidates with: every file under `texts` when
+    given, else the voice's own exemplars."""
     out: list[tuple[str, str]] = []
-    for doc in corpus.documents():
-        out.extend(paragraphs_of(doc.text, doc.entry.path))
+    if texts is not None:
+        for path in gather_files([texts]):
+            if path.is_file():
+                out.extend(paragraphs_of(path.read_text(encoding="utf-8"), path.name))
+        return out
+    for i, body in enumerate(parse_exemplars(voice.exemplars), 1):
+        out.extend(paragraphs_of(body, f"exemplar {i}"))
     return out
 
 

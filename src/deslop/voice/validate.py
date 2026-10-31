@@ -1,22 +1,16 @@
-# ABOUTME: Voice validation: files parse against the schema, the corpus hash still matches,
-# ABOUTME: and the voice's own exemplars score PASS against it.
+# ABOUTME: Voice validation: the zip or directory parses against the schema (checksum verified
+# ABOUTME: for a zip), thresholds are calibrated, and the voice's own exemplars score PASS.
 from __future__ import annotations
 
+import json
+import zipfile
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from deslop.corpus import Corpus
-from deslop.voice.model import SCHEMA_VERSION, Voice
-
-REQUIRED_FILES = (
-    "voice.yaml",
-    "metrics.json",
-    "lexicon.json",
-    "rules.md",
-    "profile.md",
-    "exemplars.md",
-)
+from deslop.thresholds import HELDOUT_PASS_TARGET, LLM_FAIL_TARGET
+from deslop.voice.model import SCHEMA_VERSION, VOICE_FILES, Voice
+from deslop.voice.pack import PackError, is_packed
 
 
 class Check(BaseModel):
@@ -39,22 +33,29 @@ class ValidationResult(BaseModel):
     def to_json(self, indent: int | None = 1) -> str:
         data = self.model_dump()
         data["ok"] = self.ok
-        import json
-
         return json.dumps(data, indent=indent)
 
 
-def validate(voice_dir: Path, *, corpus: Path | None = None) -> ValidationResult:
+def validate(path: Path) -> ValidationResult:
     from deslop.score import score
     from deslop.voice.exemplars import parse_exemplars
 
-    result = ValidationResult(voice=str(voice_dir))
-    missing = [f for f in REQUIRED_FILES if not (voice_dir / f).exists()]
+    result = ValidationResult(voice=str(path))
+    required = ("voice.yaml", *VOICE_FILES)
+    if is_packed(path):
+        with zipfile.ZipFile(path) as zf:
+            names = set(zf.namelist())
+        missing = [f for f in required if f not in names]
+    else:
+        missing = [f for f in required if not (path / f).exists()]
     if missing:
         result.checks.append(Check(name="schema", ok=False, detail="missing " + ", ".join(missing)))
         return result
     try:
-        voice = Voice.load(voice_dir)
+        voice = Voice.load(path)
+    except PackError as exc:
+        result.checks.append(Check(name="checksum", ok=False, detail=str(exc)[:300]))
+        return result
     except Exception as exc:  # noqa: BLE001 - any parse failure is a schema failure
         result.checks.append(Check(name="schema", ok=False, detail=str(exc)[:300]))
         return result
@@ -70,27 +71,37 @@ def validate(voice_dir: Path, *, corpus: Path | None = None) -> ValidationResult
         result.checks.append(Check(name="schema", ok=False, detail="metrics or lexicon empty"))
     else:
         result.checks.append(Check(name="schema", ok=True, detail=f"schema v{SCHEMA_VERSION}"))
-
-    path = corpus or (Path(voice.meta.corpus_path) if voice.meta.corpus_path else None)
-    if path is None:
+    if voice.read_only:
         result.checks.append(
-            Check(name="corpus_hash", ok=True, detail="skipped: no corpus path recorded")
+            Check(name="checksum", ok=True, detail=f"verified {voice.meta.checksum or ''}"[:80])
         )
-    elif not (path / "corpus.yaml").exists():
-        result.checks.append(Check(name="corpus_hash", ok=False, detail=f"corpus not at {path}"))
+
+    stats = voice.metrics.thresholds.stats
+    if stats is None:
+        result.checks.append(Check(name="thresholds", ok=False, detail="not calibrated"))
     else:
-        actual = Corpus.load(path).content_hash()
-        ok = actual == voice.meta.corpus_hash
+        ok = (
+            stats.llm_fail_rate >= LLM_FAIL_TARGET
+            and stats.heldout_pass_rate >= HELDOUT_PASS_TARGET
+        )
         result.checks.append(
             Check(
-                name="corpus_hash",
+                name="thresholds",
                 ok=ok,
-                detail=f"voice {voice.meta.corpus_hash}, corpus {actual}",
+                detail=(
+                    f"{100 * stats.llm_fail_rate:.0f}% of {stats.llm_docs} LLM-reference documents "
+                    f"fail, {100 * stats.heldout_pass_rate:.0f}% of {stats.heldout_docs} held-out "
+                    f"documents pass ({stats.method})"
+                ),
             )
         )
 
     bodies = parse_exemplars(voice.exemplars)
-    if not bodies:
+    if not voice.meta.has_exemplars:
+        result.checks.append(
+            Check(name="exemplars_self_score", ok=True, detail="skipped: exemplars stripped")
+        )
+    elif not bodies:
         result.checks.append(Check(name="exemplars_self_score", ok=False, detail="no exemplars"))
     else:
         report = score("\n\n".join(bodies), voice)

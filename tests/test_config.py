@@ -51,12 +51,12 @@ def test_cli_reads_voice_and_options_from_config(
     fixture_voice.save(voice_dir)
     monkeypatch.chdir(tmp_path)
     heldout = str(fixtures_dir / "heldout_bradley.md")
-    (tmp_path / "deslop.yaml").write_text(f"default_voice: {voice_dir}\nscore:\n  sigma: 0.01\n")
+    (tmp_path / "deslop.yaml").write_text(f"default_voice: {voice_dir}\nscore:\n  quiet: true\n")
     r = runner.invoke(app, ["score", heldout, "--json"])
-    assert r.exit_code == 2, r.output  # config sigma makes everything fail
-    assert json.loads(r.stdout)["options"]["sigma"] == 0.01
-    r = runner.invoke(app, ["score", heldout, "--sigma", "100", "--tell-mult", "1000", "--json"])
-    assert r.exit_code == 0, r.output  # flags override config
+    assert r.exit_code == 0, r.output  # the voice came from the config file
+    assert json.loads(r.stdout)["voice"] == "fixture"
+    r = runner.invoke(app, ["score", heldout, "--voice", str(tmp_path / "nope.voice")])
+    assert r.exit_code == 1, r.output  # the flag overrides the config, and is checked
     r = runner.invoke(app, ["--config", str(tmp_path / "missing.yaml"), "score", heldout])
     assert r.exit_code == 1 and "missing.yaml" in r.output
 

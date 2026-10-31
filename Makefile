@@ -33,7 +33,7 @@ docs-serve:
 	uv run mkdocs serve
 
 example:
-	uv run python examples/convert_example.py
+	uv run python examples/apply_example.py
 
 llm-reference:
 	uv run python scripts/build_llm_reference.py

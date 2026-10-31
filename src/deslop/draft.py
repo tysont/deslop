@@ -1,30 +1,24 @@
-# ABOUTME: draft(brief, voice): writes a piece section by section from a brief, one claim per
-# ABOUTME: section, strips any citation or quotation the brief did not list, then converts it.
+# ABOUTME: Briefs and section drafting: writes a piece section by section from a brief, one
+# ABOUTME: claim per section, stripping any citation or quotation the brief did not list.
 from __future__ import annotations
 
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from pydantic import BaseModel, Field
 
-from deslop.converter import (
-    DEFAULT_MODELS,
-    ConvertResult,
-    Cost,
-    ProviderFactory,
-    ProviderPool,
-    clean_response,
-    convert,
-)
-from deslop.lock import ANY_QUOTE_RE, LOCK_CLASSES
+from deslop.lock import ANY_QUOTE_RE
 from deslop.metrics.anchors import CITATION_PATTERNS
 from deslop.nlp import analyze
 from deslop.providers.base import ProviderError
-from deslop.report import Report
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
+
+if TYPE_CHECKING:
+    from deslop.apply import ProviderPool
 
 # ---------------------------------------------------------------- brief
 
@@ -73,23 +67,6 @@ class SectionLog(BaseModel):
     complete: bool
     missing: list[str] = Field(default_factory=list)
     stripped: list[str] = Field(default_factory=list)
-
-
-class DraftResult(BaseModel):
-    """What [`draft`][deslop.draft.draft] produced: `draft_text` as assembled from the sections,
-    `text` after conversion, a `SectionLog` per section (attempts, missing items, stripped
-    unlisted citations), the full `ConvertResult`, the final `Report`, and the total `Cost`."""
-
-    brief: Brief
-    draft_text: str  # assembled before conversion
-    text: str  # after conversion
-    sections: list[SectionLog]
-    convert: ConvertResult
-    report: Report
-    cost: Cost
-
-    def to_json(self, indent: int | None = 1) -> str:
-        return self.model_dump_json(indent=indent)
 
 
 # ---------------------------------------------------------------- A6 unlisted_citation
@@ -226,6 +203,16 @@ def build_section_prompt(
     return system, user
 
 
+def clean_response(raw: str) -> str:
+    out = raw.strip()
+    for fence in ("```", "'''"):
+        if out.startswith(fence) and out.endswith(fence):
+            out = out[len(fence) : -len(fence)].strip()
+    if len(out) > 2 and out[0] in '"“' and out[-1] in '"”' and out.count('"') == 2:
+        out = out[1:-1].strip()
+    return out
+
+
 def clean_section(raw: str) -> str:
     text = clean_response(raw)
     lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
@@ -242,32 +229,16 @@ def assemble(brief: Brief, sections: list[SectionLog]) -> str:
     return "\n\n".join(parts).strip() + "\n"
 
 
-def draft(
+def draft_sections(
     brief: Brief,
     voice: Voice,
+    pool: ProviderPool,
     *,
-    models: tuple[str, ...] = DEFAULT_MODELS,
-    convert_max_iter: int = 2,
-    budget: float | None = None,
-    sigma: float = 1.5,
-    tell_mult: float = 2.0,
-    tell_floor: float = 1.0,
-    lock: tuple[str, ...] = LOCK_CLASSES,
-    preserve_length: float = 0.15,
-    patterns: tuple[str, ...] = (),
-    provider_factory: ProviderFactory | None = None,
-    pairs_path: Path | None = None,
     progress: Callable[[str], None] | None = None,
-) -> DraftResult:
-    """Write a piece from `brief` in `voice`, then convert it in rewrite mode.
-
-    Each section is drafted on its own with the previous section as context, up to two
-    attempts when a listed reference or quotation is missing. Any quotation or citation the
-    brief did not list is stripped before conversion (a sentence holding an unlisted
-    quotation is dropped whole). The remaining options are passed to
-    [`convert`][deslop.convert]; `convert_max_iter` caps its iterations.
-    """
-    pool = ProviderPool(models, provider_factory)
+) -> tuple[str, list[SectionLog]]:
+    """Write each section of `brief` in `voice` (two attempts when a listed reference or
+    quotation is missing), strip unlisted quotations and citations, and assemble the piece.
+    The result is what `apply` then rewrites paragraph by paragraph."""
     provider = pool.for_iteration(0)
     logs: list[SectionLog] = []
     previous = ""
@@ -309,41 +280,4 @@ def draft(
             progress(f"  incomplete after {best.attempts} attempts; missing: {best.missing}")
         logs.append(best)
         previous = best.text
-    draft_text = assemble(brief, logs)
-    if progress:
-        progress("converting the draft (rewrite mode)")
-    result = convert(
-        draft_text,
-        voice,
-        mode="rewrite",
-        max_iter=convert_max_iter,
-        models=models,
-        budget=budget,
-        sigma=sigma,
-        tell_mult=tell_mult,
-        tell_floor=tell_floor,
-        lock=lock,
-        preserve_length=preserve_length,
-        patterns=patterns,
-        provider_factory=provider_factory,
-        pairs_path=pairs_path,
-        progress=progress,
-    )
-    usage = pool.usage()
-    cost = Cost(
-        usd=round(usage.cost_usd + result.cost.usd, 4),
-        input_tokens=usage.input_tokens + result.cost.input_tokens,
-        output_tokens=usage.output_tokens + result.cost.output_tokens,
-        calls=usage.calls + result.cost.calls,
-        cached=usage.cached + result.cost.cached,
-        unpriced_calls=usage.unpriced + result.cost.unpriced_calls,
-    )
-    return DraftResult(
-        brief=brief,
-        draft_text=draft_text,
-        text=result.text,
-        sections=logs,
-        convert=result,
-        report=result.report_after,
-        cost=cost,
-    )
+    return assemble(brief, logs), logs
