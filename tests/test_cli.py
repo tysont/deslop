@@ -296,3 +296,16 @@ def test_draft_command_with_fake_provider(fixture_voice, tmp_path, monkeypatch):
     assert len(data["sections"]) == 3 and data["convert"]["iterations"] == []
     r = runner.invoke(app, ["draft", str(tmp_path / "nope.yaml"), "--voice", str(voice_dir)])
     assert r.exit_code == 1
+    # Without --max-iter the convert loop runs with draft's default of two iterations.
+    r = runner.invoke(
+        app, ["draft", str(FIXTURES / "brief_sample.yaml"), "--voice", str(voice_dir), "--json"]
+    )
+    assert r.exit_code in (0, 2), r.output
+    assert len(json.loads(r.stdout)["convert"]["iterations"]) <= 2
+
+
+def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path):
+    voice_dir = tmp_path / "v.voice"
+    fixture_voice.save(voice_dir)
+    r = runner.invoke(app, ["score", str(tmp_path / "missing.md"), "--voice", str(voice_dir)])
+    assert r.exit_code == 1 and "missing.md" in r.output and "Traceback" not in r.output

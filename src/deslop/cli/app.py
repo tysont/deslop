@@ -240,7 +240,10 @@ def calibrate_cmd(
 def read_input(path: Path | None) -> str:
     if path is None or str(path) == "-":
         return sys.stdin.read()
-    return path.read_text(encoding="utf-8")
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        fail(f"cannot read {path}: {exc.strerror or exc}")
 
 
 def score_options(
@@ -431,10 +434,9 @@ def draft_cmd(
         fail(str(exc))
     v = Voice.load(s.voice(voice))
     opts = convert_options(s, "rewrite", max_iter, models, budget, lock, preserve_length)
-    opts["convert_max_iter"] = (
-        opts.pop("max_iter") if max_iter is not None else int(s.get("max_iter", None, 2))
-    )
     opts.pop("mode")
+    opts.pop("max_iter")  # convert defaults to 4 rounds; draft defaults to 2
+    opts["convert_max_iter"] = int(s.get("max_iter", max_iter, 2))
     result = draft(
         b,
         v,

@@ -82,10 +82,10 @@ def strip_markdown(text: str) -> str:
 
 
 def pandoc_to_text(path: Path) -> str:
-    if shutil.which("pandoc") is None:
-        raise IngestError("pandoc is required to ingest this file type; install it first")
     if path.suffix.lower() == ".epub" and _epub_is_drm(path):
         raise IngestError(f"{path.name} is DRM-protected; deslop does not circumvent DRM")
+    if shutil.which("pandoc") is None:
+        raise IngestError("pandoc is required to ingest this file type; install it first")
     proc = subprocess.run(
         ["pandoc", str(path), "-t", "plain", "--wrap=none"],
         capture_output=True,

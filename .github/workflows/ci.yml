@@ -25,7 +25,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Install
-        run: uv sync --all-groups
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q pandoc
+          uv sync --all-groups
       - name: Lint
         run: |
           uv run ruff check src tests scripts examples

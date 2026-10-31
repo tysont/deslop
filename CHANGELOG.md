@@ -30,8 +30,10 @@ Hardening release.
   the full command reference, the voice directory format, the metrics and tells catalog, and
   exit codes; mkdocs-material site with a page per concept, an examples page, and the API
   reference rendered from docstrings.
-- Fixed: the A/B headings in `blind` were printed as raw markup; `ConvertResult.changed`
-  compared the text with a report object.
+- Fixed: `deslop draft` crashed when `--max-iter` was omitted; a missing input file now
+  exits 1 with a message instead of a traceback; a DRM-protected epub is refused before pandoc
+  is looked for; the A/B headings in `blind` were printed as raw markup;
+  `ConvertResult.changed` compared the text with a report object.
 
 ## v0.3.0 - 2026-10-31
 
