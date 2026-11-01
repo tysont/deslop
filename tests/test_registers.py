@@ -29,7 +29,10 @@ def test_register_fixture_is_complete_and_marked(name):
     original = (folder / "original.md").read_text(encoding="utf-8")
     assert original.startswith("---") and "license:" in original and "author:" in original
     slop = (folder / "slop.md").read_text(encoding="utf-8")
-    assert re.search(r"generated_by: (anthropic|claude-cli):", slop) and "scripts/build_register_slop.py" in slop
+    assert (
+        re.search(r"generated_by: (anthropic|claude-cli):", slop)
+        and "scripts/build_register_slop.py" in slop
+    )
     words = len(body_of(folder / "original.md").split())
     assert (300 <= words <= 500) if name == "product" else (850 <= words <= 1100)
     corpus = sorted((folder / "corpus").glob("*.txt"))
