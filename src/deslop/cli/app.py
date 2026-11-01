@@ -727,8 +727,7 @@ def lab_calibrate_thresholds(
         f"{100 * st.llm_fail_rate:.0f}% of {st.llm_docs} LLM-reference documents fail; "
         f"{100 * st.heldout_pass_rate:.0f}% of {st.heldout_docs} held-out documents pass "
         f"({st.method}); raw held-out p90 {st.raw_heldout_p90:.3f}, LLM median "
-        f"{st.raw_llm_median:.3f}"
-        + f"; written to {target}"
+        f"{st.raw_llm_median:.3f}; written to {target}"
     )
 
 
