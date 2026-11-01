@@ -36,9 +36,12 @@ def _ping(name: str) -> str:
     return provider.complete("Reply with the single word OK.", "ping", temperature=0.0).model
 
 
-def check_providers(ping: Callable[[str], str] = _ping) -> list[Check]:
+def check_providers(
+    ping: Callable[[str], str] = _ping, *, default: str | None = None
+) -> list[Check]:
     """The Anthropic API (pinged when a key is set), the Claude Code CLI (installed and
-    logged in, no model call), and the configured default; OpenAI is only noted."""
+    logged in, no model call), and the configured default (`default`, else DESLOP_PROVIDER,
+    else the API); OpenAI is only noted."""
     from deslop.providers.base import default_provider_name, list_providers
     from deslop.providers.claude_cli import cli_status
 
@@ -71,7 +74,7 @@ def check_providers(ping: Callable[[str], str] = _ping) -> list[Check]:
                 f"({st.detail or 'run claude auth login'})",
             )
         )
-    default = default_provider_name()
+    default = default or default_provider_name()
     ok_default = (default == "anthropic" and configured.get("anthropic")) or (
         default == "claude-cli" and st.installed and st.logged_in
     )
@@ -152,7 +155,13 @@ def check_spend() -> Check:
 
 def run(cfg: Config | None = None, *, ping: Callable[[str], str] = _ping) -> list[Check]:
     cfg = cfg or Config()
-    checks = [check_spacy(), *check_providers(ping), check_pricing(), check_cache()]
+    default = cfg.get("doctor", "provider", None)
+    checks = [
+        check_spacy(),
+        *check_providers(ping, default=str(default) if default else None),
+        check_pricing(),
+        check_cache(),
+    ]
     checks.append(check_voice(cfg))
     return checks
 

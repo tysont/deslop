@@ -62,6 +62,9 @@ def test_provider_checks_use_the_ping_and_the_cli_status(monkeypatch):
     assert checks[-1].status == "ok" and "default provider: claude-cli" in checks[-1].detail
     monkeypatch.setenv("OPENAI_API_KEY", "sk")
     assert "unused unless named" in doctor.check_providers(ping=lambda n: "x")[-1].detail
+    monkeypatch.delenv("DESLOP_PROVIDER")
+    checks = doctor.run(Config({"provider": "claude-cli"}), ping=lambda n: "x")
+    assert any("default provider: claude-cli" in c.detail for c in checks), "config file wins"
 
 
 def test_voice_check_resolves_and_validates(fixture_voice, tmp_path, monkeypatch):
