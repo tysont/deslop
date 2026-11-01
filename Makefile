@@ -1,6 +1,6 @@
 # ABOUTME: Build, test, and run entry points for deslop.
 # ABOUTME: Use these targets instead of invoking tools directly.
-.PHONY: install test cov lint fmt typecheck check build docs docs-serve example llm-reference english-generic
+.PHONY: install test cov lint fmt typecheck check build docs docs-serve example llm-reference english-generic registers register-fixtures
 
 install:
 	uv sync --all-groups
@@ -40,3 +40,10 @@ llm-reference:
 
 english-generic:
 	uv run python scripts/build_english_generic.py .cache/gutenberg
+
+register-fixtures:
+	uv run python scripts/build_registers.py $(GUTENBERG_DIR)
+	uv run python scripts/build_register_slop.py
+
+registers:
+	uv run python scripts/run_registers.py $(BUDGET) $(N) $(ONLY)

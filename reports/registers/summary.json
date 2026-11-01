@@ -1,0 +1,42 @@
+[
+ {
+  "register": "essay",
+  "before": 25.8,
+  "after": 25.8,
+  "verdict": "PASS",
+  "kept": true,
+  "cost": 0.0,
+  "calls": 0,
+  "stopped": "no_judge"
+ },
+ {
+  "register": "explainer",
+  "before": 31.3,
+  "after": 31.3,
+  "verdict": "FAIL",
+  "kept": true,
+  "cost": 0.0,
+  "calls": 0,
+  "stopped": "no_judge"
+ },
+ {
+  "register": "product",
+  "before": 26.3,
+  "after": 26.3,
+  "verdict": "FAIL",
+  "kept": true,
+  "cost": 0.0,
+  "calls": 0,
+  "stopped": "no_judge"
+ },
+ {
+  "register": "fiction",
+  "before": 40.4,
+  "after": 40.4,
+  "verdict": "FAIL",
+  "kept": true,
+  "cost": 0.0,
+  "calls": 0,
+  "stopped": "no_judge"
+ }
+]

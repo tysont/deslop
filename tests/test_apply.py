@@ -295,7 +295,27 @@ def test_without_a_qualified_judge_the_original_is_kept(fixture_voice, slop_text
     finally:
         fixture_voice.meta.judge_calibration = {}
     assert "OFF" in result.judge_gate and result.text == slop_text
-    assert all("no judge is clear" in c.reason for u in result.units for c in u.candidates)
+    assert result.stopped == "no_judge" and result.cost.calls == 0
+    assert all(u.kept_original and not u.candidates for u in result.units)
+    assert "no provider qualifies as judge" in result.units[0].reason
+
+
+def test_judge_provider_failure_keeps_the_original_without_crashing(fixture_voice, slop_text):
+    from deslop.providers.base import ProviderError
+
+    class Broken(Scripted):
+        def _raw_complete(self, system, user, model, temperature):
+            if "Answer four questions" in system or "compare an original passage" in system:
+                raise ProviderError("credit_balance_exhausted")
+            return super()._raw_complete(system, user, model, temperature)
+
+    a, b = Broken("anthropic"), Broken("openai")
+    result = apply(
+        slop_text, fixture_voice, n=1, provider_factory=factory_for({"anthropic": a, "openai": b})
+    )
+    assert result.text == slop_text and result.stopped == "no_candidate_passed"
+    reasons = [c.reason for u in result.units for c in u.candidates if c.text]
+    assert reasons and all("unavailable" in r for r in reasons)
 
 
 def test_edit_mode_uses_locks_and_iterates(fixture_voice, slop_text):

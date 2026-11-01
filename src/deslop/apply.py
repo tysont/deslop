@@ -799,7 +799,12 @@ class JudgePlan:
             role = "judge" if p in self.judges else "writer only"
             acc = f"{100 * cal.accuracy:.0f}% on {cal.pairs} pairs" if cal else "uncalibrated"
             parts.append(f"{p.name}: {role} ({acc})")
-        state = "on" if self.enabled else "OFF (no provider reached 80% as judge)"
+        if self.enabled:
+            state = "on"
+        elif len(self.available) < 2:
+            state = "OFF (one provider only; a provider never judges its own writing)"
+        else:
+            state = "OFF (no provider reached 80% as judge)"
         return f"judge gate {state}; " + "; ".join(parts)
 
 
@@ -1143,6 +1148,22 @@ def _rewrite_loop(
     sections = sections_of(a, opts.chunk_words)
     if not sections:
         return text, [], [], "nothing_to_rewrite"
+    if not opts.plan.enabled:
+        # No provider may judge, so no candidate could pass: generate nothing.
+        untouched = [
+            UnitLog(
+                index=sec.index,
+                kind=sec.kind,
+                start=sec.start,
+                end=sec.end,
+                original=text[sec.start : sec.end],
+                final=text[sec.start : sec.end],
+                kept_original=True,
+                reason="no provider qualifies as judge; nothing was generated",
+            )
+            for sec in sections
+        ]
+        return text, untouched, [], "no_judge"
     writer0 = opts.plan.writer(0)
     by_paragraph = [extract_propositions(p.text, writer0) for p in a.paragraphs]
     if progress and len(sections) > 1:
@@ -1389,9 +1410,13 @@ def _rewrite_section(
             notes = _verify_section(section_text, candidate, cand, document, voice, opts)
             if not notes:
                 checkers = plan.judges_for(writer.name) or [pool.other_than(writer)]
-                cand.semantic = _check_meaning_by_paragraph(
-                    section_text, candidate, props, checkers[0]
-                )
+                try:
+                    cand.semantic = _check_meaning_by_paragraph(
+                        section_text, candidate, props, checkers[0]
+                    )
+                except ProviderError as exc:
+                    cand.reason = f"meaning check unavailable: {exc}"[:200]
+                    continue
                 if not cand.semantic.ok:
                     notes.extend(
                         f'the claim "{c.proposition}" was dropped'
@@ -1420,11 +1445,16 @@ def _rewrite_section(
                 cand.reason = "no judge is clear of the writer"
                 cand.reader_notes = linter
                 continue
-            cand.verdicts.append(
-                compare_document(
-                    candidate, section_text, section_text, voice, judges[0], exemplars=near
+            try:
+                cand.verdicts.append(
+                    compare_document(
+                        candidate, section_text, section_text, voice, judges[0], exemplars=near
+                    )
                 )
-            )
+            except ProviderError as exc:
+                cand.reason = f"judge unavailable: {exc}"[:200]
+                cand.reader_notes = linter
+                continue
             vs = cand.vs_original
             cand.judge_ok = vs is not None and vs.no_loss
             if not cand.judge_ok:
@@ -1446,15 +1476,18 @@ def _rewrite_section(
                 judges = plan.judges_for(writers[id(x)], writers[id(y)])
                 if not judges:
                     continue  # no provider is clear of both writers
-                v = compare_document(
-                    x.text,
-                    y.text,
-                    section_text,
-                    voice,
-                    judges[0],
-                    exemplars=near,
-                    against=f"candidate {y.attempt}",
-                )
+                try:
+                    v = compare_document(
+                        x.text,
+                        y.text,
+                        section_text,
+                        voice,
+                        judges[0],
+                        exemplars=near,
+                        against=f"candidate {y.attempt}",
+                    )
+                except ProviderError:
+                    continue  # the pair stays uncompared
                 x.verdicts.append(v)
                 y.verdicts.append(v.flipped(f"candidate {x.attempt}"))
         for cand in eligible:

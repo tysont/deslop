@@ -1,0 +1,2025 @@
+{
+ "mode": "rewrite",
+ "text": "# The Open Window\n\n\"My aunt will be down presently, Mr. Nuttel,\" said a very self-possessed young lady of fifteen; \"in the meantime you must try and put up with me.\"\n\nFramton Nuttel tried to say something suitably polite, something that would flatter the niece of the moment without slighting the aunt who was still to come. Privately he doubted, more than ever, whether these formal visits to a succession of total strangers would do much for the nerve cure he was supposed to be undergoing.\n\n\"I know how it will be,\" his sister had said when he was preparing to migrate to this rural retreat; \"you will bury yourself down there and not speak to a living soul, and your nerves will be worse than ever from moping. I shall just give you letters of introduction to all the people I know there. Some of them, as far as I can remember, were quite nice.\"\n\nFramton wondered whether Mrs. Sappleton, the lady to whom he was now presenting one of those letters, belonged to the nice division.\n\n\"Do you know many of the people round here?\" asked the niece, once she judged that they had shared a sufficient period of silent communion.\n\n\"Hardly a soul,\" said Framton. \"My sister was staying here, at the rectory, you know, some four years ago, and she gave me letters of introduction to some of the people here.\"\n\nThe last remark came out in a tone of distinct regret.\n\n\"Then you know practically nothing about my aunt?\" pursued the self-possessed young lady.\n\n\"Only her name and address,\" admitted the caller. He was wondering whether Mrs. Sappleton was married or widowed. Something he could not quite define about the room seemed to suggest that a man lived there.\n\n\"Her great tragedy happened just three years ago,\" said the child; \"that would be since your sister's time.\"\n\n\"Her tragedy?\" asked Framton. Somehow, in this restful country spot, tragedies seemed out of place.\n\n\"You may wonder why we keep that window wide open on an October afternoon,\" said the niece, pointing to a large French window that opened on to a lawn.\n\n\"It is quite warm for the time of the year,\" said Framton; \"but has that window got anything to do with the tragedy?\"\n\n\"Out through that window, three years ago to a day, her husband and her two young brothers went off for their day's shooting. They never came back. In crossing the moor to their favourite snipe-shooting ground they were all three engulfed in a treacherous piece of bog. It had been that dreadful wet summer, you know, and places that were safe in other years gave way suddenly without warning. Their bodies were never recovered. That was the dreadful part of it.\" Here the child's voice lost its composure and became falteringly human. \"Poor aunt always thinks that they will come back some day, they and the little brown spaniel that was lost with them, and walk in at that window just as they used to do. That is why the window is kept open every evening till it is quite dusk. Poor dear aunt, she has often told me how they went out, her husband with his white waterproof coat over his arm, and Ronnie, her youngest brother, singing 'Bertie, why do you bound?' as he always did to tease her, because she said it got on her nerves. Do you know, sometimes on still, quiet evenings like this, I almost get a creepy feeling that they will all walk in through that window—\"\n\nShe broke off with a little shudder. Framton was relieved when the aunt bustled into the room in a whirl of apologies for her late appearance.\n\n\"I hope Vera has been amusing you?\" she said.\n\n\"She has been very interesting,\" said Framton.\n\n\"I hope you don't mind the open window,\" said Mrs. Sappleton briskly; \"my husband and brothers will be home directly from shooting, and they always come in this way. They've been out for snipe in the marshes to-day, so they'll make a fine mess over my poor carpets. So like you men-folk, isn't it?\"\n\nShe chattered on cheerfully about the shooting, the scarcity of birds, and the prospects for duck in the winter. To Framton it was all purely horrible. He made a desperate but only partly successful effort to steer the talk towards something less ghastly. He was aware that his hostess was giving him only a fragment of her attention; her eyes kept straying past him to the open window and the lawn beyond. It was certainly an unfortunate coincidence that he should have called on this tragic anniversary.\n\n\"The doctors agree in ordering me complete rest, an absence of mental excitement, and avoidance of anything in the nature of violent physical exercise,\" announced Framton. He laboured under the fairly widespread delusion that total strangers and chance acquaintances are hungry for every detail of one's ailments and infirmities, their cause and cure. \"On the matter of diet they are not so much in agreement,\" he continued.\n\n\"No?\" said Mrs. Sappleton, in a voice that stopped short of a yawn only at the last moment. Then she suddenly brightened into alert attention, though not to anything Framton was saying.\n\n\"Here they are at last!\" she cried. \"Just in time for tea, and don't they look as if they were muddy up to the eyes!\"\n\nFramton shivered slightly and turned to the niece with a look meant to convey sympathetic understanding. But the child was staring out through the open window, her eyes full of dazed horror. Seized by a chill shock of nameless fear, Framton swung round in his seat and looked the same way.",
+ "report_before": {
+  "voice": "fiction",
+  "verdict": "FAIL",
+  "distance": 40.4,
+  "words": 950,
+  "sentences": 55,
+  "paragraphs_count": 23,
+  "metrics": [
+   {
+    "name": "citation_per_100w",
+    "group": "anchors",
+    "value": 0.0,
+    "voice_mean": 0.0,
+    "voice_std": 0.0,
+    "z": 0.0,
+    "slop_side": "both",
+    "band_low": 0.0,
+    "band_high": 0.0,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "quote_per_para",
+    "group": "anchors",
+    "value": 0.9444444444444444,
+    "voice_mean": 0.5485219057148257,
+    "voice_std": 0.2759682945452344,
+    "z": 1.43466675902772,
+    "slop_side": "both",
+    "band_low": -0.454112266153465,
+    "band_high": 1.5511560775831166,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "concrete_per_100w",
+    "group": "anchors",
+    "value": 2.9493223055837468,
+    "voice_mean": 4.9970084952857645,
+    "voice_std": 2.8043842847454385,
+    "z": -0.7301731794891625,
+    "slop_side": "both",
+    "band_low": -8.148927669562575,
+    "band_high": 18.142944660134106,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "reader_address_per_1k",
+    "group": "anchors",
+    "value": 15.225597784332882,
+    "voice_mean": 10.85117612461313,
+    "voice_std": 9.59720245244946,
+    "z": 0.4558017486234527,
+    "slop_side": "both",
+    "band_low": -27.514614497351435,
+    "band_high": 49.2169667465777,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "first_person_per_1k",
+    "group": "anchors",
+    "value": 14.623308135178458,
+    "voice_mean": 26.38191282085814,
+    "voice_std": 25.51941273511456,
+    "z": -0.46077097493313046,
+    "slop_side": "low",
+    "band_low": -73.28377450484183,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "committed_claim_per_para",
+    "group": "anchors",
+    "value": 0.0,
+    "voice_mean": 0.016583587626577773,
+    "voice_std": 0.04568548279447591,
+    "z": -0.3629946891703416,
+    "slop_side": "low",
+    "band_low": -0.041408008654567494,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "sent_len_mean",
+    "group": "rhythm",
+    "value": 16.958333333333332,
+    "voice_mean": 15.593938630197037,
+    "voice_std": 5.1841249547365775,
+    "z": 0.26318707883182657,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "sent_len_std",
+    "group": "rhythm",
+    "value": 9.402497786942183,
+    "voice_mean": 10.426564578635578,
+    "voice_std": 4.310248645966371,
+    "z": -0.2375887972615547,
+    "slop_side": "low",
+    "band_low": -13.640857321665742,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "sent_len_cv",
+    "group": "rhythm",
+    "value": 0.5522320338860852,
+    "voice_mean": 0.6658390585194561,
+    "voice_std": 0.1289498213105686,
+    "z": -0.8810173095141761,
+    "slop_side": "both",
+    "band_low": 0.19240527709073163,
+    "band_high": 1.1392728399481806,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "pct_sent_lt8",
+    "group": "rhythm",
+    "value": 24.731182795698928,
+    "voice_mean": 27.52340601688925,
+    "voice_std": 14.905420652927015,
+    "z": -0.18732938078081057,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "pct_sent_gt30",
+    "group": "rhythm",
+    "value": 4.838709677419355,
+    "voice_mean": 10.264885942783987,
+    "voice_std": 11.096197945567864,
+    "z": -0.4890122086846874,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "max_run_similar_len",
+    "group": "rhythm",
+    "value": 4.0,
+    "voice_mean": 5.72771934804093,
+    "voice_std": 2.46902258330671,
+    "z": -0.699758422511888,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 18.083173967915776,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "pct_compound_multi",
+    "group": "rhythm",
+    "value": 7.39247311827957,
+    "voice_mean": 16.239987931962414,
+    "voice_std": 12.22252352278493,
+    "z": -0.7238697309266391,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "para_len_mean",
+    "group": "rhythm",
+    "value": 2.4404761904761907,
+    "voice_mean": 3.6826966430236587,
+    "voice_std": 1.2704899946658244,
+    "z": -0.977749102915374,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "para_len_std",
+    "group": "rhythm",
+    "value": 1.7972905083932114,
+    "voice_mean": 2.6108083662925354,
+    "voice_std": 1.115362379432666,
+    "z": -0.729375378711557,
+    "slop_side": "low",
+    "band_low": -0.3718082033401604,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_det",
+    "group": "rhythm",
+    "value": 3.696236559139785,
+    "voice_mean": 10.253464395712173,
+    "voice_std": 5.748428512169663,
+    "z": -1.140699205476847,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_pron",
+    "group": "rhythm",
+    "value": 50.806451612903224,
+    "voice_mean": 38.42909206005035,
+    "voice_std": 11.70463503175833,
+    "z": 1.0574750531963817,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_adv_conj",
+    "group": "rhythm",
+    "value": 21.706989247311828,
+    "voice_mean": 21.797559289862992,
+    "voice_std": 7.2720610974211155,
+    "z": -0.012454521673818546,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 30.121747341176857,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_noun",
+    "group": "rhythm",
+    "value": 7.39247311827957,
+    "voice_mean": 11.045030013536946,
+    "voice_std": 7.254575322356473,
+    "z": -0.5034832134144734,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_top_word_share",
+    "group": "rhythm",
+    "value": 13.642473118279568,
+    "voice_mean": 16.319074099427606,
+    "voice_std": 7.369937907111328,
+    "z": -0.36317822685661416,
+    "slop_side": "both",
+    "band_low": -13.341523098798778,
+    "band_high": 45.979671297653994,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "connective_opener_pct",
+    "group": "rhythm",
+    "value": 7.862903225806452,
+    "voice_mean": 10.955299124309517,
+    "voice_std": 6.448013693690528,
+    "z": -0.47958891612296334,
+    "slop_side": "both",
+    "band_low": -5.187652434118165,
+    "band_high": 27.098250682737202,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "semicolons_per_1k",
+    "group": "rhythm",
+    "value": 6.188881827925373,
+    "voice_mean": 5.262811364921277,
+    "voice_std": 4.923835695088309,
+    "z": 0.18807907500404247,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "colons_per_1k",
+    "group": "rhythm",
+    "value": 0.0,
+    "voice_mean": 2.3966365897226374,
+    "voice_std": 2.7174437777310043,
+    "z": -0.8819452344746456,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 15.010503227699482,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "em_dashes_per_1k",
+    "group": "rhythm",
+    "value": 0.8488964346349746,
+    "voice_mean": 4.772347495995747,
+    "voice_std": 4.647650271653828,
+    "z": -0.8441794954517188,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 19.945174045973822,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "parens_per_1k",
+    "group": "rhythm",
+    "value": 0.0,
+    "voice_mean": 0.4388161594218251,
+    "voice_std": 0.9775260884564607,
+    "z": -0.4489048063307725,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "questions_per_1k",
+    "group": "rhythm",
+    "value": 8.434426307253085,
+    "voice_mean": 5.400182741322365,
+    "voice_std": 5.6697627605336445,
+    "z": 0.5351623505398899,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 41.26986747196084,
+    "overshoot": 0.0,
+    "flagged": false
+   }
+  ],
+  "tells": [
+   {
+    "id": "T1",
+    "name": "text_as_agent",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.0,
+    "llm_rate": 0.9247675789677058,
+    "threshold": 0.5,
+    "ratio_vs_voice": null,
+    "banned": true,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T2",
+    "name": "negative_parallelism",
+    "count": 2,
+    "rate_per_1k": 2.1052631578947367,
+    "voice_rate": 1.169830489957282,
+    "llm_rate": 4.838724197324061,
+    "threshold": 3.509491469871846,
+    "ratio_vs_voice": 1.79963095163609,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T2",
+      "sentence_idx": 1,
+      "para_idx": 1,
+      "start": 275,
+      "end": 292,
+      "text": "without slighting",
+      "note": ""
+     },
+     {
+      "pattern_id": "T2",
+      "sentence_idx": 23,
+      "para_idx": 13,
+      "start": 2519,
+      "end": 2534,
+      "text": "without warning",
+      "note": ""
+     }
+    ]
+   },
+   {
+    "id": "T3",
+    "name": "balance_markers",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.48965003411802094,
+    "llm_rate": 1.276689214962528,
+    "threshold": 2.9379002047081255,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T4",
+    "name": "triad",
+    "count": 3,
+    "rate_per_1k": 3.1578947368421053,
+    "voice_rate": 3.598983272000416,
+    "llm_rate": 3.735587179566501,
+    "threshold": 21.593899632002497,
+    "ratio_vs_voice": 0.877440793184587,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T4",
+      "sentence_idx": 9,
+      "para_idx": 5,
+      "start": 1173,
+      "end": 1246,
+      "text": "staying here, at the rectory, you know, some four years ago, and she gave",
+      "note": "3"
+     },
+     {
+      "pattern_id": "T4",
+      "sentence_idx": 39,
+      "para_idx": 18,
+      "start": 3867,
+      "end": 3965,
+      "text": " on cheerfully about the shooting, the scarcity of birds, and the prospects for duck in the winter",
+      "note": "surface"
+     },
+     {
+      "pattern_id": "T4",
+      "sentence_idx": 45,
+      "para_idx": 19,
+      "start": 4665,
+      "end": 4711,
+      "text": "ailments and infirmities, their cause and cure",
+      "note": "4"
+     }
+    ]
+   },
+   {
+    "id": "T5",
+    "name": "aphoristic_close",
+    "count": 1,
+    "rate_per_1k": 1.0526315789473684,
+    "voice_rate": 0.17401793175173627,
+    "llm_rate": 1.7733904876811533,
+    "threshold": 0.5,
+    "ratio_vs_voice": 6.048983391258273,
+    "banned": true,
+    "flagged": true,
+    "hits": [
+     {
+      "pattern_id": "T5",
+      "sentence_idx": 2,
+      "para_idx": 1,
+      "start": 325,
+      "end": 492,
+      "text": "Privately he doubted, more than ever, whether these formal visits to a succession of total strangers would do much for the nerve cure he was supposed to be undergoing.",
+      "note": "antithesis"
+     }
+    ]
+   },
+   {
+    "id": "T6",
+    "name": "invented_label",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.0,
+    "llm_rate": 0.08937960797199604,
+    "threshold": 2.0,
+    "ratio_vs_voice": null,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T7",
+    "name": "meta_commentary",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.029634836036626512,
+    "llm_rate": 0.4080734210229363,
+    "threshold": 0.5,
+    "ratio_vs_voice": 0.0,
+    "banned": true,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T8",
+    "name": "epithet_substitution",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.03273966752616186,
+    "llm_rate": 0.3479987278526073,
+    "threshold": 0.5,
+    "ratio_vs_voice": 0.0,
+    "banned": true,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T9",
+    "name": "unanswered_question",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 1.4759065028700786,
+    "llm_rate": 0.28698163233777724,
+    "threshold": 8.855439017220473,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T10",
+    "name": "formula_openers",
+    "count": 2,
+    "rate_per_1k": 2.1052631578947367,
+    "voice_rate": 1.0685852992411782,
+    "llm_rate": 0.9160038893430976,
+    "threshold": 6.411511795447069,
+    "ratio_vs_voice": 1.9701404833004181,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T10",
+      "sentence_idx": 38,
+      "para_idx": 17,
+      "start": 3820,
+      "end": 3823,
+      "text": "So ",
+      "note": ""
+     },
+     {
+      "pattern_id": "T10",
+      "sentence_idx": 48,
+      "para_idx": 20,
+      "start": 4879,
+      "end": 4884,
+      "text": "Then ",
+      "note": ""
+     }
+    ]
+   },
+   {
+    "id": "T11",
+    "name": "hedge_stack",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.06446098571605736,
+    "llm_rate": 0.09874744722454429,
+    "threshold": 2.0,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T12",
+    "name": "intensifier_cluster",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.14352074397561773,
+    "llm_rate": 0.2168681178453205,
+    "threshold": 2.0,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T13",
+    "name": "colon_reveal",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.0,
+    "llm_rate": 0.024446803360837474,
+    "threshold": 2.0,
+    "ratio_vs_voice": null,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T14",
+    "name": "tidy_summary_close",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.03334377741571625,
+    "llm_rate": 0.0032693948588193695,
+    "threshold": 2.0,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T15",
+    "name": "monotone_run",
+    "count": 1,
+    "rate_per_1k": 1.0526315789473684,
+    "voice_rate": 4.0789308322932145,
+    "llm_rate": 1.9095003051586747,
+    "threshold": 24.47358499375929,
+    "ratio_vs_voice": 0.25806556233158007,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T15",
+      "sentence_idx": 52,
+      "para_idx": 22,
+      "start": 5093,
+      "end": 5382,
+      "text": "Framton shivered slightly and turned to the niece with a look meant to convey sympathetic understanding. But the child was staring out through the open window, her eyes full of dazed horror. Seized by a chill shock of nameless fear, Framton swung round in his seat and looked the same way.",
+      "note": "3 sentences of 16-19 words"
+     }
+    ]
+   }
+  ],
+  "paragraphs": [
+   {
+    "index": 0,
+    "start": 19,
+    "end": 165,
+    "words": 27,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 1,
+    "start": 167,
+    "end": 492,
+    "words": 55,
+    "deviation": 1.8181818181818181,
+    "flagged_sentences": [
+     2
+    ],
+    "tells": [
+     "T2",
+     "T5"
+    ]
+   },
+   {
+    "index": 2,
+    "start": 494,
+    "end": 850,
+    "words": 70,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 3,
+    "start": 852,
+    "end": 984,
+    "words": 22,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 4,
+    "start": 986,
+    "end": 1125,
+    "words": 25,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 5,
+    "start": 1127,
+    "end": 1302,
+    "words": 32,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T4"
+    ]
+   },
+   {
+    "index": 6,
+    "start": 1304,
+    "end": 1358,
+    "words": 11,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 7,
+    "start": 1360,
+    "end": 1449,
+    "words": 13,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 8,
+    "start": 1451,
+    "end": 1657,
+    "words": 35,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 9,
+    "start": 1659,
+    "end": 1767,
+    "words": 18,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 10,
+    "start": 1769,
+    "end": 1868,
+    "words": 15,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 11,
+    "start": 1870,
+    "end": 2021,
+    "words": 29,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 12,
+    "start": 2023,
+    "end": 2140,
+    "words": 23,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 13,
+    "start": 2142,
+    "end": 3313,
+    "words": 214,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T2"
+    ]
+   },
+   {
+    "index": 14,
+    "start": 3315,
+    "end": 3457,
+    "words": 26,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 15,
+    "start": 3459,
+    "end": 3504,
+    "words": 9,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 16,
+    "start": 3506,
+    "end": 3552,
+    "words": 7,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 17,
+    "start": 3554,
+    "end": 3852,
+    "words": 54,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T10"
+    ]
+   },
+   {
+    "index": 18,
+    "start": 3854,
+    "end": 4359,
+    "words": 87,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T4"
+    ]
+   },
+   {
+    "index": 19,
+    "start": 4361,
+    "end": 4785,
+    "words": 67,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T4"
+    ]
+   },
+   {
+    "index": 20,
+    "start": 4787,
+    "end": 4972,
+    "words": 32,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T10"
+    ]
+   },
+   {
+    "index": 21,
+    "start": 4974,
+    "end": 5091,
+    "words": 25,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 22,
+    "start": 5093,
+    "end": 5382,
+    "words": 51,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T15"
+    ]
+   }
+  ],
+  "fixes": [
+   "T5 aphoristic_close: 1 hits (1.1/1k; voice 0.2/1k, limit 0.5)"
+  ],
+  "distance_raw": 0.052,
+  "separation": {
+   "method": "all documents (corpus too small to split by author)",
+   "heldout_docs": 4,
+   "llm_docs": 267,
+   "heldout_pass_rate": 1.0,
+   "llm_fail_rate": 0.966,
+   "heldout_p90": 20.0,
+   "llm_median": 70.0
+  },
+  "judge": null
+ },
+ "report_after": {
+  "voice": "fiction",
+  "verdict": "FAIL",
+  "distance": 40.4,
+  "words": 950,
+  "sentences": 55,
+  "paragraphs_count": 23,
+  "metrics": [
+   {
+    "name": "citation_per_100w",
+    "group": "anchors",
+    "value": 0.0,
+    "voice_mean": 0.0,
+    "voice_std": 0.0,
+    "z": 0.0,
+    "slop_side": "both",
+    "band_low": 0.0,
+    "band_high": 0.0,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "quote_per_para",
+    "group": "anchors",
+    "value": 0.9444444444444444,
+    "voice_mean": 0.5485219057148257,
+    "voice_std": 0.2759682945452344,
+    "z": 1.43466675902772,
+    "slop_side": "both",
+    "band_low": -0.454112266153465,
+    "band_high": 1.5511560775831166,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "concrete_per_100w",
+    "group": "anchors",
+    "value": 2.9493223055837468,
+    "voice_mean": 4.9970084952857645,
+    "voice_std": 2.8043842847454385,
+    "z": -0.7301731794891625,
+    "slop_side": "both",
+    "band_low": -8.148927669562575,
+    "band_high": 18.142944660134106,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "reader_address_per_1k",
+    "group": "anchors",
+    "value": 15.225597784332882,
+    "voice_mean": 10.85117612461313,
+    "voice_std": 9.59720245244946,
+    "z": 0.4558017486234527,
+    "slop_side": "both",
+    "band_low": -27.514614497351435,
+    "band_high": 49.2169667465777,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "first_person_per_1k",
+    "group": "anchors",
+    "value": 14.623308135178458,
+    "voice_mean": 26.38191282085814,
+    "voice_std": 25.51941273511456,
+    "z": -0.46077097493313046,
+    "slop_side": "low",
+    "band_low": -73.28377450484183,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "committed_claim_per_para",
+    "group": "anchors",
+    "value": 0.0,
+    "voice_mean": 0.016583587626577773,
+    "voice_std": 0.04568548279447591,
+    "z": -0.3629946891703416,
+    "slop_side": "low",
+    "band_low": -0.041408008654567494,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "sent_len_mean",
+    "group": "rhythm",
+    "value": 16.958333333333332,
+    "voice_mean": 15.593938630197037,
+    "voice_std": 5.1841249547365775,
+    "z": 0.26318707883182657,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "sent_len_std",
+    "group": "rhythm",
+    "value": 9.402497786942183,
+    "voice_mean": 10.426564578635578,
+    "voice_std": 4.310248645966371,
+    "z": -0.2375887972615547,
+    "slop_side": "low",
+    "band_low": -13.640857321665742,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "sent_len_cv",
+    "group": "rhythm",
+    "value": 0.5522320338860852,
+    "voice_mean": 0.6658390585194561,
+    "voice_std": 0.1289498213105686,
+    "z": -0.8810173095141761,
+    "slop_side": "both",
+    "band_low": 0.19240527709073163,
+    "band_high": 1.1392728399481806,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "pct_sent_lt8",
+    "group": "rhythm",
+    "value": 24.731182795698928,
+    "voice_mean": 27.52340601688925,
+    "voice_std": 14.905420652927015,
+    "z": -0.18732938078081057,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "pct_sent_gt30",
+    "group": "rhythm",
+    "value": 4.838709677419355,
+    "voice_mean": 10.264885942783987,
+    "voice_std": 11.096197945567864,
+    "z": -0.4890122086846874,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "max_run_similar_len",
+    "group": "rhythm",
+    "value": 4.0,
+    "voice_mean": 5.72771934804093,
+    "voice_std": 2.46902258330671,
+    "z": -0.699758422511888,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 18.083173967915776,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "pct_compound_multi",
+    "group": "rhythm",
+    "value": 7.39247311827957,
+    "voice_mean": 16.239987931962414,
+    "voice_std": 12.22252352278493,
+    "z": -0.7238697309266391,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "para_len_mean",
+    "group": "rhythm",
+    "value": 2.4404761904761907,
+    "voice_mean": 3.6826966430236587,
+    "voice_std": 1.2704899946658244,
+    "z": -0.977749102915374,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "para_len_std",
+    "group": "rhythm",
+    "value": 1.7972905083932114,
+    "voice_mean": 2.6108083662925354,
+    "voice_std": 1.115362379432666,
+    "z": -0.729375378711557,
+    "slop_side": "low",
+    "band_low": -0.3718082033401604,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_det",
+    "group": "rhythm",
+    "value": 3.696236559139785,
+    "voice_mean": 10.253464395712173,
+    "voice_std": 5.748428512169663,
+    "z": -1.140699205476847,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_pron",
+    "group": "rhythm",
+    "value": 50.806451612903224,
+    "voice_mean": 38.42909206005035,
+    "voice_std": 11.70463503175833,
+    "z": 1.0574750531963817,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_adv_conj",
+    "group": "rhythm",
+    "value": 21.706989247311828,
+    "voice_mean": 21.797559289862992,
+    "voice_std": 7.2720610974211155,
+    "z": -0.012454521673818546,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 30.121747341176857,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_pct_noun",
+    "group": "rhythm",
+    "value": 7.39247311827957,
+    "voice_mean": 11.045030013536946,
+    "voice_std": 7.254575322356473,
+    "z": -0.5034832134144734,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "opener_top_word_share",
+    "group": "rhythm",
+    "value": 13.642473118279568,
+    "voice_mean": 16.319074099427606,
+    "voice_std": 7.369937907111328,
+    "z": -0.36317822685661416,
+    "slop_side": "both",
+    "band_low": -13.341523098798778,
+    "band_high": 45.979671297653994,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "connective_opener_pct",
+    "group": "rhythm",
+    "value": 7.862903225806452,
+    "voice_mean": 10.955299124309517,
+    "voice_std": 6.448013693690528,
+    "z": -0.47958891612296334,
+    "slop_side": "both",
+    "band_low": -5.187652434118165,
+    "band_high": 27.098250682737202,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "semicolons_per_1k",
+    "group": "rhythm",
+    "value": 6.188881827925373,
+    "voice_mean": 5.262811364921277,
+    "voice_std": 4.923835695088309,
+    "z": 0.18807907500404247,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "colons_per_1k",
+    "group": "rhythm",
+    "value": 0.0,
+    "voice_mean": 2.3966365897226374,
+    "voice_std": 2.7174437777310043,
+    "z": -0.8819452344746456,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 15.010503227699482,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "em_dashes_per_1k",
+    "group": "rhythm",
+    "value": 0.8488964346349746,
+    "voice_mean": 4.772347495995747,
+    "voice_std": 4.647650271653828,
+    "z": -0.8441794954517188,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 19.945174045973822,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "parens_per_1k",
+    "group": "rhythm",
+    "value": 0.0,
+    "voice_mean": 0.4388161594218251,
+    "voice_std": 0.9775260884564607,
+    "z": -0.4489048063307725,
+    "slop_side": "none",
+    "band_low": null,
+    "band_high": null,
+    "overshoot": 0.0,
+    "flagged": false
+   },
+   {
+    "name": "questions_per_1k",
+    "group": "rhythm",
+    "value": 8.434426307253085,
+    "voice_mean": 5.400182741322365,
+    "voice_std": 5.6697627605336445,
+    "z": 0.5351623505398899,
+    "slop_side": "high",
+    "band_low": null,
+    "band_high": 41.26986747196084,
+    "overshoot": 0.0,
+    "flagged": false
+   }
+  ],
+  "tells": [
+   {
+    "id": "T1",
+    "name": "text_as_agent",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.0,
+    "llm_rate": 0.9247675789677058,
+    "threshold": 0.5,
+    "ratio_vs_voice": null,
+    "banned": true,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T2",
+    "name": "negative_parallelism",
+    "count": 2,
+    "rate_per_1k": 2.1052631578947367,
+    "voice_rate": 1.169830489957282,
+    "llm_rate": 4.838724197324061,
+    "threshold": 3.509491469871846,
+    "ratio_vs_voice": 1.79963095163609,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T2",
+      "sentence_idx": 1,
+      "para_idx": 1,
+      "start": 275,
+      "end": 292,
+      "text": "without slighting",
+      "note": ""
+     },
+     {
+      "pattern_id": "T2",
+      "sentence_idx": 23,
+      "para_idx": 13,
+      "start": 2519,
+      "end": 2534,
+      "text": "without warning",
+      "note": ""
+     }
+    ]
+   },
+   {
+    "id": "T3",
+    "name": "balance_markers",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.48965003411802094,
+    "llm_rate": 1.276689214962528,
+    "threshold": 2.9379002047081255,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T4",
+    "name": "triad",
+    "count": 3,
+    "rate_per_1k": 3.1578947368421053,
+    "voice_rate": 3.598983272000416,
+    "llm_rate": 3.735587179566501,
+    "threshold": 21.593899632002497,
+    "ratio_vs_voice": 0.877440793184587,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T4",
+      "sentence_idx": 9,
+      "para_idx": 5,
+      "start": 1173,
+      "end": 1246,
+      "text": "staying here, at the rectory, you know, some four years ago, and she gave",
+      "note": "3"
+     },
+     {
+      "pattern_id": "T4",
+      "sentence_idx": 39,
+      "para_idx": 18,
+      "start": 3867,
+      "end": 3965,
+      "text": " on cheerfully about the shooting, the scarcity of birds, and the prospects for duck in the winter",
+      "note": "surface"
+     },
+     {
+      "pattern_id": "T4",
+      "sentence_idx": 45,
+      "para_idx": 19,
+      "start": 4665,
+      "end": 4711,
+      "text": "ailments and infirmities, their cause and cure",
+      "note": "4"
+     }
+    ]
+   },
+   {
+    "id": "T5",
+    "name": "aphoristic_close",
+    "count": 1,
+    "rate_per_1k": 1.0526315789473684,
+    "voice_rate": 0.17401793175173627,
+    "llm_rate": 1.7733904876811533,
+    "threshold": 0.5,
+    "ratio_vs_voice": 6.048983391258273,
+    "banned": true,
+    "flagged": true,
+    "hits": [
+     {
+      "pattern_id": "T5",
+      "sentence_idx": 2,
+      "para_idx": 1,
+      "start": 325,
+      "end": 492,
+      "text": "Privately he doubted, more than ever, whether these formal visits to a succession of total strangers would do much for the nerve cure he was supposed to be undergoing.",
+      "note": "antithesis"
+     }
+    ]
+   },
+   {
+    "id": "T6",
+    "name": "invented_label",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.0,
+    "llm_rate": 0.08937960797199604,
+    "threshold": 2.0,
+    "ratio_vs_voice": null,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T7",
+    "name": "meta_commentary",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.029634836036626512,
+    "llm_rate": 0.4080734210229363,
+    "threshold": 0.5,
+    "ratio_vs_voice": 0.0,
+    "banned": true,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T8",
+    "name": "epithet_substitution",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.03273966752616186,
+    "llm_rate": 0.3479987278526073,
+    "threshold": 0.5,
+    "ratio_vs_voice": 0.0,
+    "banned": true,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T9",
+    "name": "unanswered_question",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 1.4759065028700786,
+    "llm_rate": 0.28698163233777724,
+    "threshold": 8.855439017220473,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T10",
+    "name": "formula_openers",
+    "count": 2,
+    "rate_per_1k": 2.1052631578947367,
+    "voice_rate": 1.0685852992411782,
+    "llm_rate": 0.9160038893430976,
+    "threshold": 6.411511795447069,
+    "ratio_vs_voice": 1.9701404833004181,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T10",
+      "sentence_idx": 38,
+      "para_idx": 17,
+      "start": 3820,
+      "end": 3823,
+      "text": "So ",
+      "note": ""
+     },
+     {
+      "pattern_id": "T10",
+      "sentence_idx": 48,
+      "para_idx": 20,
+      "start": 4879,
+      "end": 4884,
+      "text": "Then ",
+      "note": ""
+     }
+    ]
+   },
+   {
+    "id": "T11",
+    "name": "hedge_stack",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.06446098571605736,
+    "llm_rate": 0.09874744722454429,
+    "threshold": 2.0,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T12",
+    "name": "intensifier_cluster",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.14352074397561773,
+    "llm_rate": 0.2168681178453205,
+    "threshold": 2.0,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T13",
+    "name": "colon_reveal",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.0,
+    "llm_rate": 0.024446803360837474,
+    "threshold": 2.0,
+    "ratio_vs_voice": null,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T14",
+    "name": "tidy_summary_close",
+    "count": 0,
+    "rate_per_1k": 0.0,
+    "voice_rate": 0.03334377741571625,
+    "llm_rate": 0.0032693948588193695,
+    "threshold": 2.0,
+    "ratio_vs_voice": 0.0,
+    "banned": false,
+    "flagged": false,
+    "hits": []
+   },
+   {
+    "id": "T15",
+    "name": "monotone_run",
+    "count": 1,
+    "rate_per_1k": 1.0526315789473684,
+    "voice_rate": 4.0789308322932145,
+    "llm_rate": 1.9095003051586747,
+    "threshold": 24.47358499375929,
+    "ratio_vs_voice": 0.25806556233158007,
+    "banned": false,
+    "flagged": false,
+    "hits": [
+     {
+      "pattern_id": "T15",
+      "sentence_idx": 52,
+      "para_idx": 22,
+      "start": 5093,
+      "end": 5382,
+      "text": "Framton shivered slightly and turned to the niece with a look meant to convey sympathetic understanding. But the child was staring out through the open window, her eyes full of dazed horror. Seized by a chill shock of nameless fear, Framton swung round in his seat and looked the same way.",
+      "note": "3 sentences of 16-19 words"
+     }
+    ]
+   }
+  ],
+  "paragraphs": [
+   {
+    "index": 0,
+    "start": 19,
+    "end": 165,
+    "words": 27,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 1,
+    "start": 167,
+    "end": 492,
+    "words": 55,
+    "deviation": 1.8181818181818181,
+    "flagged_sentences": [
+     2
+    ],
+    "tells": [
+     "T2",
+     "T5"
+    ]
+   },
+   {
+    "index": 2,
+    "start": 494,
+    "end": 850,
+    "words": 70,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 3,
+    "start": 852,
+    "end": 984,
+    "words": 22,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 4,
+    "start": 986,
+    "end": 1125,
+    "words": 25,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 5,
+    "start": 1127,
+    "end": 1302,
+    "words": 32,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T4"
+    ]
+   },
+   {
+    "index": 6,
+    "start": 1304,
+    "end": 1358,
+    "words": 11,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 7,
+    "start": 1360,
+    "end": 1449,
+    "words": 13,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 8,
+    "start": 1451,
+    "end": 1657,
+    "words": 35,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 9,
+    "start": 1659,
+    "end": 1767,
+    "words": 18,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 10,
+    "start": 1769,
+    "end": 1868,
+    "words": 15,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 11,
+    "start": 1870,
+    "end": 2021,
+    "words": 29,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 12,
+    "start": 2023,
+    "end": 2140,
+    "words": 23,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 13,
+    "start": 2142,
+    "end": 3313,
+    "words": 214,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T2"
+    ]
+   },
+   {
+    "index": 14,
+    "start": 3315,
+    "end": 3457,
+    "words": 26,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 15,
+    "start": 3459,
+    "end": 3504,
+    "words": 9,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 16,
+    "start": 3506,
+    "end": 3552,
+    "words": 7,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 17,
+    "start": 3554,
+    "end": 3852,
+    "words": 54,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T10"
+    ]
+   },
+   {
+    "index": 18,
+    "start": 3854,
+    "end": 4359,
+    "words": 87,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T4"
+    ]
+   },
+   {
+    "index": 19,
+    "start": 4361,
+    "end": 4785,
+    "words": 67,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T4"
+    ]
+   },
+   {
+    "index": 20,
+    "start": 4787,
+    "end": 4972,
+    "words": 32,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T10"
+    ]
+   },
+   {
+    "index": 21,
+    "start": 4974,
+    "end": 5091,
+    "words": 25,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": []
+   },
+   {
+    "index": 22,
+    "start": 5093,
+    "end": 5382,
+    "words": 51,
+    "deviation": 0.0,
+    "flagged_sentences": [],
+    "tells": [
+     "T15"
+    ]
+   }
+  ],
+  "fixes": [
+   "T5 aphoristic_close: 1 hits (1.1/1k; voice 0.2/1k, limit 0.5)"
+  ],
+  "distance_raw": 0.052,
+  "separation": {
+   "method": "all documents (corpus too small to split by author)",
+   "heldout_docs": 4,
+   "llm_docs": 267,
+   "heldout_pass_rate": 1.0,
+   "llm_fail_rate": 0.966,
+   "heldout_p90": 20.0,
+   "llm_median": 70.0
+  },
+  "judge": null
+ },
+ "diff": "",
+ "meaning_diff": "unit 1 (document): kept original (no provider qualifies as judge; nothing was generated)",
+ "units": [
+  {
+   "index": 0,
+   "kind": "document",
+   "start": 0,
+   "end": 5382,
+   "original": "# The Open Window\n\n\"My aunt will be down presently, Mr. Nuttel,\" said a very self-possessed young lady of fifteen; \"in the meantime you must try and put up with me.\"\n\nFramton Nuttel tried to say something suitably polite, something that would flatter the niece of the moment without slighting the aunt who was still to come. Privately he doubted, more than ever, whether these formal visits to a succession of total strangers would do much for the nerve cure he was supposed to be undergoing.\n\n\"I know how it will be,\" his sister had said when he was preparing to migrate to this rural retreat; \"you will bury yourself down there and not speak to a living soul, and your nerves will be worse than ever from moping. I shall just give you letters of introduction to all the people I know there. Some of them, as far as I can remember, were quite nice.\"\n\nFramton wondered whether Mrs. Sappleton, the lady to whom he was now presenting one of those letters, belonged to the nice division.\n\n\"Do you know many of the people round here?\" asked the niece, once she judged that they had shared a sufficient period of silent communion.\n\n\"Hardly a soul,\" said Framton. \"My sister was staying here, at the rectory, you know, some four years ago, and she gave me letters of introduction to some of the people here.\"\n\nThe last remark came out in a tone of distinct regret.\n\n\"Then you know practically nothing about my aunt?\" pursued the self-possessed young lady.\n\n\"Only her name and address,\" admitted the caller. He was wondering whether Mrs. Sappleton was married or widowed. Something he could not quite define about the room seemed to suggest that a man lived there.\n\n\"Her great tragedy happened just three years ago,\" said the child; \"that would be since your sister's time.\"\n\n\"Her tragedy?\" asked Framton. Somehow, in this restful country spot, tragedies seemed out of place.\n\n\"You may wonder why we keep that window wide open on an October afternoon,\" said the niece, pointing to a large French window that opened on to a lawn.\n\n\"It is quite warm for the time of the year,\" said Framton; \"but has that window got anything to do with the tragedy?\"\n\n\"Out through that window, three years ago to a day, her husband and her two young brothers went off for their day's shooting. They never came back. In crossing the moor to their favourite snipe-shooting ground they were all three engulfed in a treacherous piece of bog. It had been that dreadful wet summer, you know, and places that were safe in other years gave way suddenly without warning. Their bodies were never recovered. That was the dreadful part of it.\" Here the child's voice lost its composure and became falteringly human. \"Poor aunt always thinks that they will come back some day, they and the little brown spaniel that was lost with them, and walk in at that window just as they used to do. That is why the window is kept open every evening till it is quite dusk. Poor dear aunt, she has often told me how they went out, her husband with his white waterproof coat over his arm, and Ronnie, her youngest brother, singing 'Bertie, why do you bound?' as he always did to tease her, because she said it got on her nerves. Do you know, sometimes on still, quiet evenings like this, I almost get a creepy feeling that they will all walk in through that window—\"\n\nShe broke off with a little shudder. Framton was relieved when the aunt bustled into the room in a whirl of apologies for her late appearance.\n\n\"I hope Vera has been amusing you?\" she said.\n\n\"She has been very interesting,\" said Framton.\n\n\"I hope you don't mind the open window,\" said Mrs. Sappleton briskly; \"my husband and brothers will be home directly from shooting, and they always come in this way. They've been out for snipe in the marshes to-day, so they'll make a fine mess over my poor carpets. So like you men-folk, isn't it?\"\n\nShe chattered on cheerfully about the shooting, the scarcity of birds, and the prospects for duck in the winter. To Framton it was all purely horrible. He made a desperate but only partly successful effort to steer the talk towards something less ghastly. He was aware that his hostess was giving him only a fragment of her attention; her eyes kept straying past him to the open window and the lawn beyond. It was certainly an unfortunate coincidence that he should have called on this tragic anniversary.\n\n\"The doctors agree in ordering me complete rest, an absence of mental excitement, and avoidance of anything in the nature of violent physical exercise,\" announced Framton. He laboured under the fairly widespread delusion that total strangers and chance acquaintances are hungry for every detail of one's ailments and infirmities, their cause and cure. \"On the matter of diet they are not so much in agreement,\" he continued.\n\n\"No?\" said Mrs. Sappleton, in a voice that stopped short of a yawn only at the last moment. Then she suddenly brightened into alert attention, though not to anything Framton was saying.\n\n\"Here they are at last!\" she cried. \"Just in time for tea, and don't they look as if they were muddy up to the eyes!\"\n\nFramton shivered slightly and turned to the niece with a look meant to convey sympathetic understanding. But the child was staring out through the open window, her eyes full of dazed horror. Seized by a chill shock of nameless fear, Framton swung round in his seat and looked the same way.",
+   "final": "# The Open Window\n\n\"My aunt will be down presently, Mr. Nuttel,\" said a very self-possessed young lady of fifteen; \"in the meantime you must try and put up with me.\"\n\nFramton Nuttel tried to say something suitably polite, something that would flatter the niece of the moment without slighting the aunt who was still to come. Privately he doubted, more than ever, whether these formal visits to a succession of total strangers would do much for the nerve cure he was supposed to be undergoing.\n\n\"I know how it will be,\" his sister had said when he was preparing to migrate to this rural retreat; \"you will bury yourself down there and not speak to a living soul, and your nerves will be worse than ever from moping. I shall just give you letters of introduction to all the people I know there. Some of them, as far as I can remember, were quite nice.\"\n\nFramton wondered whether Mrs. Sappleton, the lady to whom he was now presenting one of those letters, belonged to the nice division.\n\n\"Do you know many of the people round here?\" asked the niece, once she judged that they had shared a sufficient period of silent communion.\n\n\"Hardly a soul,\" said Framton. \"My sister was staying here, at the rectory, you know, some four years ago, and she gave me letters of introduction to some of the people here.\"\n\nThe last remark came out in a tone of distinct regret.\n\n\"Then you know practically nothing about my aunt?\" pursued the self-possessed young lady.\n\n\"Only her name and address,\" admitted the caller. He was wondering whether Mrs. Sappleton was married or widowed. Something he could not quite define about the room seemed to suggest that a man lived there.\n\n\"Her great tragedy happened just three years ago,\" said the child; \"that would be since your sister's time.\"\n\n\"Her tragedy?\" asked Framton. Somehow, in this restful country spot, tragedies seemed out of place.\n\n\"You may wonder why we keep that window wide open on an October afternoon,\" said the niece, pointing to a large French window that opened on to a lawn.\n\n\"It is quite warm for the time of the year,\" said Framton; \"but has that window got anything to do with the tragedy?\"\n\n\"Out through that window, three years ago to a day, her husband and her two young brothers went off for their day's shooting. They never came back. In crossing the moor to their favourite snipe-shooting ground they were all three engulfed in a treacherous piece of bog. It had been that dreadful wet summer, you know, and places that were safe in other years gave way suddenly without warning. Their bodies were never recovered. That was the dreadful part of it.\" Here the child's voice lost its composure and became falteringly human. \"Poor aunt always thinks that they will come back some day, they and the little brown spaniel that was lost with them, and walk in at that window just as they used to do. That is why the window is kept open every evening till it is quite dusk. Poor dear aunt, she has often told me how they went out, her husband with his white waterproof coat over his arm, and Ronnie, her youngest brother, singing 'Bertie, why do you bound?' as he always did to tease her, because she said it got on her nerves. Do you know, sometimes on still, quiet evenings like this, I almost get a creepy feeling that they will all walk in through that window—\"\n\nShe broke off with a little shudder. Framton was relieved when the aunt bustled into the room in a whirl of apologies for her late appearance.\n\n\"I hope Vera has been amusing you?\" she said.\n\n\"She has been very interesting,\" said Framton.\n\n\"I hope you don't mind the open window,\" said Mrs. Sappleton briskly; \"my husband and brothers will be home directly from shooting, and they always come in this way. They've been out for snipe in the marshes to-day, so they'll make a fine mess over my poor carpets. So like you men-folk, isn't it?\"\n\nShe chattered on cheerfully about the shooting, the scarcity of birds, and the prospects for duck in the winter. To Framton it was all purely horrible. He made a desperate but only partly successful effort to steer the talk towards something less ghastly. He was aware that his hostess was giving him only a fragment of her attention; her eyes kept straying past him to the open window and the lawn beyond. It was certainly an unfortunate coincidence that he should have called on this tragic anniversary.\n\n\"The doctors agree in ordering me complete rest, an absence of mental excitement, and avoidance of anything in the nature of violent physical exercise,\" announced Framton. He laboured under the fairly widespread delusion that total strangers and chance acquaintances are hungry for every detail of one's ailments and infirmities, their cause and cure. \"On the matter of diet they are not so much in agreement,\" he continued.\n\n\"No?\" said Mrs. Sappleton, in a voice that stopped short of a yawn only at the last moment. Then she suddenly brightened into alert attention, though not to anything Framton was saying.\n\n\"Here they are at last!\" she cried. \"Just in time for tea, and don't they look as if they were muddy up to the eyes!\"\n\nFramton shivered slightly and turned to the niece with a look meant to convey sympathetic understanding. But the child was staring out through the open window, her eyes full of dazed horror. Seized by a chill shock of nameless fear, Framton swung round in his seat and looked the same way.",
+   "propositions": [],
+   "propositions_by_paragraph": [],
+   "candidates": [],
+   "chosen": null,
+   "kept_original": true,
+   "reason": "no provider qualifies as judge; nothing was generated"
+  }
+ ],
+ "iterations": [],
+ "cost": {
+  "usd": 0.0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "calls": 0,
+  "cached": 0,
+  "unpriced_calls": 0
+ },
+ "stopped": "no_judge",
+ "exemplars_used": true,
+ "max_growth": 15.0,
+ "chunk_words": 2500,
+ "growth_pct": 0.0,
+ "coherence": null,
+ "judge_items": {},
+ "metric_table": [
+  {
+   "name": "citation_per_100w",
+   "before": 0.0,
+   "after": 0.0,
+   "band_low": 0.0,
+   "band_high": 0.0,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "quote_per_para",
+   "before": 0.944,
+   "after": 0.944,
+   "band_low": -0.454112266153465,
+   "band_high": 1.5511560775831166,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "concrete_per_100w",
+   "before": 2.949,
+   "after": 2.949,
+   "band_low": -8.148927669562575,
+   "band_high": 18.142944660134106,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "reader_address_per_1k",
+   "before": 15.226,
+   "after": 15.226,
+   "band_low": -27.514614497351435,
+   "band_high": 49.2169667465777,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "first_person_per_1k",
+   "before": 14.623,
+   "after": 14.623,
+   "band_low": -73.28377450484183,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "committed_claim_per_para",
+   "before": 0.0,
+   "after": 0.0,
+   "band_low": -0.041408008654567494,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "sent_len_mean",
+   "before": 16.958,
+   "after": 16.958,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "sent_len_std",
+   "before": 9.402,
+   "after": 9.402,
+   "band_low": -13.640857321665742,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "sent_len_cv",
+   "before": 0.552,
+   "after": 0.552,
+   "band_low": 0.19240527709073163,
+   "band_high": 1.1392728399481806,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "pct_sent_lt8",
+   "before": 24.731,
+   "after": 24.731,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "pct_sent_gt30",
+   "before": 4.839,
+   "after": 4.839,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "max_run_similar_len",
+   "before": 4.0,
+   "after": 4.0,
+   "band_low": null,
+   "band_high": 18.083173967915776,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "pct_compound_multi",
+   "before": 7.392,
+   "after": 7.392,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "para_len_mean",
+   "before": 2.44,
+   "after": 2.44,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "para_len_std",
+   "before": 1.797,
+   "after": 1.797,
+   "band_low": -0.3718082033401604,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "opener_pct_det",
+   "before": 3.696,
+   "after": 3.696,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "opener_pct_pron",
+   "before": 50.806,
+   "after": 50.806,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "opener_pct_adv_conj",
+   "before": 21.707,
+   "after": 21.707,
+   "band_low": null,
+   "band_high": 30.121747341176857,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "opener_pct_noun",
+   "before": 7.392,
+   "after": 7.392,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "opener_top_word_share",
+   "before": 13.642,
+   "after": 13.642,
+   "band_low": -13.341523098798778,
+   "band_high": 45.979671297653994,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "connective_opener_pct",
+   "before": 7.863,
+   "after": 7.863,
+   "band_low": -5.187652434118165,
+   "band_high": 27.098250682737202,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "semicolons_per_1k",
+   "before": 6.189,
+   "after": 6.189,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "colons_per_1k",
+   "before": 0.0,
+   "after": 0.0,
+   "band_low": null,
+   "band_high": 15.010503227699482,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "em_dashes_per_1k",
+   "before": 0.849,
+   "after": 0.849,
+   "band_low": null,
+   "band_high": 19.945174045973822,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "parens_per_1k",
+   "before": 0.0,
+   "after": 0.0,
+   "band_low": null,
+   "band_high": null,
+   "status_before": "in",
+   "status_after": "in"
+  },
+  {
+   "name": "questions_per_1k",
+   "before": 8.434,
+   "after": 8.434,
+   "band_low": null,
+   "band_high": 41.26986747196084,
+   "status_before": "in",
+   "status_after": "in"
+  }
+ ],
+ "unverified_additions": [],
+ "primary_texts": [],
+ "judge_gate": "judge gate OFF (one provider only; a provider never judges its own writing); anthropic: writer only (uncalibrated)",
+ "draft": null,
+ "draft_text": null
+}
