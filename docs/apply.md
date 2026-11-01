@@ -40,6 +40,21 @@ coherence results, the item-by-item judge verdict against the original, a table 
 metric before and after against the voice's band (under, in or over), each candidate's win
 rate, the document's growth and the cost.
 
+## Fidelity
+
+YAML frontmatter is stripped on ingest and put back on output. Markdown structure is not
+content: headings, rules, list markers and emphasis are never locked, so a list may be
+rendered as prose and prose as a list; a word the document also writes in lower case, or one
+capitalised only at a sentence or item start, is not a proper noun. Propositions are content
+statements about the subject with framing dropped and no author as grammatical subject.
+Under `--fidelity content` (the default) the semantic lock protects facts about the world,
+named entities, numbers and quantities, quotations, causal and conditional claims, and
+evaluative claims attributed to someone in the original, and permits changes of grammatical
+person or address, discourse and sequence words, emphasis, figurative restatement of a
+retained claim, hedging and reordering; each rejection names its category. `--fidelity
+strict` fails any new claim, for originals already in the target voice. `--report-all`
+judges and reports every candidate, pass or fail.
+
 ## Primary texts
 
 `--primary-text` (repeatable) names plain-text sources for the work under discussion. Any

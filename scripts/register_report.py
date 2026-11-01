@@ -148,6 +148,62 @@ def main(register: str, result_path: Path, out: Path) -> None:
             )
             lines.append(f"- candidate {c['attempt']} ({c['model']}): {mark}; {c['reason']}")
         lines.append("")
+    if d.get("report_all"):
+        lines += ["## Every candidate in full", ""]
+        for c in unit["candidates"]:
+            status = (
+                "winner"
+                if unit["chosen"] is not None and c is unit["candidates"][unit["chosen"]]
+                else ("accepted" if c["accepted"] else "rejected")
+            )
+            lines += [
+                f"### Candidate {c['attempt']} ({c['model']}): {status}",
+                "",
+                c["text"].strip() or "(empty)",
+                "",
+            ]
+            lines.append(
+                f"Lock: {'ok' if c['lexical_ok'] else 'failed'}"
+                + (f" ({c['lexical_detail']})" if c.get("lexical_detail") else "")
+            )
+            sem = c.get("semantic")
+            if sem:
+                dropped = [x["proposition"] for x in sem["checks"] if not x["kept"]]
+                claims = [
+                    f"{x['text']} ({x['category'] or 'claim'})"
+                    for x in sem["added"]
+                    if x["kind"] == "claim"
+                ]
+                permitted = [
+                    f"{x['text']} ({x['category']})"
+                    for x in sem["added"]
+                    if x["kind"] == "permitted"
+                ]
+                lines.append(
+                    f"Meaning: {len(sem['checks']) - len(dropped)}/{len(sem['checks'])} propositions kept; dropped: {len(dropped)}; protected additions: {len(claims)}; permitted changes: {len(permitted)}"  # noqa: E501
+                )
+                for x in dropped:
+                    lines.append(f"- dropped: {x}")
+                for x in claims:
+                    lines.append(f"- added: {x}")
+                for x in permitted:
+                    lines.append(f"- permitted: {x}")
+            cc = c.get("coherence")
+            if cc:
+                lines.append(
+                    f"Coherence: {'ok' if _ok(cc) else 'failed'}; paragraphs {cc['paragraphs_before']} -> {cc['paragraphs_after']}; tense drift {len(cc['tense'])}; antecedents {len(cc['antecedents'])}; connective openers {100 * cc['connectives']['before']:.0f}% -> {100 * cc['connectives']['after']:.0f}%"  # noqa: E501
+                    + (f" ({cc['connectives']['note']})" if cc["connectives"]["note"] else "")
+                )
+            if c["verdicts"]:
+                for v in c["verdicts"]:
+                    items = v["items"]
+                    lines.append(
+                        f"Judge vs {v['against']}: voice {items.get('voice')}, coherent {items.get('coherent')}, tense {items.get('tense_person')}, order {items.get('order')}; confidence {v['confidence']:.2f}; {v['note']}"  # noqa: E501
+                    )
+            else:
+                lines.append("Judge: not reached")
+            lines.append(f"Reason: {c['reason']}")
+            lines.append("")
     lines += ["## Meaning diff", "", "```", d["meaning_diff"], "```", ""]
     lines += ["## Coherence", "", *coherence_lines(d.get("coherence"), unit), ""]
     lines += ["## Judge items per candidate", "", *judge_table(unit), ""]

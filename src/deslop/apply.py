@@ -39,7 +39,13 @@ from deslop.providers.base import (
 from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, verify_additions
 from deslop.report import MetricResult, Report, TellHitResult
 from deslop.score import score
-from deslop.semantic import PropositionCheck, SemanticResult, check_meaning, extract_propositions
+from deslop.semantic import (
+    Fidelity,
+    PropositionCheck,
+    SemanticResult,
+    check_meaning,
+    extract_propositions,
+)
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
 
@@ -175,6 +181,8 @@ class Result(BaseModel):
     coherence: CoherenceResult | None = None
     judge_items: dict[str, str] = Field(default_factory=dict)
     metric_table: list[MetricRow] = Field(default_factory=list)
+    fidelity: str = "content"
+    report_all: bool = False
     unverified_additions: list[str] = Field(default_factory=list)
     primary_texts: list[str] = Field(default_factory=list)
     judge_gate: str = ""
@@ -369,9 +377,11 @@ DOCUMENT_TEMPLATE = """# Exemplars of the voice
 {section_block}
 # Instruction
 Write {what} as this writer would, from its first paragraph to its last. Keep every
-proposition listed above and add none. Keep the author's tense, grammatical person,
-paragraphing and order of argument unless the voice's profile says otherwise. Keep it about
-the length of the original. Return {returned} and nothing else.{noticed}
+proposition listed above and add none. Adopt this writer's grammatical person and mode of
+address as shown in the exemplars and profile; the propositions' phrasing is not a constraint
+on person or address. Keep the author's tense, paragraphing and order of argument unless the
+voice's profile says otherwise. Keep it about the length of the original. Return {returned}
+and nothing else.{noticed}
 
 Draft {attempt} of {n}."""
 
@@ -940,6 +950,8 @@ def apply(
     max_growth: float = DEFAULT_MAX_GROWTH,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
     primary_texts: list[str | Path | PrimaryText] | None = None,
+    fidelity: Fidelity = "content",
+    report_all: bool = False,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -1004,6 +1016,8 @@ def apply(
         patterns=patterns,
         n=n,
         progress=progress,
+        fidelity=fidelity,
+        report_all=report_all,
     )
 
     if mode == "edit":
@@ -1066,6 +1080,8 @@ def apply(
         unverified_additions=_unverified(units),
         primary_texts=[t.name for t in texts],
         judge_gate=models.describe(),
+        fidelity=fidelity,
+        report_all=report_all,
         draft=draft_logs,
         draft_text=draft_text,
     )
@@ -1082,6 +1098,8 @@ class Options:
     patterns: tuple[str, ...]
     n: int
     progress: Callable[[str], None] | None
+    fidelity: Fidelity = "content"
+    report_all: bool = False
 
 
 def _load_texts(sources: list[str | Path | PrimaryText]) -> list[PrimaryText]:
@@ -1124,7 +1142,9 @@ def _rewrite_loop(
         return text, [], [], "nothing_to_rewrite"
     writer0 = opts.models.writer
     try:
-        by_paragraph = [extract_propositions(p.text, writer0) for p in a.paragraphs]
+        by_paragraph = [
+            extract_propositions(p.text, writer0, fidelity=opts.fidelity) for p in a.paragraphs
+        ]
     except ProviderError as exc:
         kept = [
             UnitLog(
@@ -1290,6 +1310,7 @@ def _check_meaning_by_paragraph(
     candidate: str,
     props: list[list[str]],
     checker: CachingProvider,
+    fidelity: Fidelity = "content",
 ) -> SemanticResult:
     """The semantic lock paragraph by paragraph when the candidate keeps the paragraphing,
     else once over the whole section; the checks are merged with a paragraph prefix."""
@@ -1297,7 +1318,7 @@ def _check_meaning_by_paragraph(
     merged = SemanticResult()
     if len(before) == len(after) == len(props):
         for i, (p, q, ps) in enumerate(zip(before, after, props, strict=True), 1):
-            r = check_meaning(p.text, q.text, ps, checker)
+            r = check_meaning(p.text, q.text, ps, checker, fidelity=fidelity)
             merged.checks.extend(
                 PropositionCheck(proposition=f"¶{i} {c.proposition}", kept=c.kept, note=c.note)
                 for c in r.checks
@@ -1305,7 +1326,9 @@ def _check_meaning_by_paragraph(
             merged.added.extend(r.added)
             merged.provider, merged.model = r.provider, r.model
         return merged
-    return check_meaning(section_text, candidate, [p for ps in props for p in ps], checker)
+    return check_meaning(
+        section_text, candidate, [p for ps in props for p in ps], checker, fidelity=fidelity
+    )
 
 
 def _rewrite_section(
@@ -1379,10 +1402,10 @@ def _rewrite_section(
             )
             log.candidates.append(cand)
             notes = _verify_section(section_text, candidate, cand, document, voice, opts)
-            if not notes:
+            if not notes or opts.report_all:
                 try:
                     cand.semantic = _check_meaning_by_paragraph(
-                        section_text, candidate, props, judge
+                        section_text, candidate, props, judge, opts.fidelity
                     )
                 except ProviderError as exc:
                     cand.reason = f"meaning check unavailable: {exc}"[:200]
@@ -1394,7 +1417,9 @@ def _rewrite_section(
                         if not c.kept
                     )
                     notes.extend(
-                        f'"{x.text}" is a claim the original does not make'
+                        f'"{x.text}" is a claim the original does not make ({x.category})'
+                        if x.category
+                        else f'"{x.text}" is a claim the original does not make'
                         for x in cand.semantic.added
                         if x.kind == "claim"
                     )
@@ -1405,11 +1430,14 @@ def _rewrite_section(
             linter = _linter_notes(
                 text, spliced, report, (section.start, section.start + len(candidate)), catalog
             )
-            if notes:
+            failed = bool(notes)
+            if failed:
                 cand.reason = "; ".join(notes)[:300]
                 cand.reader_notes = notes + linter
-                continue
-            cand.reader_notes = linter
+                if not opts.report_all:
+                    continue
+            else:
+                cand.reader_notes = linter
             try:
                 cand.verdicts.append(
                     compare_document(
@@ -1417,11 +1445,14 @@ def _rewrite_section(
                     )
                 )
             except ProviderError as exc:
-                cand.reason = f"judge unavailable: {exc}"[:200]
-                cand.reader_notes = linter
+                if not failed:
+                    cand.reason = f"judge unavailable: {exc}"[:200]
+                    cand.reader_notes = linter
                 continue
             vs = cand.vs_original
             cand.judge_ok = vs is not None and vs.no_loss
+            if failed:
+                continue  # judged for the record only
             if not cand.judge_ok:
                 lost = [k for k, v in (vs.items if vs else {}).items() if v == "loss"]
                 note = vs.note if vs else ""

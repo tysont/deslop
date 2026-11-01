@@ -338,3 +338,20 @@ def test_brief_is_drafted_then_rewritten(fixture_voice, fixtures_dir):
     assert result.draft is not None and len(result.draft) == len(brief.sections)
     assert result.draft_text and "Abraham" in result.draft_text
     assert result.mode == "rewrite"
+
+
+def test_report_all_judges_every_candidate_and_the_prompt_frees_person(fixture_voice, slop_text):
+    a, _, factory = pair(lexical_break=True)
+    result = apply(slop_text, fixture_voice, n=2, report_all=True, provider_factory=factory)
+    unit = result.units[0]
+    assert unit.kept_original and result.report_all
+    for c in unit.candidates:
+        assert c.text and not c.lexical_ok
+        assert c.coherence is not None and c.semantic is not None
+        assert c.verdicts and c.verdicts[0].against == "original", "judged although it failed"
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    flat = " ".join(user.split())
+    assert "grammatical person and mode of address" in flat
+    assert "not a constraint on person or address" in flat
+    strict = apply(slop_text, fixture_voice, n=1, fidelity="strict", provider_factory=factory)
+    assert strict.fidelity == "strict" and result.fidelity == "content"

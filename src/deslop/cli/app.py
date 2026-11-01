@@ -173,6 +173,17 @@ def read_input(path: Path | None) -> str:
         fail(f"cannot read {path}: {exc.strerror or exc}")
 
 
+def split_frontmatter(text: str) -> tuple[str, str]:
+    """YAML frontmatter and the body: the frontmatter is stripped on ingest and put back on
+    output, never rewritten or treated as prose."""
+    from deslop.voice.collect import FRONTMATTER_RE
+
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return "", text
+    return text[: m.end()], text[m.end() :]
+
+
 # ------------------------------------------------------------------ voice (build)
 
 
@@ -711,6 +722,14 @@ def apply_cmd(
     max_calls: int | None = typer.Option(
         None, "--max-calls", help="Max live calls this invocation may make (200)"
     ),
+    fidelity: str | None = typer.Option(
+        None,
+        "--fidelity",
+        help="content (default: protect facts, permit changes of person and framing) or strict",
+    ),
+    report_all: bool = typer.Option(
+        False, "--report-all", help="Judge and report every candidate, pass or fail"
+    ),
     budget: float | None = typer.Option(
         None,
         "--budget",
@@ -742,13 +761,14 @@ def apply_cmd(
     s = Settings(ctx, "apply")
     v = load_voice(s.voice(voice))
     brief = s.path("brief", brief)
+    front = ""
     if brief is not None:
         try:
             source: Any = load_brief(brief)
         except (ValueError, OSError) as exc:
             fail(str(exc))
     else:
-        source = read_input(file)
+        front, source = split_frontmatter(read_input(file))
     mode = s.get("mode", mode, "rewrite")
     if mode not in ("edit", "rewrite"):
         fail("--mode must be rewrite or edit")
@@ -773,6 +793,8 @@ def apply_cmd(
             n=int(s.get("n", n, 3)),
             max_growth=float(s.get("max_growth", max_growth, 15.0)),
             chunk_words=int(s.get("chunk_words", chunk_words, 2500)),
+            fidelity="strict" if s.get("fidelity", fidelity, "content") == "strict" else "content",
+            report_all=bool(s.get("report_all", report_all or None, False)),
             primary_texts=list(texts) or None,
             max_iter=int(s.get("max_iter", max_iter, 4)),
             patterns=s.paths("patterns", patterns),
@@ -784,7 +806,7 @@ def apply_cmd(
         fail(str(exc), code=2)
     out = s.path("out", out)
     if out is not None:
-        out.write_text(result.text, encoding="utf-8")
+        out.write_text(front + result.text, encoding="utf-8")
     report_budget()
     if json_out:
         print_json(result.to_json())

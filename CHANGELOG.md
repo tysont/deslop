@@ -2,6 +2,26 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.3.1 - 2026-11-01
+
+- Input: YAML frontmatter is stripped on ingest and kept on output; propositions come from
+  the body only. Markdown structure is not content: headings, horizontal rules, list markers
+  and numbering, and emphasis marks are never locked and never counted as numbers or proper
+  nouns, so a list may become prose and prose a list. Proper-noun detection is case-aware
+  against the document: a word the document also writes in lower case, or one capitalised
+  only where a sentence or item starts, is not a name.
+- Fidelity redefined. Propositions are content statements about the subject, with framing
+  ("the speaker opens with") dropped and no author as grammatical subject. The entailment
+  check protects facts, named entities, numbers, quotations, causal and conditional claims,
+  and attributed evaluative claims, and explicitly permits changes of person or address,
+  discourse and sequence words, emphasis, figurative restatement, hedging and reordering;
+  that definition is in the judge prompt verbatim. `--fidelity content|strict` (default
+  content; strict is the previous rule). Rejections carry the addition's category.
+- Writer prompt: adopt the writer's grammatical person and mode of address as the exemplars
+  and profile show; the propositions' phrasing does not constrain person or address.
+- `--report-all`: every candidate is judged and reported in full, pass or fail, with its lock,
+  coherence and judge results.
+
 ## v2.3.0 - 2026-11-01
 
 - Claude only by default. The writer is claude-opus-5-5 and the judge claude-sonnet-5-5

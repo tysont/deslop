@@ -11,6 +11,12 @@ from deslop.nlp import load_nlp
 
 LOCK_CLASSES = ("citations", "quotes", "numbers", "proper_nouns")
 ANY_QUOTE_RE = re.compile(r"[\"“]([^\"”]{1,600})[\"”]")
+# Markdown structure is not content: headings, rules, list markers and emphasis marks are
+# dropped before anything is inventoried.
+HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s.*$", re.M)
+RULE_RE = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$", re.M)
+LIST_MARKER_RE = re.compile(r"^(\s*)(?:\d{1,3}[.)]|[-*+•])\s+", re.M)
+EMPHASIS_RE = re.compile(r"(\*\*|__|\*|_)(?=\S)(.+?)(?<=\S)\1")
 # Citations to the primary text under discussion may always be added: verse references,
 # bare chapter:verse, Stephanus pages, page and line numbers, act and scene.
 PRIMARY_CITATION_PATTERNS = (
@@ -51,6 +57,17 @@ def _normalize_quote(q: str) -> str:
     return re.sub(r"\s+", " ", q.strip())
 
 
+def strip_markup(text: str) -> str:
+    """The words of a markdown text without its structure: headings and horizontal rules are
+    removed, list markers and numbering dropped, emphasis marks unwrapped."""
+    text = HEADING_RE.sub("", text)
+    text = RULE_RE.sub("", text)
+    text = LIST_MARKER_RE.sub(r"\1", text)
+    for _ in range(2):  # nested emphasis
+        text = EMPHASIS_RE.sub(r"\2", text)
+    return text
+
+
 def is_primary_citation(text: str) -> bool:
     item = text.strip()
     for pattern in PRIMARY_CITATION_PATTERNS:
@@ -61,9 +78,12 @@ def is_primary_citation(text: str) -> bool:
 
 
 def document_names(text: str) -> set[str]:
-    """Names the document establishes: entity tokens anywhere plus proper-noun tokens that
-    are not sentence-initial. A capital that only ever opens a sentence is not a name."""
-    doc = load_nlp(ner=True)(text)
+    """Names the document establishes: entity tokens anywhere, plus proper-noun tokens that
+    appear capitalised somewhere other than a sentence or item start. A word capitalised
+    only where a sentence starts, or one the document also writes in lower case, is not a
+    name."""
+    doc = load_nlp(ner=True)(strip_markup(text))
+    lowercase = {tok.text.lower() for tok in doc if tok.is_alpha and tok.text.islower()}
     names: set[str] = set()
     for ent in doc.ents:
         if ent.label_ in NAME_LABELS:
@@ -71,13 +91,14 @@ def document_names(text: str) -> set[str]:
     for tok in doc:
         if tok.pos_ == "PROPN" and tok.text[:1].isupper() and not tok.is_sent_start:
             names.add(tok.text)
-    return names
+    return {n for n in names if n.lower() not in lowercase}
 
 
 def inventory(text: str, names: set[str] | None = None) -> Inventory:
     """Locked items in `text`. With `names` (from `document_names`), a sentence-initial
     capitalised token counts as a proper noun only when the document names it elsewhere."""
     inv = Inventory()
+    text = strip_markup(text)
     seen: list[tuple[int, int]] = []
     for pattern in CITATION_PATTERNS:
         for m in pattern.finditer(text):
@@ -95,14 +116,18 @@ def inventory(text: str, names: set[str] | None = None) -> Inventory:
         inv.numbers[m.group(0)] += 1
     doc = load_nlp(ner=True)(text)
     entity_tokens = {t.i for ent in doc.ents if ent.label_ in NAME_LABELS for t in ent}
+    lowercase = {tok.text.lower() for tok in doc if tok.is_alpha and tok.text.islower()}
     for tok in doc:
         if not tok.text[:1].isupper():
             continue
         is_name = tok.pos_ == "PROPN" or tok.i in entity_tokens
         if not is_name:
             continue
-        if tok.is_sent_start and names is not None and tok.text not in names:
-            continue
+        known = names is not None and tok.text in names
+        if tok.text.lower() in lowercase and not known:
+            continue  # the document also writes it in lower case: a common word
+        if names is not None and tok.is_sent_start and not known and tok.i not in entity_tokens:
+            continue  # capitalised only because it opens a sentence or an item
         inv.proper_nouns[tok.text] += 1
     return inv
 

@@ -1,6 +1,6 @@
 # ABOUTME: Tests for the content lock: document-scoped allowlist, removals-only violations,
 # ABOUTME: sentence-initial capitals, and primary-text citations that may always be added.
-from deslop.lock import DocumentLock, check, inventory, is_primary_citation
+from deslop.lock import DocumentLock, check, document_names, inventory, is_primary_citation
 
 SPAN = (
     'Abraham climbs (Alter 1996, 12) in Gen 22:1-3 with "his only son, whom he loves" '
@@ -70,3 +70,49 @@ def test_sentence_initial_capitals_are_not_names_unless_named_elsewhere():
     after = "Grief is a maker's sorrow."
     result = check(before, after, doc)
     assert result.ok and result.additions == []
+
+
+def test_markdown_structure_is_never_locked():
+    from deslop.lock import strip_markup
+
+    doc = (
+        "# Tone and Audience\n\n"
+        "The process has three stages:\n\n"
+        "1. **Saponification.** Tallow is boiled with quicklime.\n"
+        "2. *Pressing.* The oil is pressed out at 20 degrees.\n\n"
+        "---\n\n"
+        "Sperm candles come from the whale."
+    )
+    plain = strip_markup(doc)
+    assert "Tone and Audience" not in plain and "---" not in plain and "**" not in plain
+    assert "1." not in plain and "Tallow is boiled" in plain and "20 degrees" in plain
+    inv = inventory(doc)
+    assert "1" not in inv.numbers and "2" not in inv.numbers and "20" in inv.numbers
+    assert "Tone" not in inv.proper_nouns and "Saponification" not in inv.proper_nouns
+    document = DocumentLock.build(doc)
+    prose = (
+        "The process has three stages. Saponification: tallow is boiled with quicklime. "
+        "Pressing: the oil is pressed out at 20 degrees. Sperm candles come from the whale."
+    )
+    assert check(doc, prose, document).ok, "a list rendered as prose passes"
+    listed = check(prose, doc, document)
+    assert listed.ok, "prose rendered as a list passes"
+
+
+def test_a_word_capitalised_only_at_sentence_start_is_not_a_name():
+    doc = (
+        "Tallow is the fat of the ox. The miners used tallow candles. Glycerin comes out of "
+        "the tallow. Colonel Pasley took a candle from the Royal George."
+    )
+    names = document_names(doc)
+    assert "Pasley" in names and "Royal" in names and "George" in names
+    assert "Tallow" not in names and "Glycerin" not in names
+    inv = inventory(doc, names)
+    assert "Tallow" not in inv.proper_nouns and "Glycerin" not in inv.proper_nouns
+    assert "Pasley" in inv.proper_nouns
+    document = DocumentLock.build(doc)
+    rewrite = (
+        "The fat of the ox is tallow, and the miners burned tallow candles; glycerin comes "
+        "out of it. Colonel Pasley took a candle from the Royal George."
+    )
+    assert check(doc, rewrite, document).ok

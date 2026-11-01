@@ -24,9 +24,11 @@ class Canned(CachingProvider):
         self.default_model = f"{name}-model"
         self.answer = answer
         self.prompts: list[str] = []
+        self.systems: list[str] = []
 
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
         self.prompts.append(user)
+        self.systems.append(system)
         return Completion(text=self.answer, model=model, provider=self.name, usage=Usage(calls=1))
 
 
@@ -213,3 +215,64 @@ def test_compare_document_without_json_is_a_loss_everywhere(fixture_voice):
 
     v = compare_document("a", "b", "b", fixture_voice, Canned("openai", "no idea"), exemplars=[])
     assert v.losses == 4 and v.note == "judge gave no JSON"
+
+
+def test_content_fidelity_reports_categories_and_permits_framing_changes():
+    from deslop.semantic import PERMITTED, PROTECTED, check_meaning
+
+    answer = json.dumps(
+        {
+            "original": [{"n": 1, "kept": True}],
+            "added": [
+                {"text": "The lamp was lit in 1834", "category": "number"},
+                {"text": "we may enter", "category": "person"},
+                {"text": "He next lays down the terms", "category": "discourse"},
+                {"text": "the plain proof", "category": "emphasis"},
+                {"text": "a door into philosophy", "category": "figurative"},
+                {"text": "Gen 6:5", "category": "fact"},
+                {"text": "Consider this", "category": "reader_address"},
+            ],
+        }
+    )
+    p = Canned("anthropic", answer)
+    result = check_meaning("orig", "cand", ["A"], p, fidelity="content")
+    assert "a claim the original does not make" in p.systems[0]
+    assert "change of grammatical person or address" in p.systems[0]
+    assert result.failing == ["added (number): The lamp was lit in 1834"]
+    kinds = [(a.category, a.kind) for a in result.added]
+    assert ("person", "permitted") in kinds and ("discourse", "permitted") in kinds
+    assert ("fact", "citation") in kinds, "a citation is never a claim"
+    assert ("reader_address", "reader_address") in kinds
+    assert set(PROTECTED) >= {"fact", "entity", "number", "quotation", "causal", "evaluative"}
+    assert set(PERMITTED) >= {
+        "person",
+        "discourse",
+        "emphasis",
+        "figurative",
+        "hedging",
+        "reordering",
+    }
+
+
+def test_strict_fidelity_keeps_the_old_behaviour():
+    from deslop.semantic import check_meaning
+
+    answer = json.dumps(
+        {"original": [{"n": 1, "kept": True}], "added": [{"text": "we may enter", "kind": "claim"}]}
+    )
+    p = Canned("anthropic", answer)
+    strict = check_meaning("orig", "cand", ["A"], p, fidelity="strict")
+    assert strict.failing == ["added: we may enter"]
+    assert "change of grammatical person" not in p.systems[0]
+
+
+def test_proposition_extraction_asks_for_content_not_framing():
+    from deslop.semantic import extract_propositions
+
+    p = Canned("anthropic", "1. Tallow is the fat of the ox.")
+    assert extract_propositions("text", p) == ["Tallow is the fat of the ox."]
+    system = p.systems[0]
+    assert "perspective-neutral" in system and "the speaker" in system
+    strict = Canned("anthropic", "1. x")
+    extract_propositions("text", strict, fidelity="strict")
+    assert "perspective-neutral" not in strict.systems[0]

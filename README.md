@@ -105,6 +105,8 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--judge` | `claude-sonnet-5-5` | the model that judges and runs the semantic lock; must differ from the writer |
 | `--provider` | config, else `anthropic` | `anthropic` (API) or `claude-cli` (Claude Code CLI, local login) |
 | `--max-calls` | `200` | live calls this invocation may make, so subscription runs have a cap too |
+| `--fidelity` | `content` | `content` protects facts, entities, numbers, quotations, causal and attributed evaluative claims and permits changes of person, discourse words, emphasis, figurative restatement, hedging and reordering; `strict` fails any new claim |
+| `--report-all` | off | judge and report every candidate in full, pass or fail |
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
