@@ -6,7 +6,7 @@ SPAN = (
     'Abraham climbs (Alter 1996, 12) in Gen 22:1-3 with "his only son, whom he loves" '
     "and 3 servants in 1820."
 )
-DOCUMENT = SPAN + " Later Isaac is bound. The knife is raised twice, at 22:9 and 22:10."
+DOCUMENT = SPAN + " Later Isaac is bound by Abraham. The knife is raised twice, at 22:9 and 22:10."
 
 
 def test_inventory_classes():
@@ -63,7 +63,7 @@ def test_primary_text_citations_may_always_be_added():
 
 
 def test_sentence_initial_capitals_are_not_names_unless_named_elsewhere():
-    text = "Grief comes before the sentence. The grief is a maker's sorrow. Noah builds."
+    text = "Grief comes before the sentence. The grief is a maker's sorrow. Then Noah builds."
     doc = DocumentLock.build(text)
     assert "Grief" not in doc.names and "Noah" in doc.names
     before = "The grief is a maker's sorrow."
@@ -115,4 +115,16 @@ def test_a_word_capitalised_only_at_sentence_start_is_not_a_name():
         "The fat of the ox is tallow, and the miners burned tallow candles; glycerin comes "
         "out of it. Colonel Pasley took a candle from the Royal George."
     )
+    assert check(doc, rewrite, document).ok
+
+
+def test_a_tagged_entity_capitalised_only_at_sentence_start_is_not_a_name():
+    doc = (
+        "Glycerin is produced at the same time. Glycerin is a sugar, or something like one. "
+        "The candle came from the Royal George."
+    )
+    names = document_names(doc)
+    assert "Glycerin" not in names and "George" in names
+    document = DocumentLock.build(doc)
+    rewrite = "At the same time glycerin is produced, a sugar or something like one. The candle came from the Royal George."
     assert check(doc, rewrite, document).ok

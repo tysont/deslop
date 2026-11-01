@@ -78,16 +78,16 @@ def is_primary_citation(text: str) -> bool:
 
 
 def document_names(text: str) -> set[str]:
-    """Names the document establishes: entity tokens anywhere, plus proper-noun tokens that
-    appear capitalised somewhere other than a sentence or item start. A word capitalised
-    only where a sentence starts, or one the document also writes in lower case, is not a
-    name."""
+    """Names the document establishes: entity and proper-noun tokens that appear capitalised
+    somewhere other than a sentence or item start. A word capitalised only where a sentence
+    starts (whatever the tagger calls it), or one the document also writes in lower case, is
+    not a name."""
     doc = load_nlp(ner=True)(strip_markup(text))
     lowercase = {tok.text.lower() for tok in doc if tok.is_alpha and tok.text.islower()}
     names: set[str] = set()
     for ent in doc.ents:
         if ent.label_ in NAME_LABELS:
-            names.update(t.text for t in ent if t.text[:1].isupper())
+            names.update(t.text for t in ent if t.text[:1].isupper() and not t.is_sent_start)
     for tok in doc:
         if tok.pos_ == "PROPN" and tok.text[:1].isupper() and not tok.is_sent_start:
             names.add(tok.text)
@@ -126,7 +126,7 @@ def inventory(text: str, names: set[str] | None = None) -> Inventory:
         known = names is not None and tok.text in names
         if tok.text.lower() in lowercase and not known:
             continue  # the document also writes it in lower case: a common word
-        if names is not None and tok.is_sent_start and not known and tok.i not in entity_tokens:
+        if names is not None and tok.is_sent_start and not known:
             continue  # capitalised only because it opens a sentence or an item
         inv.proper_nouns[tok.text] += 1
     return inv
