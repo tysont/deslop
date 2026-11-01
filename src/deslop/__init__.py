@@ -9,7 +9,7 @@ The public API is five names:
   `Voice.load(path)`, write one with `Voice.save(path)`. A voice is a `NAME.voice` zip.
 - [`score`][deslop.score.score]: a [`Report`][deslop.Report] saying how far a text is from a
   voice, against calibrated thresholds, and exactly where.
-- [`apply`][deslop.apply]: rewrite a text, or draft one from a [`Brief`][deslop.Brief], in the
+- [`apply`][deslop.apply.apply]: rewrite a text, or draft one from a [`Brief`][deslop.Brief], in the
   voice under a content lock, a semantic lock and a judge; returns a
   [`Result`][deslop.Result].
 """

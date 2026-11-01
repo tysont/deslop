@@ -97,7 +97,7 @@ class Cost(BaseModel):
 
 
 class Result(BaseModel):
-    """What [`apply`][deslop.apply] produced.
+    """What [`apply`][deslop.apply.apply] produced.
 
     `text` is the output (the input where nothing was accepted); `report_before` and
     `report_after` score both; `diff` is a unified diff and `meaning_diff` lists every unit's
