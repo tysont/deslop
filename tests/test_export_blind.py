@@ -53,7 +53,8 @@ def test_load_pairs_dedupes_and_keeps_accepted_only(fixture_voice, tmp_path):
     assert load_pairs(fixture_voice, tmp_path / "missing.jsonl") == []
 
 
-def test_export_formats_tokens_and_cost(fixture_voice, tmp_path):
+def test_export_formats_tokens_and_cost(fixture_voice, tmp_path, monkeypatch):
+    monkeypatch.delenv("DESLOP_CACHE_ONLY", raising=False)
     p = tmp_path / "pairs.jsonl"
     write_pairs(p, "fixture")
     corpus = FIXTURES / "corpus_small"

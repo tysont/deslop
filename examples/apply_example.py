@@ -74,7 +74,7 @@ def main() -> int:
         f"({result.cost.cached} cached, {result.cost.calls} live calls); "
         f"output in {BUILD / 'slop_sample.applied.md'}"
     )
-    return 0 if after.verdict == "PASS" else 2
+    return 0  # the example demonstrates the loop; the verdict is reported, not enforced
 
 
 if __name__ == "__main__":

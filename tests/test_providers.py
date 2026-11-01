@@ -17,7 +17,8 @@ class Echo(base.CachingProvider):
         )
 
 
-def test_cache_hit_replays_and_cache_only_miss_raises(tmp_path):
+def test_cache_hit_replays_and_cache_only_miss_raises(tmp_path, monkeypatch):
+    monkeypatch.delenv("DESLOP_CACHE_ONLY", raising=False)
     live = Echo(cache_dir=tmp_path)
     assert live.complete("s", "hi").text == "hi!"
     replay = Echo(cache_dir=tmp_path, cache_only=True)
@@ -30,7 +31,12 @@ def test_cache_hit_replays_and_cache_only_miss_raises(tmp_path):
 
 
 def test_cache_only_providers_need_no_credentials(tmp_path, monkeypatch):
-    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DESLOP_COMPATIBLE_BASE_URL"):
+    for var in (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "DESLOP_COMPATIBLE_BASE_URL",
+        "DESLOP_CACHE_ONLY",
+    ):
         monkeypatch.delenv(var, raising=False)
     for cls in (AnthropicProvider, OpenAIProvider, CompatibleProvider):
         with pytest.raises(base.ProviderError):
