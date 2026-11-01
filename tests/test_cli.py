@@ -184,6 +184,38 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
     assert r.exit_code in (0, 2), r.output
     assert out.exists() and "Plainly," in out.read_text()
     assert "Meaning" in flat(r) and "unit 1" in flat(r) and "candidate(s)" in flat(r)
+    assert "judge gate on" in flat(r) and "growth" in flat(r)
+    marked = tmp_path / "gen.txt"
+    marked.write_text(
+        "# title: Genesis\n# book: Genesis\n\n{{Genesis 22:2}} Take now thy son.\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "apply",
+            str(sample),
+            "--voice",
+            str(voice),
+            "--n",
+            "1",
+            "--primary-text",
+            str(marked),
+            "--max-growth",
+            "40",
+            "--min-confidence",
+            "0.6",
+            "--json",
+        ],
+    )
+    assert r.exit_code in (0, 2), r.output
+    data = json.loads(r.stdout)
+    assert data["primary_texts"] == ["Genesis"] and data["max_growth"] == 40.0
+    assert data["min_confidence"] == 0.6 and "growth_pct" in data
+    r = runner.invoke(
+        app, ["apply", str(sample), "--voice", str(voice), "--primary-text", "nope.txt"]
+    )
+    assert r.exit_code == 1 and "primary text not found" in " ".join(r.output.split())
     r = runner.invoke(
         app,
         [
@@ -283,6 +315,82 @@ def test_lab_blind_with_voice_exemplars(fixture_voice, tmp_path, monkeypatch):
     )
     assert r.exit_code == 0, r.output
     assert "this session: " in flat(r)
+    r = runner.invoke(
+        app,
+        [
+            "lab",
+            "blind",
+            "--voice",
+            str(voice),
+            "--candidates",
+            str(cands),
+            "--n",
+            "1",
+            "--min-overlap",
+            "0",
+            "--export",
+            str(tmp_path / "blind"),
+        ],
+    )
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "blind" / "pairs.md").exists() and (tmp_path / "blind" / "key.json").exists()
+
+
+def test_lab_calibrate_judge_stores_accuracy_in_the_voice(
+    fixture_voice, fixtures_dir, tmp_path, monkeypatch
+):
+    from deslop.providers.base import Completion, Usage
+
+    class Judge:
+        name = "openai"
+        default_model = "m"
+        usage = Usage()
+
+        def complete(self, system, user, *, model=None, temperature=0.7):
+            self.usage.calls += 1
+            a = user.split("PARAGRAPH A:\n", 1)[1].split("\n\nPARAGRAPH B:", 1)[0]
+            pick = "B" if a.startswith("Model") else "A"
+            return Completion(
+                text=json.dumps(
+                    {
+                        "more_like_writer": pick,
+                        "more_like_model": "A" if pick == "B" else "B",
+                        "confidence": 0.9,
+                    }
+                ),
+                model="m",
+                provider="openai",
+            )
+
+    import sys
+
+    monkeypatch.setattr(sys.modules["deslop.apply"], "get_provider", lambda n: Judge())
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    llm = tmp_path / "llm"
+    llm.mkdir()
+    (llm / "e.md").write_text("\n\n".join(["Model paragraph " + "word " * 50] * 3))
+    r = runner.invoke(
+        app,
+        [
+            "lab",
+            "calibrate-judge",
+            str(voice),
+            "--corpus",
+            str(fixtures_dir / "corpus_small"),
+            "--llm-texts",
+            str(llm),
+            "--pairs",
+            "3",
+            "--models",
+            "gpt",
+        ],
+    )
+    assert r.exit_code == 0, r.output
+    assert "100% picked the corpus paragraph" in flat(r) and "usable" in flat(r)
+    from deslop import Voice
+
+    cal = Voice.load(voice).meta.judge_calibration["openai"]
+    assert cal["accuracy"] == 1.0 and cal["pairs"] == 3
 
 
 def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path):

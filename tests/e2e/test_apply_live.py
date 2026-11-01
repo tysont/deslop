@@ -33,8 +33,8 @@ def test_slop_sample_rewrite_mode_passes_locks_judge_and_linter(
     for u in rewritten:
         chosen = u.candidates[u.chosen]
         assert chosen.semantic is not None and chosen.semantic.ok
-        assert chosen.judge is not None and chosen.judge.overall >= res.judge_min
-        assert chosen.judge.provider != chosen.provider
+        assert chosen.beats_original and chosen.confidence_vs_original >= res.min_confidence
+        assert all(p.provider != chosen.provider for p in chosen.pairs)
     assert res.report_after.distance < res.report_before.distance
     assert "✓" in res.meaning_diff
     check_locks(res, slop_text)

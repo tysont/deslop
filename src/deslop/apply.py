@@ -10,17 +10,26 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from deslop.draft import Brief, SectionLog, draft_sections
-from deslop.judge import judge_paragraph
+from deslop.judge import (
+    GATE_CONFIDENCE,
+    JudgeCalibration,
+    PairVerdict,
+    beats_original,
+    compare_with,
+    judge_paragraph,
+    win_rate,
+)
 from deslop.lock import DocumentLock, check, inventory
 from deslop.metrics import compute_all, detect_tells
 from deslop.nlp import WORD_RE, Analysis, Sentence, analyze
 from deslop.patterns import Catalog, load_catalog
 from deslop.providers.base import CachingProvider, ProviderError, Usage, get_provider
+from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, verify_additions
 from deslop.report import JudgeScores, Report, TellHitResult
 from deslop.score import score
 from deslop.semantic import SemanticResult, check_meaning, extract_propositions
@@ -37,6 +46,7 @@ def pairs_dir() -> Path:
 
 
 CANDIDATE_TEMPERATURE = 0.9
+DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow its paragraph
 SECTION_TELLS = {"T14", "T15"}  # need cross-paragraph room
 CLOSING_RULE_TELL = "T5"  # rule R3: do not end a paragraph on an abstract aphorism
 
@@ -54,11 +64,22 @@ class CandidateLog(BaseModel):
     lexical_ok: bool
     lexical_detail: str = ""
     semantic: SemanticResult | None = None
-    judge: JudgeScores | None = None
+    primary: PrimaryCheck | None = None  # added quotations and citations, verified or not
+    pairs: list[PairVerdict] = Field(default_factory=list)  # comparative judge verdicts
+    win_rate: float | None = None
+    beats_original: bool | None = None
+    judge: JudgeScores | None = None  # absolute rubric, secondary (winner only)
     distance: float | None = None
+    growth_pct: float | None = None
     new_tells: list[str] = Field(default_factory=list)
     accepted: bool = False
     reason: str = ""
+
+    @property
+    def confidence_vs_original(self) -> float:
+        return max(
+            (p.confidence for p in self.pairs if p.against == "original" and p.wins), default=0.0
+        )
 
 
 class UnitLog(BaseModel):
@@ -101,10 +122,13 @@ class Result(BaseModel):
 
     `text` is the output (the input where nothing was accepted); `report_before` and
     `report_after` score both; `diff` is a unified diff and `meaning_diff` lists every unit's
-    propositions with whether the output kept them; `units` logs each unit's candidates,
-    verdicts and the winner; `iterations` is filled in edit mode; `cost` totals tokens and
-    USD; `stopped` says why the loop ended; `exemplars_used` is False when the voice was
-    packed without exemplars; `draft` holds the section logs when a brief was applied.
+    propositions with whether the output kept them plus its added quotations and citations;
+    `unverified_additions` are the added quotations and citations no primary text confirmed;
+    `growth_pct` is the document's word-count growth; `units` logs each unit's candidates,
+    verdicts, win rates and the winner; `judge_gate` says which providers judged and whether
+    the gate was on; `iterations` is filled in edit mode; `cost` totals tokens and USD;
+    `stopped` says why the loop ended; `exemplars_used` is False when the voice was packed
+    without exemplars; `draft` holds the section logs when a brief was applied.
     """
 
     mode: str
@@ -118,7 +142,12 @@ class Result(BaseModel):
     cost: Cost
     stopped: str
     exemplars_used: bool = True
-    judge_min: float = 4.0
+    min_confidence: float = GATE_CONFIDENCE
+    max_growth: float = DEFAULT_MAX_GROWTH
+    growth_pct: float = 0.0
+    unverified_additions: list[str] = Field(default_factory=list)
+    primary_texts: list[str] = Field(default_factory=list)
+    judge_gate: str = ""
     draft: list[SectionLog] | None = None
     draft_text: str | None = None
 
@@ -321,8 +350,10 @@ AFTER: {after}
 # Instruction
 Write this {kind} as this writer would. Keep every proposition above; add no new claim. You
 may change every sentence, reorder, split and merge sentences, and drop connective filler.
-Cite the primary text where this writer would, and address the reader only where this writer
-would. Keep it as {shape}, {min_words} to {max_words} words.{extra}{issues}{rejected}
+Cite the primary text where this writer would, quoting it only in its exact words and citing
+only locations that exist in it, and address the reader only where this writer would. Keep it
+as {shape}, {min_words} to {max_words} words; it must not run longer than
+{max_words}.{extra}{issues}{rejected}
 
 Draft {attempt} of {n}."""
 
@@ -486,6 +517,7 @@ def rewrite_prompt(
     n: int,
     issues: list[str],
     rejected: list[tuple[str, str]],
+    max_growth: float = DEFAULT_MAX_GROWTH,
 ) -> tuple[str, str]:
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
     before, after = _context(unit, text, a)
@@ -509,8 +541,8 @@ def rewrite_prompt(
         propositions="\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1)) or "(none)",
         allowlist="\n".join(f"- {line}" for line in allow) or "- (nothing yet)",
         shape=shape,
-        min_words=max(40, int(words * 0.7)),
-        max_words=int(words * 1.3) + 10,
+        min_words=min(max(40, int(words * 0.7)), words),
+        max_words=max_words_for(words, max_growth),
         extra="",
         issues=(
             "\n\nAddress these faults in the current version:\n"
@@ -565,6 +597,16 @@ def edit_prompt(
         rejected=_rejected_section(rejected),
     )
     return system, user
+
+
+def max_words_for(words: int, max_growth: float) -> int:
+    return int(math.floor(words * (1 + max_growth / 100.0)))
+
+
+def growth_of(before: str, after: str) -> float:
+    """Word-count growth of `after` over `before`, in percent."""
+    a, b = len(before.split()), len(after.split())
+    return round(100.0 * (b - a) / max(a, 1), 1)
 
 
 def _rejected_section(rejected: list[tuple[str, str]]) -> str:
@@ -633,6 +675,63 @@ class ProviderPool:
         return total
 
 
+class JudgePlan:
+    """Who may judge whom. A provider judges only candidates it did not write, and only if
+    its measured calibration (voice.yaml `judge_calibration`) reached 80% accuracy; a
+    provider with no calibration is trusted. Writers are the providers some judge is clear
+    of. When no judge qualifies the gate is off and candidates are ranked by the linter."""
+
+    def __init__(self, pool: ProviderPool, calibration: dict[str, Any]):
+        self.pool = pool
+        self.available: list[tuple[str, CachingProvider]] = []
+        for alias in pool.names:
+            p = pool.get(alias)
+            if p is not None and all(q.name != p.name for _, q in self.available):
+                self.available.append((alias, p))
+        self.calibration: dict[str, JudgeCalibration] = {}
+        for name, data in calibration.items():
+            try:
+                self.calibration[name] = JudgeCalibration.model_validate(data)
+            except ValueError:
+                continue
+        self.judges = [p for _, p in self.available if self._qualified(p)]
+        self.writers = [
+            alias for alias, p in self.available if any(j.name != p.name for j in self.judges)
+        ]
+        if not self.writers:
+            self.writers = [alias for alias, _ in self.available]
+            self.judges = []
+        self.enabled = bool(self.judges)
+
+    def _qualified(self, p: CachingProvider) -> bool:
+        cal = self.calibration.get(p.name)
+        return cal is None or cal.usable
+
+    def judges_for(self, *writer_names: str) -> list[CachingProvider]:
+        """Judges clear of every writer named; empty when none is (the pair is skipped)."""
+        clear = [j for j in self.judges if j.name not in writer_names]
+        return clear[:1]
+
+    def writer(self, i: int) -> CachingProvider:
+        for k in range(len(self.writers)):
+            p = self.pool.get(self.writers[(i + k) % len(self.writers)])
+            if p is not None:
+                return p
+        return self.pool.for_iteration(i)
+
+    def describe(self) -> str:
+        if not self.available:
+            return "no provider available"
+        parts = []
+        for _, p in self.available:
+            cal = self.calibration.get(p.name)
+            role = "judge" if p in self.judges else "writer only"
+            acc = f"{100 * cal.accuracy:.0f}% on {cal.pairs} pairs" if cal else "uncalibrated"
+            parts.append(f"{p.name}: {role} ({acc})")
+        state = "on" if self.enabled else "OFF (no provider reached 80% as judge)"
+        return f"judge gate {state}; " + "; ".join(parts)
+
+
 # ---------------------------------------------------------------- the loops
 
 
@@ -685,6 +784,11 @@ def _log_pairs(voice: Voice, units: list[UnitLog], path: Path | None) -> None:
 
 def _meaning_diff(units: list[UnitLog]) -> str:
     lines = []
+    unverified = _unverified(units)
+    if unverified:
+        lines.append("unverified additions (no primary text confirmed them):")
+        lines.extend(f"  ? {u}" for u in unverified)
+        lines.append("")
     for u in units:
         head = f"unit {u.index + 1} ({u.kind})"
         if u.kept_original:
@@ -696,12 +800,16 @@ def _meaning_diff(units: list[UnitLog]) -> str:
         if chosen is None or chosen.semantic is None:
             lines.append(f"{head}: {u.reason}")
             continue
-        lines.append(f"{head}: candidate {u.chosen + 1} by {chosen.provider}")  # type: ignore[operator]
+        rate = f", win rate {100 * chosen.win_rate:.0f}%" if chosen.win_rate is not None else ""
+        lines.append(f"{head}: candidate {u.chosen + 1} by {chosen.provider}{rate}")  # type: ignore[operator]
         for c in chosen.semantic.checks:
             mark = "✓" if c.kept else "✗"
             lines.append(f"  {mark} {c.proposition}" + (f" ({c.note})" if c.note else ""))
         for added in chosen.semantic.added:
             lines.append(f"  + [{added.kind}] {added.text}")
+        for add in chosen.primary.additions if chosen.primary else []:
+            mark = "✓" if add.verified else "?"
+            lines.append(f"  {mark} [{add.kind}] {add}")
     return "\n".join(lines)
 
 
@@ -724,7 +832,9 @@ def apply(
     models: tuple[str, ...] = DEFAULT_MODELS,
     budget: float | None = None,
     n: int = 3,
-    judge_min: float = 4.0,
+    min_confidence: float = GATE_CONFIDENCE,
+    max_growth: float = DEFAULT_MAX_GROWTH,
+    primary_texts: list[str | Path | PrimaryText] | None = None,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -736,28 +846,50 @@ def apply(
 
     Rewrite mode (default) treats every paragraph as a unit: its propositions are extracted,
     `n` candidates are sampled across the configured providers in rotation, and each is
-    checked by the content lock, the semantic lock (a different provider), the linter in
-    document context and a rubric judge; the best candidate that passes both locks and
-    scores at least `judge_min` wins, with one retry naming the failures, else the original
-    is kept. A document-level pass then rewrites units flagged for summary closes, monotone
-    runs or aphoristic endings. Edit mode rewrites only flagged sentences and passages
-    under the same locks. A `Brief` is drafted section by section first, then rewritten.
-    `provider_factory` maps a provider name to a `CachingProvider` (tests replay a cache
-    with it); `budget` is USD.
+    checked by the content lock, the length limit (`max_growth` percent over the original),
+    the primary-text check, the semantic lock (a different provider) and the linter in
+    document context; the survivors are judged pairwise against the original and each other
+    by a provider that wrote neither, and the candidate with the best win rate that beats
+    the original with at least `min_confidence` wins, with one retry naming the failures,
+    else the original is kept. A document-level pass then rewrites units flagged for summary
+    closes, monotone runs or aphoristic endings. Edit mode rewrites only flagged sentences
+    and passages under the same locks. A `Brief` is drafted section by section first, then
+    rewritten. `primary_texts` (bundled names, files, directories or loaded `PrimaryText`s)
+    default to the brief's `primary_texts` plus the voice's; without any, added quotations
+    and citations are allowed and listed as unverified. `provider_factory` maps a provider
+    name to a `CachingProvider` (tests replay a cache with it); `budget` is USD.
     """
     catalog = load_catalog(patterns)
     pool = ProviderPool(models, provider_factory)
+    plan = JudgePlan(pool, voice.meta.judge_calibration)
     draft_logs: list[SectionLog] | None = None
     draft_text: str | None = None
+    sources: list[str | Path | PrimaryText] = list(primary_texts or [])
     if isinstance(text_or_brief, Brief):
+        sources = sources or [*text_or_brief.primary_texts, *voice.meta.primary_texts]
         text, draft_logs = draft_sections(text_or_brief, voice, pool, progress=progress)
         draft_text = text
         mode = "rewrite"
     else:
+        sources = sources or list(voice.meta.primary_texts)
         text = text_or_brief
+    texts = _load_texts(sources)
+    if progress:
+        progress(plan.describe())
+        if texts:
+            progress("primary texts: " + ", ".join(t.name for t in texts))
     report_before = score(text, voice, patterns=patterns)
     exemplars = ExemplarIndex(voice)
     document = DocumentLock.build(text)
+    opts = Options(
+        plan=plan,
+        texts=texts,
+        min_confidence=min_confidence,
+        max_growth=max_growth,
+        patterns=patterns,
+        n=n,
+        progress=progress,
+    )
 
     if mode == "edit":
         result = _edit_loop(
@@ -768,11 +900,10 @@ def apply(
             exemplars,
             document,
             catalog,
+            opts,
             budget=budget,
             max_iter=max_iter,
             preserve_length=preserve_length,
-            patterns=patterns,
-            progress=progress,
         )
     else:
         result = _rewrite_loop(
@@ -783,11 +914,8 @@ def apply(
             exemplars,
             document,
             catalog,
+            opts,
             budget=budget,
-            n=n,
-            judge_min=judge_min,
-            patterns=patterns,
-            progress=progress,
         )
     final_text, units, iterations, stopped = result
     report_after = score(final_text, voice, patterns=patterns)
@@ -812,10 +940,47 @@ def apply(
         cost=_cost(pool.usage()),
         stopped=stopped,
         exemplars_used=exemplars.available,
-        judge_min=judge_min,
+        min_confidence=min_confidence,
+        max_growth=max_growth,
+        growth_pct=growth_of(text, final_text),
+        unverified_additions=_unverified(units),
+        primary_texts=[t.name for t in texts],
+        judge_gate=plan.describe(),
         draft=draft_logs,
         draft_text=draft_text,
     )
+
+
+@dataclass
+class Options:
+    """Everything the unit loops share: the judge plan, the primary texts, the gates."""
+
+    plan: JudgePlan
+    texts: list[PrimaryText]
+    min_confidence: float
+    max_growth: float
+    patterns: tuple[str, ...]
+    n: int
+    progress: Callable[[str], None] | None
+
+
+def _load_texts(sources: list[str | Path | PrimaryText]) -> list[PrimaryText]:
+    loaded = [t for t in sources if isinstance(t, PrimaryText)]
+    names = [t for t in sources if not isinstance(t, PrimaryText)]
+    return loaded + load_primary_texts(names)
+
+
+def _unverified(units: list[UnitLog]) -> list[str]:
+    out: list[str] = []
+    for u in units:
+        if u.kept_original or u.chosen is None:
+            continue
+        cand = u.candidates[u.chosen]
+        if cand.primary is None:
+            continue
+        for add in cand.primary.unverified:
+            out.append(f"unit {u.index + 1}: {add}")
+    return out
 
 
 def _rewrite_loop(
@@ -826,13 +991,11 @@ def _rewrite_loop(
     exemplars: ExemplarIndex,
     document: DocumentLock,
     catalog: Catalog,
+    opts: Options,
     *,
     budget: float | None,
-    n: int,
-    judge_min: float,
-    patterns: tuple[str, ...],
-    progress: Callable[[str], None] | None,
 ) -> tuple[str, list[UnitLog], list[IterationLog], str]:
+    patterns, progress = opts.patterns, opts.progress
     a = analyze(text)
     units = rewrite_units(text, a, report_before)
     logs: list[UnitLog] = []
@@ -856,11 +1019,8 @@ def _rewrite_loop(
             exemplars,
             document,
             catalog,
-            n=n,
-            judge_min=judge_min,
-            patterns=patterns,
+            opts,
             issues=[],
-            progress=progress,
         )
         logs.append(log)
         current = current[:start] + log.final + current[end:]
@@ -912,11 +1072,8 @@ def _rewrite_loop(
                 exemplars,
                 document,
                 catalog,
-                n=n,
-                judge_min=judge_min,
-                patterns=patterns,
+                opts,
                 issues=issues,
-                progress=progress,
             )
             log.kind = "paragraph (document pass)"
             logs.append(log)
@@ -925,11 +1082,11 @@ def _rewrite_loop(
     return current, logs, [], stopped
 
 
-def _rank_key(cand: CandidateLog) -> tuple[float, float]:
-    """Linter distance first, then judge score (higher is better)."""
+def _rank_key(cand: CandidateLog) -> tuple[float, float, float]:
+    """Comparative win rate first, then confidence over the original, then linter distance."""
+    rate = cand.win_rate if cand.win_rate is not None else -1.0
     distance = cand.distance if cand.distance is not None else 1e9
-    judged = cand.judge.overall if cand.judge is not None else 0.0
-    return distance, -judged
+    return (-rate, -cand.confidence_vs_original, distance)
 
 
 def _kept(unit: Unit, propositions: list[str], reason: str) -> UnitLog:
@@ -946,6 +1103,41 @@ def _kept(unit: Unit, propositions: list[str], reason: str) -> UnitLog:
     )
 
 
+def _verify_candidate(
+    unit: Unit,
+    candidate: str,
+    cand: CandidateLog,
+    document: DocumentLock,
+    opts: Options,
+) -> str | None:
+    """The locks and limits that need no judge: shape, length, lexical lock, primary texts.
+    Returns the rejection reason, or None when the candidate may go on to the semantic lock."""
+    if not candidate or candidate == unit.text:
+        cand.lexical_ok = False
+        return "empty or unchanged"
+    if unit.kind == "paragraph" and "\n\n" in candidate.strip():
+        cand.lexical_ok = False
+        return "split the paragraph"
+    cand.growth_pct = growth_of(unit.text, candidate)
+    limit = max_words_for(len(unit.text.split()), opts.max_growth)
+    if len(candidate.split()) > limit:
+        return (
+            f"length: {len(candidate.split())} words, over the {limit}-word limit "
+            f"(+{opts.max_growth:.0f}%)"
+        )
+    lock = check(unit.text, candidate, document)
+    if not lock.ok:
+        cand.lexical_ok = False
+        cand.lexical_detail = "; ".join(str(v) for v in lock.violations)
+        return "content lock: " + cand.lexical_detail
+    if lock.additions:
+        cand.lexical_detail = "new items for the semantic lock: " + "; ".join(lock.additions)
+    cand.primary = verify_additions(unit.text, candidate, opts.texts)
+    if not cand.primary.ok:
+        return "primary text: " + "; ".join(str(a) for a in cand.primary.rejected[:3])
+    return None
+
+
 def _rewrite_unit(
     unit: Unit,
     current: str,
@@ -956,16 +1148,13 @@ def _rewrite_unit(
     exemplars: ExemplarIndex,
     document: DocumentLock,
     catalog: Catalog,
+    opts: Options,
     *,
-    n: int,
-    judge_min: float,
-    patterns: tuple[str, ...],
     issues: list[str],
-    progress: Callable[[str], None] | None,
 ) -> UnitLog:
+    plan, n, progress = opts.plan, opts.n, opts.progress
     a = analyze(current)
-    writer0 = pool.for_iteration(0)
-    checker = pool.other_than(writer0)
+    writer0 = plan.writer(0)
     propositions = extract_propositions(unit.text, writer0)
     log = UnitLog(
         index=unit.index,
@@ -976,38 +1165,14 @@ def _rewrite_unit(
         final=unit.text,
         propositions=propositions,
     )
-    # A unit that already reads in the voice and carries no flagged tell is kept as is.
-    if not issues and not unit.hits:
-        verdict = judge_paragraph(
-            unit.text,
-            voice,
-            checker,
-            exemplars=exemplars.closest(unit.text, 2),
-            propositions=propositions,
-        )
-        if verdict.overall >= judge_min:
-            log.kept_original = True
-            log.reason = f"already in voice (judge {verdict.overall:.1f})"
-            log.candidates.append(
-                CandidateLog(
-                    attempt=0,
-                    text=unit.text,
-                    provider="",
-                    model="",
-                    lexical_ok=True,
-                    judge=verdict,
-                    accepted=True,
-                    reason="original kept",
-                )
-            )
-            if progress:
-                progress(f"  unit {unit.index + 1}: kept (judge {verdict.overall:.1f})")
-            return log
-
+    near = exemplars.closest(unit.text, 2)
     rejected: list[tuple[str, str]] = []
     for round_index in range(2):
+        eligible: list[CandidateLog] = []
+        writers: dict[int, str] = {}
         for k in range(n):
-            writer = pool.for_iteration(round_index * n + k)
+            attempt = round_index * n + k + 1
+            writer = plan.writer(round_index * n + k)
             system, user = rewrite_prompt(
                 unit,
                 current,
@@ -1016,17 +1181,18 @@ def _rewrite_unit(
                 exemplars,
                 document,
                 propositions,
-                attempt=round_index * n + k + 1,
+                attempt=attempt,
                 n=2 * n,
                 issues=issues,
                 rejected=rejected if round_index else [],
+                max_growth=opts.max_growth,
             )
             try:
                 completion = writer.complete(system, user, temperature=CANDIDATE_TEMPERATURE)
             except ProviderError as exc:
                 log.candidates.append(
                     CandidateLog(
-                        attempt=round_index * n + k + 1,
+                        attempt=attempt,
                         text="",
                         provider=writer.name,
                         model=writer.default_model,
@@ -1037,68 +1203,96 @@ def _rewrite_unit(
                 continue
             candidate = clean_response(completion.text)
             cand = CandidateLog(
-                attempt=round_index * n + k + 1,
+                attempt=attempt,
                 text=candidate,
                 provider=completion.provider,
                 model=completion.model,
                 lexical_ok=True,
             )
-            if not candidate or candidate == unit.text:
-                cand.lexical_ok, cand.reason = False, "empty or unchanged"
-                log.candidates.append(cand)
+            log.candidates.append(cand)
+            reason = _verify_candidate(unit, candidate, cand, document, opts)
+            if reason is not None:
+                cand.reason = reason
+                if reason != "empty or unchanged":
+                    rejected.append((candidate, reason))
                 continue
-            if unit.kind == "paragraph" and "\n\n" in candidate.strip():
-                cand.lexical_ok, cand.reason = False, "split the paragraph"
-                log.candidates.append(cand)
-                rejected.append((candidate, cand.reason))
-                continue
-            lock = check(unit.text, candidate, document)
-            if not lock.ok:
-                cand.lexical_ok = False
-                cand.lexical_detail = "; ".join(str(v) for v in lock.violations)
-                cand.reason = "content lock: " + cand.lexical_detail
-                log.candidates.append(cand)
-                rejected.append((candidate, cand.reason))
-                continue
-            if lock.additions:
-                cand.lexical_detail = "new items for the semantic lock: " + "; ".join(
-                    lock.additions
-                )
-            judge_provider = pool.other_than(writer)
-            cand.semantic = check_meaning(unit.text, candidate, propositions, judge_provider)
+            checkers = plan.judges_for(writer.name) or [pool.other_than(writer)]
+            cand.semantic = check_meaning(unit.text, candidate, propositions, checkers[0])
             if not cand.semantic.ok:
                 cand.reason = "meaning: " + "; ".join(cand.semantic.failing[:3])
-                log.candidates.append(cand)
                 rejected.append((candidate, cand.reason))
                 continue
             spliced = current[:start] + candidate + current[end:]
-            cand.distance = score(spliced, voice, patterns=patterns).distance
+            cand.distance = score(spliced, voice, patterns=opts.patterns).distance
             cand.new_tells = _new_tells(current, spliced, catalog)
-            cand.judge = judge_paragraph(
-                candidate,
-                voice,
-                judge_provider,
-                exemplars=exemplars.closest(unit.text, 2),
-                propositions=propositions,
-            )
-            if cand.judge.overall < judge_min:
-                cand.reason = f"judge {cand.judge.overall:.1f} < {judge_min:.1f}: {cand.judge.note}"
-                log.candidates.append(cand)
-                rejected.append((candidate, cand.reason))
-                continue
-            cand.accepted = True
-            cand.reason = "passed locks and judge"
-            log.candidates.append(cand)
-        passing = [i for i, c in enumerate(log.candidates) if c.accepted]
+            eligible.append(cand)
+            writers[id(cand)] = writer.name
+
+        # Comparative judging: each survivor against the original, then round-robin.
+        for cand in eligible:
+            judges = plan.judges_for(writers[id(cand)])
+            if judges:
+                cand.pairs.append(compare_with(cand.text, unit.text, voice, judges, exemplars=near))
+        for i, x in enumerate(eligible):
+            for y in eligible[i + 1 :]:
+                judges = plan.judges_for(writers[id(x)], writers[id(y)])
+                if not judges:
+                    continue  # no provider is clear of both writers
+                v = compare_with(
+                    x.text, y.text, voice, judges, exemplars=near, against=f"candidate {y.attempt}"
+                )
+                x.pairs.append(v)
+                y.pairs.append(
+                    PairVerdict(
+                        against=f"candidate {x.attempt}",
+                        wins=not v.wins,
+                        picked_as_model=not v.picked_as_model,
+                        confidence=v.confidence,
+                        shown_as="B" if v.shown_as == "A" else "A",
+                        provider=v.provider,
+                        model=v.model,
+                        note=v.note,
+                    )
+                )
+        for cand in eligible:
+            cand.win_rate = win_rate(cand.pairs)
+            if plan.enabled:
+                cand.beats_original = beats_original(cand.pairs, opts.min_confidence)
+                if cand.beats_original:
+                    cand.accepted = True
+                    cand.reason = (
+                        f"passed locks; beat the original at {cand.confidence_vs_original:.2f}"
+                    )
+                else:
+                    vs = next((p for p in cand.pairs if p.against == "original"), None)
+                    if vs is None:
+                        cand.reason = "no judge clear of the writer; not gated"
+                    elif vs.wins:
+                        cand.reason = (
+                            f"beat the original only at {vs.confidence:.2f} < "
+                            f"{opts.min_confidence:.2f}: {vs.note}"
+                        )
+                    else:
+                        cand.reason = f"judged less like the writer than the original: {vs.note}"
+                    rejected.append((cand.text, cand.reason))
+            else:
+                cand.accepted = True
+                cand.reason = "passed locks (judge gate off)"
+        passing = [c for c in log.candidates if c.accepted]
         if passing:
-            best = min(passing, key=lambda i: _rank_key(log.candidates[i]))
-            log.chosen = best
-            winner = log.candidates[best]
+            winner = min(passing, key=_rank_key)
+            log.chosen = log.candidates.index(winner)
             log.final = winner.text
-            judged = winner.judge.overall if winner.judge else 0.0
+            judges = plan.judges_for(writers.get(id(winner), winner.provider))
+            if judges:
+                winner.judge = judge_paragraph(
+                    winner.text, voice, judges[0], exemplars=near, propositions=propositions
+                )
+            rate = f"{100 * winner.win_rate:.0f}%" if winner.win_rate is not None else "n/a"
             log.reason = (
-                f"candidate {best + 1} of {len(log.candidates)}: distance "
-                f"{winner.distance:.1f}, judge {judged:.1f}"
+                f"candidate {log.chosen + 1} of {len(log.candidates)}: win rate {rate} over "
+                f"{len(winner.pairs)} pair(s), distance {winner.distance:.1f}, "
+                f"growth {winner.growth_pct:+.0f}%"
             )
             if progress:
                 progress(f"  unit {unit.index + 1}: {log.reason}")
@@ -1123,13 +1317,13 @@ def _edit_loop(
     exemplars: ExemplarIndex,
     document: DocumentLock,
     catalog: Catalog,
+    opts: Options,
     *,
     budget: float | None,
     max_iter: int,
     preserve_length: float,
-    patterns: tuple[str, ...],
-    progress: Callable[[str], None] | None,
 ) -> tuple[str, list[UnitLog], list[IterationLog], str]:
+    patterns, progress = opts.patterns, opts.progress
     iterations: list[IterationLog] = []
     logs: list[UnitLog] = []
     rejected_for: dict[str, list[tuple[str, str]]] = {}
@@ -1205,9 +1399,15 @@ def _edit_loop(
                 )
                 if reason is None:
                     lock = check(unit.text, candidate, document)
+                    cand.growth_pct = growth_of(unit.text, candidate)
+                    cand.primary = verify_additions(unit.text, candidate, opts.texts)
                     if not lock.ok:
                         cand.lexical_ok = False
                         reason = "content lock: " + "; ".join(str(v) for v in lock.violations)
+                    elif not cand.primary.ok:
+                        reason = "primary text: " + "; ".join(
+                            str(x) for x in cand.primary.rejected[:3]
+                        )
                     elif lock.additions:
                         checker = pool.other_than(attempt_provider)
                         props = extract_propositions(unit.text, attempt_provider)

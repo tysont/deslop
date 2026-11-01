@@ -14,7 +14,7 @@ The library has two primary verbs and a check, and the CLI mirrors them:
 | `score` | report how far a text is from the voice, against calibrated thresholds, and exactly where |
 
 `voice show`, `voice diff`, `voice validate`, `voice pack`, `voice unpack` and `voice edit`
-inspect and maintain a voice; `lab blind`, `lab export` and `lab calibrate-thresholds` are
+inspect and maintain a voice; `lab blind`, `lab export`, `lab calibrate-thresholds` and `lab calibrate-judge` are
 experiments.
 
 ## Install

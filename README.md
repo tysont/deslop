@@ -100,7 +100,9 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--mode` | `rewrite` | `rewrite` every paragraph, or `edit` only flagged sentences |
 | `--models` | `claude,gpt` | providers in rotation; the writer of a candidate never judges it |
 | `--n` | `3` | candidates sampled per paragraph in rewrite mode |
-| `--judge-min` | `4` | lowest judge score (1 to 5) a candidate may have |
+| `--min-confidence` | `0.7` | judge confidence a candidate needs to beat the original paragraph |
+| `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
+| `--primary-text` | brief's, then voice's | reference texts (bundled name, file or directory) added quotations and citations must verify against; repeatable |
 | `--budget` | none | USD ceiling; returns the best text so far |
 | `--max-iter` | `4` | edit-mode iterations |
 | `--diff` | off | print the unified diff and the meaning diff |
@@ -110,15 +112,36 @@ Rewrite mode, per paragraph: the paragraph's propositions are extracted (cached)
 candidates are sampled at temperature 0.9 from the providers in rotation with the profile,
 the rules, three exemplars nearest in subject and spread across registers, the paragraph,
 its propositions and the document's allowlist of names, numbers, quotations and citations;
-each candidate must pass the content lock (nothing locked removed), the semantic lock (every
-proposition kept, none added, judged by a different provider), then is scored by the linter in
-document context and by the judge. The best candidate by linter distance, then judge score,
-that passes both locks and `--judge-min` wins. If none passes, one retry names the failures;
-if that fails too the original paragraph is kept and the report says so. A paragraph that
-already reads in the voice (judge at or above the gate, no flagged tell) is kept without
-rewriting. Paragraphs flagged for a summary close or a monotone run are rewritten with their
-predecessor as a section. A final document-level pass rewrites any unit left with T14, T15 or
-an aphoristic close.
+each candidate must pass the content lock (nothing locked removed), the length limit
+(`--max-growth`), the primary-text check (every added quotation verbatim in a primary text,
+every added verse or Stephanus citation resolving to a marker in one) and the semantic lock
+(every proposition kept, none added, judged by a different provider), then is scored by the
+linter in document context. The survivors go to the comparative judge: a provider that wrote
+neither text sees two paragraphs and two exemplars and says which reads more like the
+exemplars' writer and which more like model prose, with a confidence. Each survivor is judged
+against the original paragraph and, round-robin, against the other survivors a judge is
+clear of, giving a win rate. A candidate is accepted when it beats the original with at
+least `--min-confidence`; the best by win rate, then confidence over the original, then
+linter distance wins, and gets the absolute rubric score as a secondary record. If none
+passes, one retry names the failures; if that fails too the original paragraph is kept and
+the report says so. Paragraphs flagged for a summary close or a monotone run are rewritten
+with their predecessor as a section. A final document-level pass rewrites any unit left with
+T14, T15 or an aphoristic close.
+
+Without a primary text, added quotations and citations are allowed and listed as
+"unverified additions" at the top of the report and in `--diff`. Two reference texts ship
+with deslop: `kjv-genesis` (Genesis, King James Version, Project Gutenberg #10, with verse
+markers) and `jowett-republic` (Plato's Republic in Jowett's translation, Project Gutenberg
+#55201, with Stephanus pages). A voice may name its default primary texts in `voice.yaml`
+(`deslop voice ... --primary-text kjv-genesis`), and a brief may list `primary_texts:`.
+Your own reference text is a plain-text file with `# title:`, `# book:` and `# aliases:`
+header lines and `{{Genesis 6:5}}` or `{{369b}}` markers in the text; a file without markers
+still verifies quotations.
+
+The judge gate is only used with a provider that has been measured: `deslop lab
+calibrate-judge` stores each provider's accuracy at telling held-out corpus paragraphs
+from LLM-reference paragraphs in the voice, a provider below 80% is never used as a judge,
+and when no provider reaches 80% the gate is off and the report says so.
 
 Edit mode rewrites only flagged sentences, with adjacent flagged sentences merged into one
 passage, under the same two locks; everything outside a unit stays byte-identical.
@@ -133,7 +156,7 @@ rewrite mode.
 | --- | --- | --- |
 | `-v, --voice` | resolved | the voice |
 | `--annotate PATH` | none | write the input with inline `[Tn]` markers |
-| `--judge` | off | also ask an LLM judge (one call) and print its three rubric scores |
+| `--judge` | off | also ask the absolute rubric judge (one call) and print its three scores, a trend figure, not a gate |
 | `--models` | `claude,gpt` | provider for `--judge` |
 | `-q, --quiet` | off | print only the verdict line |
 
@@ -173,11 +196,21 @@ Unpack to a temporary directory, open `profile.md`, `rules.md` and `exemplars.md
 Retune the bands and limits (see Thresholds) and print the separation. `voice` runs this
 itself; the command exists to rerun it after editing a voice.
 
-### `deslop lab blind --candidates DIR [--texts DIR] [--n 5] [--seed N] [--min-overlap 0.03]`
+### `deslop lab calibrate-judge VOICE --corpus DIR --llm-texts DIR [--pairs 100] [--models claude,gpt] [-o OUT.voice]`
+
+Measure each provider as the comparative judge on pairs of one LLM-reference paragraph and
+one paragraph from the voice's held-out authors (the same author split threshold calibration
+uses), report the accuracy, and store it in the voice. `--llm-texts` is a directory of
+`.md`/`.txt` essays or of `.json` files with a `text` key, as `scripts/build_llm_reference.py`
+caches them.
+
+### `deslop lab blind --candidates DIR [--texts DIR] [--n 5] [--seed N] [--min-overlap 0.03] [--export DIR]`
 
 Pair paragraphs from your drafts with human paragraphs (from `--texts`, else the voice's
 exemplars) matched on length and lexical overlap, show each pair in random order, and ask
-which is machine-written. Results append to `$DESLOP_HOME/blind/<voice>.jsonl`.
+which is machine-written. Results append to `$DESLOP_HOME/blind/<voice>.jsonl`. With
+`--export DIR` the shuffled pairs are written to `DIR/pairs.md` and the answers to
+`DIR/key.json` for a session run by hand.
 
 ### `deslop lab export VOICE --out FILE [--format openai-ft|jsonl] [--corpus DIR] [--no-pairs] [--no-chunks]`
 
@@ -211,7 +244,8 @@ default_voice: voices/critics.voice
 apply:
   models: [claude, gpt]
   n: 3
-  judge-min: 4
+  min-confidence: 0.7
+  max-growth: 15
   budget: 5.0
 voice:
   max-share: 0.15
@@ -355,9 +389,9 @@ voice = Voice.load("critics.voice")
 report = score(open("draft.md").read(), voice)
 print(report.verdict, report.distance, report.separation.llm_median, report.fixes)
 
-result = apply(open("draft.md").read(), voice, n=3, judge_min=4.0)
-print(result.report_after.verdict, result.cost.usd)
-print(result.meaning_diff)
+result = apply(open("draft.md").read(), voice, n=3, primary_texts=["kjv-genesis"])
+print(result.report_after.verdict, result.cost.usd, result.growth_pct)
+print(result.unverified_additions, result.meaning_diff)
 
 piece = apply(load_brief("brief.yaml"), voice)
 print(piece.text)

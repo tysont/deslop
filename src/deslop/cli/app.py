@@ -154,6 +154,12 @@ def voice_build(
     ),
     add: list[Path] = typer.Option([], "--add", help="Texts to add with --from"),
     patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
+    primary_text: list[str] = typer.Option(
+        [],
+        "--primary-text",
+        help="Default primary texts for apply: bundled names (kjv-genesis, jowett-republic) "
+        "or paths, stored in voice.yaml",
+    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build NAME.voice from texts, or extend an existing voice with --from/--add."""
@@ -189,6 +195,15 @@ def voice_build(
         )
     except ValueError as exc:
         fail(str(exc))
+    primary = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
+    if primary:
+        from deslop.reference import load_primary_texts
+
+        try:
+            load_primary_texts(primary)
+        except (FileNotFoundError, OSError) as exc:
+            fail(str(exc))
+        voice.meta.primary_texts = primary
     voice.save(out)
     if json_out:
         print_json(voice.meta.model_dump_json())
@@ -553,18 +568,40 @@ def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
     context = (
         f" (held-out p90 {sep.heldout_p90:.0f}, LLM median {sep.llm_median:.0f})" if sep else ""
     )
+    if result.unverified_additions:
+        console.print(
+            f"[yellow]unverified additions ({len(result.unverified_additions)}):[/] "
+            "quotations and citations the output added that no primary text confirmed"
+        )
+        for item in result.unverified_additions:
+            console.print(f"  ? {item}", markup=False, highlight=False)
     console.print(
         f"[bold {color}]{after.verdict}[/]: distance {before.distance:.0f} -> "
         f"{after.distance:.0f}{context}; {rewritten}/{len(result.units)} unit(s) rewritten"
         + (f", {len(fallbacks)} kept original" if fallbacks else "")
+        + f"; growth {result.growth_pct:+.0f}% (limit +{result.max_growth:.0f}% per unit)"
         + f"; ${result.cost.usd:.3f} over {result.cost.calls} call(s){unpriced}; "
         f"stopped: {result.stopped}"
     )
+    console.print(f"[dim]{result.judge_gate}[/]")
+    if result.primary_texts:
+        console.print(f"[dim]primary texts: {', '.join(result.primary_texts)}[/]")
     if not result.exemplars_used:
         console.print("[yellow]this voice has no exemplars; wrote from profile and rules alone[/]")
     for u in result.units:
         tried = len([c for c in u.candidates if c.text])
         console.print(f"  unit {u.index + 1} ({u.kind}): {tried} candidate(s); {u.reason}")
+        if u.chosen is not None and u.candidates[u.chosen].pairs:
+            for c in u.candidates:
+                if c.win_rate is None:
+                    continue
+                mark = "*" if c is u.candidates[u.chosen] else " "
+                console.print(
+                    f"   {mark} candidate {c.attempt} ({c.provider}): win rate "
+                    f"{100 * c.win_rate:.0f}% over {len(c.pairs)}, vs original "
+                    f"{c.confidence_vs_original:.2f}, distance "
+                    f"{c.distance if c.distance is not None else float('nan'):.1f}"
+                )
     if after.fixes:
         console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
     if show_diff:
@@ -590,7 +627,18 @@ def apply_cmd(
     models: str | None = typer.Option(None, "--models", help="Providers in rotation (claude,gpt)"),
     budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
     n: int | None = typer.Option(None, "--n", help="Candidates per unit in rewrite mode (3)"),
-    judge_min: float | None = typer.Option(None, "--judge-min", help="Acceptance gate (4)"),
+    min_confidence: float | None = typer.Option(
+        None, "--min-confidence", help="Judge confidence needed to beat the original (0.7)"
+    ),
+    max_growth: float | None = typer.Option(
+        None, "--max-growth", help="Reject candidates more than PCT longer than the original (15)"
+    ),
+    primary_text: list[str] = typer.Option(
+        [],
+        "--primary-text",
+        help="Primary texts (bundled name, file or directory) added quotations and citations "
+        "must verify against; default: the brief's, then the voice's",
+    ),
     max_iter: int | None = typer.Option(None, "--max-iter", help="Edit-mode iterations (4)"),
     patterns: list[Path] = typer.Option([], "--patterns"),
     show_diff: bool = typer.Option(False, "--diff", help="Print the unified diff and meaning diff"),
@@ -614,18 +662,24 @@ def apply_cmd(
     if mode not in ("edit", "rewrite"):
         fail("--mode must be rewrite or edit")
     budget = s.get("budget", budget)
-    result = apply(
-        source,
-        v,
-        mode="edit" if mode == "edit" else "rewrite",
-        models=tuple(_as_list(s.get("models", models, "claude,gpt"))),
-        budget=None if budget is None else float(budget),
-        n=int(s.get("n", n, 3)),
-        judge_min=float(s.get("judge_min", judge_min, 4.0)),
-        max_iter=int(s.get("max_iter", max_iter, 4)),
-        patterns=s.paths("patterns", patterns),
-        progress=s.progress(json_out),
-    )
+    texts = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
+    try:
+        result = apply(
+            source,
+            v,
+            mode="edit" if mode == "edit" else "rewrite",
+            models=tuple(_as_list(s.get("models", models, "claude,gpt"))),
+            budget=None if budget is None else float(budget),
+            n=int(s.get("n", n, 3)),
+            min_confidence=float(s.get("min_confidence", min_confidence, 0.7)),
+            max_growth=float(s.get("max_growth", max_growth, 15.0)),
+            primary_texts=list(texts) or None,
+            max_iter=int(s.get("max_iter", max_iter, 4)),
+            patterns=s.paths("patterns", patterns),
+            progress=s.progress(json_out),
+        )
+    except FileNotFoundError as exc:
+        fail(str(exc))
     out = s.path("out", out)
     if out is not None:
         out.write_text(result.text, encoding="utf-8")
@@ -662,10 +716,9 @@ def lab_calibrate_thresholds(
         v.metrics, llm.documents if llm else [], banned=set(v.lexicon.banned_ids())
     )
     st = v.metrics.thresholds.stats
-    target = out or (voice if not v.read_only else None)
-    if target is not None:
-        v.read_only = False
-        v.save(target)
+    target = out or voice
+    v.read_only = False
+    v.save(target)
     if json_out:
         print_json(v.metrics.thresholds.model_dump_json())
         return
@@ -675,8 +728,76 @@ def lab_calibrate_thresholds(
         f"{100 * st.heldout_pass_rate:.0f}% of {st.heldout_docs} held-out documents pass "
         f"({st.method}); raw held-out p90 {st.raw_heldout_p90:.3f}, LLM median "
         f"{st.raw_llm_median:.3f}"
-        + (f"; written to {target}" if target else "; not written (read-only voice; use --out)")
+        + f"; written to {target}"
     )
+
+
+@lab_app.command("calibrate-judge")
+def lab_calibrate_judge(
+    ctx: typer.Context,
+    voice: Path,
+    corpus: Path = typer.Option(
+        ..., "--corpus", help="The voice's source texts (held-out authors)"
+    ),
+    llm_texts: Path = typer.Option(
+        ...,
+        "--llm-texts",
+        help="LLM-reference essays: a directory of .json (text key), .md or .txt",
+    ),
+    pairs: int = typer.Option(100, "--pairs", help="Pairs per provider (100)"),
+    models: str | None = typer.Option(None, "--models", help="Providers to measure (claude,gpt)"),
+    seed: int = typer.Option(0, "--seed"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Write the voice here"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Measure each provider as the comparative judge on pairs of one LLM-reference paragraph
+    and one held-out corpus paragraph, and store the accuracy in the voice. A provider below
+    80% is not used as a judge by apply."""
+    from deslop import lab
+    from deslop.apply import ProviderPool
+    from deslop.judge import CALIBRATION_MIN_ACCURACY
+
+    s = Settings(ctx, "calibrate-judge")
+    v = load_voice(voice)
+    corpus_paras, method = lab.heldout_paragraphs(v, [corpus])
+    llm_paras = lab.llm_paragraphs(llm_texts)
+    if not corpus_paras or not llm_paras:
+        fail(
+            f"need paragraphs of both kinds; got {len(corpus_paras)} held-out and "
+            f"{len(llm_paras)} LLM-reference"
+        )
+    pool = ProviderPool(tuple(_as_list(s.get("models", models, "claude,gpt"))))
+    providers = [p for p in (pool.get(name) for name in pool.names) if p is not None]
+    if not providers:
+        fail("no provider available: " + "; ".join(pool.unavailable.values()))
+    results = lab.calibrate_judges(v, providers, llm_paras, corpus_paras, pairs=pairs, seed=seed)
+    for name, cal in results.items():
+        v.meta.judge_calibration[name] = cal.model_dump()
+    target = out or voice
+    v.read_only = False
+    v.save(target)
+    if json_out:
+        print_json(json.dumps({k: c.model_dump() for k, c in results.items()}, indent=1))
+        return
+    console.print(
+        f"{len(corpus_paras)} held-out paragraphs ({method}), {len(llm_paras)} LLM-reference "
+        f"paragraphs; ${pool.usage().cost_usd:.3f} over {pool.usage().calls} call(s)"
+    )
+    for name, cal in results.items():
+        verdict = (
+            "usable"
+            if cal.usable
+            else f"below {100 * CALIBRATION_MIN_ACCURACY:.0f}%: not used as judge"
+        )
+        console.print(
+            f"  {name} ({cal.model}): {100 * cal.accuracy:.0f}% picked the corpus paragraph as the "
+            f"writer's over {cal.pairs} pairs, {100 * cal.model_prose_accuracy:.0f}% picked the "
+            f"LLM paragraph as model prose, mean confidence {cal.mean_confidence:.2f}, "
+            f"position bias {cal.position_bias:+.2f}; {verdict}"
+        )
+    if results and not any(c.usable for c in results.values()):
+        console.print("[yellow]no provider reached 80%; apply will not gate on the judge[/]")
+    console.print(f"written to {target}" if target else "not written (read-only voice; use --out)")
 
 
 @lab_app.command("blind")
@@ -691,6 +812,9 @@ def lab_blind(
     seed: int | None = typer.Option(None, "--seed"),
     min_overlap: float | None = typer.Option(
         None, "--min-overlap", help="Skip pairs whose lexical overlap is below this (0.03)"
+    ),
+    export: Path | None = typer.Option(
+        None, "--export", help="Write the shuffled pairs and a key to this directory instead"
     ),
     json_out: bool = typer.Option(False, "--json", help="Print the summary as JSON at the end"),
 ) -> None:
@@ -713,6 +837,15 @@ def lab_blind(
         cands, pool, int(s.get("n", n, 5)), seed=s.get("seed", seed), min_overlap=min_overlap
     )
     pairs = pairing.pairs
+    if export is not None:
+        from deslop.lab import export_blind
+
+        pairs_path, key_path = export_blind(pairing, export, v.name)
+        console.print(
+            f"wrote {len(pairs)} pair(s) to {pairs_path} (answers in {key_path}); "
+            f"skipped {pairing.skipped}, unpaired {pairing.unpaired}"
+        )
+        return
     session = []
     for i, pair in enumerate(pairs, 1):
         a, b = blind.shown(pair)

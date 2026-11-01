@@ -2,6 +2,30 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.1.0 - 2026-11-01
+
+- Primary-text verification: `apply --primary-text FILE...` (and `primary_texts:` in a brief
+  or in `voice.yaml`) names plain-text sources with `{{Genesis 6:5}}` or `{{369b}}` markers.
+  Every added quotation must occur verbatim in one, every added verse or Stephanus citation
+  must resolve to a marker, else the candidate is rejected and the span named. Without a
+  primary text, additions pass and are listed as "unverified additions" at the top of the
+  report and in `--diff`. `deslop.reference` ships KJV Genesis (Gutenberg #10) and Jowett's
+  Republic with Stephanus pages (Gutenberg #55201) as `kjv-genesis` and `jowett-republic`.
+- Comparative judge: the absolute rubric gate is replaced by pairwise judging. A provider
+  that wrote neither text sees two paragraphs and two exemplars and says which reads more
+  like the writer and which more like model prose, with a confidence. Each candidate is
+  judged against the original and round-robin against the other candidates, giving a win
+  rate; the gate is "beats the original with confidence >= 0.7" (`--min-confidence`), and
+  candidates rank by win rate, then confidence, then linter distance. `deslop lab
+  calibrate-judge` measures each provider on 100 held-out-vs-LLM pairs and stores the
+  accuracy in the voice; a provider under 80% is not used as a judge and the gate is off when
+  none qualifies. The 1-to-5 rubric stays as a secondary trend score. `--judge-min` is gone.
+- Length control: `apply --max-growth PCT` (15) rejects candidates that outgrow their
+  paragraph; the report gives document growth.
+- `lab blind --export DIR` writes a shuffled blind set and its key for a session run by hand.
+- Rewrite mode no longer skips paragraphs the absolute judge liked; every paragraph is
+  sampled and the original wins unless a candidate beats it.
+
 ## v2.0.0 - 2026-11-01
 
 Breaking release: two primary verbs, zip voices, calibrated thresholds, and a

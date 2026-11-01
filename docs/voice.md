@@ -6,7 +6,7 @@ and `voice pack` zips it again. Every command accepts either.
 
 | file | contents |
 | --- | --- |
-| `voice.yaml` | name, version, created, document and word counts, authors with shares and sources, licenses, every document's provenance, checksum |
+| `voice.yaml` | name, version, created, document and word counts, authors with shares and sources, licenses, every document's provenance, checksum, default primary texts, judge calibration per provider |
 | `metrics.json` | mean, spread, within-author spread and bootstrap interval of every metric; tell rates; per-document samples; registers; calibrated thresholds |
 | `lexicon.json` | over-represented words and bigrams; per-tell rates against the LLM reference; banned tells |
 | `rules.md` | the default rules plus rules the numbers justify |

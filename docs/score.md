@@ -22,7 +22,7 @@ calibration behind that scale. The **verdict** is PASS when nothing is flagged.
 deslop score draft.md --voice essays.voice
 deslop score draft.md --voice essays.voice --json
 deslop score draft.md --voice essays.voice --annotate draft.annotated.md
-deslop score draft.md --voice essays.voice --judge     # adds the three rubric scores
+deslop score draft.md --voice essays.voice --judge     # adds the absolute rubric (trend only)
 ```
 
 The exit code is 0 for PASS and 2 for FAIL, so `score` works as a check in a pipeline.
