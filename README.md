@@ -97,10 +97,10 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `-v, --voice` | resolved | the voice (see Default voice) |
 | `-o, --out` | stdout | where to write the result |
 | `--brief BRIEF.yaml` | none | draft from a brief instead of rewriting a file |
-| `--mode` | `rewrite` | `rewrite` every paragraph, or `edit` only flagged sentences |
+| `--mode` | `rewrite` | `rewrite` the document as a whole, or `edit` only flagged sentences |
 | `--models` | `claude,gpt` | providers in rotation; the writer of a candidate never judges it |
-| `--n` | `3` | candidates sampled per paragraph in rewrite mode |
-| `--min-confidence` | `0.7` | judge confidence a candidate needs to beat the original paragraph |
+| `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
+| `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
 | `--primary-text` | none | reference text (file or directory) added quotations and citations must verify against; repeatable |
 | `--budget` | none | USD ceiling; returns the best text so far |
@@ -108,25 +108,26 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--diff` | off | print the unified diff and the meaning diff |
 | `--patterns` | none | extra pattern catalog yaml |
 
-Rewrite mode, per paragraph: the paragraph's propositions are extracted (cached); `--n`
-candidates are sampled at temperature 0.9 from the providers in rotation with the profile,
-the rules, three exemplars nearest in subject and spread across registers, the paragraph,
-its propositions and the document's allowlist of names, numbers, quotations and citations;
-each candidate must pass the content lock (nothing locked removed), the length limit
-(`--max-growth`), the primary-text check (every added quotation verbatim in a primary text,
-every added verse or Stephanus citation resolving to a marker in one) and the semantic lock
-(every proposition kept, none added, judged by a different provider), then is scored by the
-linter in document context. The survivors go to the comparative judge: a provider that wrote
-neither text sees two paragraphs and two exemplars and says which reads more like the
-exemplars' writer and which more like model prose, with a confidence. Each survivor is judged
-against the original paragraph and, round-robin, against the other survivors a judge is
-clear of, giving a win rate. A candidate is accepted when it beats the original with at
-least `--min-confidence`; the best by win rate, then confidence over the original, then
-linter distance wins, and gets the absolute rubric score as a secondary record. If none
-passes, one retry names the failures; if that fails too the original paragraph is kept and
-the report says so. Paragraphs flagged for a summary close or a monotone run are rewritten
-with their predecessor as a section. A final document-level pass rewrites any unit left with
-T14, T15 or an aphoristic close.
+Rewrite mode writes the document as a whole: every paragraph's propositions are extracted
+(cached); `--n` candidates are sampled at temperature 0.9 from the providers in rotation
+with the profile, the rules, the exemplars nearest the piece, the full original and the
+propositions by paragraph, and told to write the piece as this writer would, keep every
+proposition and add none, and keep the author's tense, person, paragraphing and order of
+argument unless the profile says otherwise. Each candidate must pass the content lock
+(nothing locked removed), the length limit (`--max-growth`), the primary-text check, the
+coherence checks (same paragraphing; the dominant tense of each paragraph unchanged; every
+sentence-initial pronoun with an antecedent in the two sentences before it; connective
+openers in the voice's band and near the original's share) and the semantic lock paragraph
+by paragraph (every proposition kept, none added, judged by a different provider). Then a
+provider that wrote neither text judges it against the original on four items, each
+answered separately: reads as the voice, coherent, consistent tense and person, preserves
+the argument's order and emphasis. A candidate must win or tie on every item; survivors are
+judged round-robin and the best win rate wins. If none passes, one retry carries what a
+reader noticed in the earlier drafts (the linter's finds with their spans, never a metric
+name); if that fails too the result is the original with the report, never a partial
+rewrite. A document longer than `--chunk-words` is rewritten section by section, each with
+the already-rewritten section before it in context and the original section after it
+visible.
 
 Without a primary text, added quotations and citations are allowed and listed as
 "unverified additions" at the top of the report and in `--diff`. deslop ships no reference
@@ -240,7 +241,7 @@ default_voice: voices/critics.voice
 apply:
   models: [claude, gpt]
   n: 3
-  min-confidence: 0.7
+  chunk-words: 2500
   max-growth: 15
   budget: 5.0
 voice:
@@ -309,20 +310,21 @@ document lands at 20, the median LLM-reference document at 70, and the scale sat
 
 Scored in chunks of the size the voice was measured in and compared with the voice's mean and
 standard deviation. "Slop side" is the direction in which machine prose tends to deviate; a
-metric is only ever flagged on that side, and metrics with side `none` are reported but never
-flagged.
+metric is flagged on that side only, a metric with side `both` is matched to the voice's band
+in both directions (overshoot is a failure like undershoot), and metrics with side `none` are
+reported but never flagged.
 
 | metric | group | slop side | definition |
 | --- | --- | --- | --- |
-| `citation_per_100w` | anchors | low | Citations (verse, Stephanus, page/line, author-year) per 100 words |
-| `quote_per_para` | anchors | low | Quoted spans of four or more words per paragraph |
-| `concrete_per_100w` | anchors | low | Numbers, proper nouns, non-Latin script, italic terms per 100 words |
-| `reader_address_per_1k` | anchors | none | Second-person pronouns and reader imperatives per 1k words |
+| `citation_per_100w` | anchors | both | Citations (verse, Stephanus, page/line, author-year) per 100 words |
+| `quote_per_para` | anchors | both | Quoted spans of four or more words per paragraph |
+| `concrete_per_100w` | anchors | both | Numbers, proper nouns, non-Latin script, italic terms per 100 words |
+| `reader_address_per_1k` | anchors | both | Second-person pronouns and reader imperatives per 1k words |
 | `first_person_per_1k` | anchors | low | First-person singular pronouns per 1k words |
 | `committed_claim_per_para` | anchors | low | Evaluative predicates asserting a reading right or wrong, per paragraph |
 | `sent_len_mean` | rhythm | none | Mean words per sentence |
 | `sent_len_std` | rhythm | low | Standard deviation of words per sentence |
-| `sent_len_cv` | rhythm | low | Coefficient of variation of sentence length |
+| `sent_len_cv` | rhythm | both | Coefficient of variation of sentence length |
 | `pct_sent_lt8` | rhythm | none | Percent of sentences under 8 words |
 | `pct_sent_gt30` | rhythm | none | Percent of sentences over 30 words |
 | `max_run_similar_len` | rhythm | high | Longest run of consecutive sentences within 5 words of each other |
@@ -333,7 +335,8 @@ flagged.
 | `opener_pct_pron` | rhythm | none | Percent of sentences opening with a pronoun |
 | `opener_pct_adv_conj` | rhythm | high | Percent of sentences opening with an adverb or conjunction |
 | `opener_pct_noun` | rhythm | none | Percent of sentences opening with a noun or proper noun |
-| `opener_top_word_share` | rhythm | high | Percent of sentences that begin with the single most common first word |
+| `opener_top_word_share` | rhythm | both | Percent of sentences that begin with the single most common first word |
+| `connective_opener_pct` | rhythm | both | Percent of sentences opening with and, but, so, then, because, since, while or yet |
 | `semicolons_per_1k` | rhythm | none | Semicolons per 1k words |
 | `colons_per_1k` | rhythm | high | Colons per 1k words |
 | `em_dashes_per_1k` | rhythm | high | Em dashes per 1k words |

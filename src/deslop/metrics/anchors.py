@@ -61,7 +61,7 @@ def count_citations(text: str) -> int:
 @metric(
     "citation_per_100w",
     group="anchors",
-    slop_side="low",
+    slop_side="both",
     description="Citations (verse, Stephanus, page/line, author-year) per 100 words",
 )
 def citation_per_100w(a: Analysis) -> float:
@@ -75,7 +75,7 @@ def count_quotes(text: str) -> int:
 @metric(
     "quote_per_para",
     group="anchors",
-    slop_side="low",
+    slop_side="both",
     description="Quoted spans of four or more words per paragraph",
 )
 def quote_per_para(a: Analysis) -> float:
@@ -94,7 +94,7 @@ def count_concrete(a: Analysis) -> int:
 @metric(
     "concrete_per_100w",
     group="anchors",
-    slop_side="low",
+    slop_side="both",
     description="Numbers, proper nouns, non-Latin script, italic terms per 100 words",
 )
 def concrete_per_100w(a: Analysis) -> float:
@@ -119,7 +119,7 @@ def count_reader_address(a: Analysis) -> int:
 @metric(
     "reader_address_per_1k",
     group="anchors",
-    slop_side="none",
+    slop_side="both",
     description="Second-person pronouns and reader imperatives per 1k words",
 )
 def reader_address_per_1k(a: Analysis) -> float:

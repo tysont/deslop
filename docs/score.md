@@ -2,12 +2,14 @@
 
 `score` compares a text with a voice on two axes and returns a report.
 
-**Metrics** are twenty-five numbers about rhythm and anchoring: sentence-length spread,
-openers, punctuation rates, citation and quotation density, concreteness, first person,
-committed claims. The text is measured in chunks of the same size the voice was measured in,
-and each metric with a slop side is compared with the band the voice calibrated for it. A
-metric is flagged when it falls outside its band; a metric with no slop side is reported but
-never flagged.
+**Metrics** are twenty-six numbers about rhythm and anchoring: sentence-length spread,
+openers, connective openers, punctuation rates, citation and quotation density, concreteness,
+reader address, first person, committed claims. The text is measured in chunks of the same
+size the voice was measured in, and each metric with a slop side is compared with the band
+the voice calibrated for it. A metric is flagged when it falls outside its band on its slop
+side; citation and quotation density, concreteness, sentence-length variation, opener
+repetition, reader address and connective openers are two-sided, flagged under the band as
+well as over it; a metric with no slop side is reported but never flagged.
 
 **Tells** are fifteen patterns of machine prose, T1 through T15, from text-as-agent
 ("the chapter asks") through negative parallelism, triads, aphoristic closes, hedge stacks,

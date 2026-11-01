@@ -1,37 +1,44 @@
 # Apply
 
-`apply` writes a text in a voice. The default, rewrite mode, is generate-then-verify: every
-paragraph is written afresh several times and each candidate has to prove itself.
+`apply` writes a text in a voice. The default, rewrite mode, is generate-then-verify: the
+document is written afresh as a whole several times and each candidate has to prove itself.
 
-For each paragraph:
-
-1. Its propositions are extracted as a numbered list of short claims (cached).
+1. Every paragraph's propositions are extracted as a numbered list of short claims (cached).
 2. `--n` candidates (default 3) are sampled at temperature 0.9 from the configured providers in
-   rotation, with the profile, the rules, three exemplars chosen cluster-proportionally and
-   nearest in subject, the paragraph, its propositions, and the document's allowlist of names,
-   numbers, quotations and citations. The instruction: write this paragraph as this writer
-   would; keep every proposition, add none; change any sentence, reorder, split, merge; cite
-   the primary text and address the reader where the writer would.
-3. Each candidate is verified: the content lock (nothing locked removed; additions the document
-   already has, or citations to the primary text, are fine), the length limit (no more than
-   `--max-growth` percent, default 15, longer than the paragraph), the primary-text check
-   (below), the semantic lock (a different provider checks every original proposition is kept
-   and nothing new is asserted, except reader address and primary-text citations), and the
-   linter score of the paragraph in document context.
-4. The survivors are judged comparatively (below): each against the original paragraph and,
-   round-robin, against the other survivors, giving a win rate. A candidate is accepted when
-   it beats the original with confidence at least `--min-confidence` (0.7). The best by win
-   rate, then confidence over the original, then linter distance wins.
-5. If none passes, one retry names the failures (the dropped propositions, the unverified
-   quotation, the judge's note). If that fails too, the original paragraph is kept and the
-   report says why.
-6. After every paragraph, one document-level pass rewrites units still flagged for a summary
-   close (T14), a monotone run across paragraphs (T15) or an aphoristic close.
+   rotation. The writer sees the profile, the rules, the exemplars nearest the piece, the
+   full original and the propositions by paragraph, and is told: write this piece as this
+   writer would; keep every proposition and add none; keep the author's tense, person,
+   paragraphing and order of argument unless the voice's profile says otherwise. Nothing in
+   the prompt mentions metrics, sentence length, openers or citations.
+3. Each candidate is verified without a judge: the content lock (nothing locked removed), the
+   length limit (no more than `--max-growth` percent, default 15, longer than the original),
+   the primary-text check (below), and the coherence checks: the same number of paragraphs;
+   the dominant finite-verb tense of each paragraph unchanged; every sentence-initial pronoun
+   (and this, that, it) with a noun phrase in the two sentences before it; and the share of
+   sentences opening with a connective (and, but, so, then, because, since, while, yet)
+   inside the voice's band and within half of the original's share.
+4. The semantic lock runs paragraph by paragraph: a different provider checks that every
+   proposition is kept and nothing new is asserted.
+5. A provider that wrote neither text judges the candidate against the original on four
+   items, each answered separately: reads as the voice; coherent (each sentence follows
+   from the last); consistent tense and person; preserves the argument's order and emphasis.
+   The candidate must win or tie on every item. Survivors are judged round-robin on the same
+   items, giving a win rate; the best win rate, then the linter distance, wins.
+6. If no candidate passes, one retry carries what a reader noticed in the earlier drafts:
+   the missing name, the dropped claim, the paragraph that changed tense, the linter's finds
+   with their spans ("a reader noticed ..."), never a metric name. If that fails too, the
+   result is the original with the report. A partial rewrite is never produced: with a long
+   document, a section that fails reverts the sections already rewritten.
 
-The report lists, per paragraph, the candidates tried with their win rates, which won and
-why, the cost, the document's growth, a meaning diff of propositions with ✓ or ✗ and of
-added quotations and citations with ✓ (verified) or ? (unverified), and the before and after
-score with its separation context. Unverified additions are listed at the top.
+A document longer than `--chunk-words` (default 2500) is rewritten section by section, in
+order, each section with the already-rewritten section before it in context and the original
+section after it visible, and the full original always shown.
+
+The report carries the meaning diff (propositions by paragraph with ✓ or ✗, added quotations
+and citations with ✓ verified or ? unverified, unverified additions at the top), the
+coherence results, the item-by-item judge verdict against the original, a table of every
+metric before and after against the voice's band (under, in or over), each candidate's win
+rate, the document's growth and the cost.
 
 ## Primary texts
 
@@ -60,18 +67,20 @@ quotations.
 
 ## The comparative judge
 
-The judge sees two paragraphs, A and B, in a fixed but arbitrary order, plus two exemplars
-and the profile, and answers which reads more like the exemplars' writer and which reads
-more like model prose, with a confidence from 0.5 to 1. The provider that wrote a candidate
-never judges it; a pair of candidates that no provider is clear of is not compared. The win
-rate is wins over comparisons made.
+The judge sees the original and two texts, A and B, in a fixed but arbitrary order, plus two
+exemplars and the profile, and answers four questions separately with A, B or tie: which
+reads more like the writer; in which each sentence follows from the last; which keeps a
+consistent tense and person; which better preserves the original's order and emphasis. The
+provider that wrote a candidate never judges it; a pair of candidates that no provider is
+clear of is not compared. Against the original a candidate must win or tie on every item.
+The win rate counts a net win as 1 and a draw as 0.5 over the comparisons made.
 
 `deslop lab calibrate-judge` measures each provider on 100 pairs of one LLM-reference
 paragraph and one paragraph by a held-out author of the voice: accuracy is how often the
 corpus paragraph was picked as the writer's. The result is stored in `voice.yaml` and read
 by `apply`: a provider below 80% is not used as a judge (it may still write, judged by the
-other), and when no provider reaches 80% the gate is off, candidates are ranked by the
-linter alone, and the report says so. The absolute 1-to-5 rubric (`deslop score --judge`,
+other), and when no provider reaches 80% no candidate can pass, the original is kept, and
+the report says so. The absolute 1-to-5 rubric (`deslop score --judge`,
 `Result.units[].candidates[].judge` on the winner) is kept as a trend figure only.
 
 ```sh

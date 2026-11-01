@@ -2,8 +2,35 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
-## Unreleased
+## v2.2.0 - 2026-11-01
 
+- `apply` rewrites the document as a whole by default. The writer sees the profile, the
+  rules, the exemplars nearest the piece, the full original and the propositions by
+  paragraph, and is told to write the piece as this writer would, keep every proposition and
+  add none, and keep the author's tense, person, paragraphing and order of argument unless
+  the profile says otherwise. Nothing in the prompt names a metric, sentence length, openers
+  or citations; linter findings reach only the retry prompt, as what a reader noticed, with
+  the span. Documents over `--chunk-words` (2500) are rewritten section by section with the
+  already-rewritten section in context and the next original section visible. Paragraph-
+  isolated rewriting, the per-paragraph judge gate and `--min-confidence` are gone.
+- Coherence checks, all required: the dominant finite-verb tense of each paragraph unchanged
+  (drift reported as paragraph, before, after, example sentence); every sentence-initial
+  pronoun or this/that/it with a noun phrase in the previous two sentences; the share of
+  connective-opened sentences within the voice's band and within half of the original's; and
+  a document-level judge answering four items separately (reads as the voice, coherent,
+  consistent tense and person, preserves the argument's order and emphasis), on every one of
+  which the candidate must win or tie against the original. `--n` candidates are judged
+  round-robin on the same items; the winner must pass every check and both locks, else the
+  result is the original with the report, never a partial.
+- Two-sided anchors: `citation_per_100w`, `quote_per_para`, `concrete_per_100w`,
+  `sent_len_cv`, `opener_top_word_share` and `reader_address_per_1k` are matched to the
+  voice's band in both directions; overshoot fails like undershoot. New metric
+  `connective_opener_pct`. The LLM-reference baseline was rebuilt from the cached responses
+  (no new generation) and the shipped voices retuned with `lab calibrate-thresholds`.
+- The report adds the coherence results, the judge's item-by-item verdict, and a table of
+  every metric before and after against the voice's band.
+- A fixture set of four registers (essay, explainer, product, fiction) under
+  `tests/fixtures/registers/` replaces the Paideia lesson as the test case.
 - The bundled reference texts (KJV Genesis, Jowett's Republic) and every default primary-text
   selection (`voice.yaml` `primary_texts`, a brief's `primary_texts`, `voice build
   --primary-text`) are removed. `--primary-text` is user-supplied only: a file or directory.

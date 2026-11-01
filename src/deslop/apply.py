@@ -1,5 +1,5 @@
-# ABOUTME: apply(text_or_brief, voice): generate-then-verify rewriting. Each paragraph gets n
-# ABOUTME: candidates checked by the content lock, the semantic lock, the linter and a judge.
+# ABOUTME: apply(text_or_brief, voice): generate-then-verify rewriting of a document as a whole.
+# ABOUTME: n candidates must pass the locks, coherence checks and a four-item judge, else it stays.
 from __future__ import annotations
 
 import datetime as dt
@@ -14,30 +14,29 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from deslop.coherence import CoherenceResult, check_coherence
 from deslop.draft import Brief, SectionLog, draft_sections
 from deslop.judge import (
-    GATE_CONFIDENCE,
+    DocumentVerdict,
     JudgeCalibration,
-    PairVerdict,
-    beats_original,
-    compare_with,
-    judge_paragraph,
-    win_rate,
+    compare_document,
+    document_win_rate,
 )
 from deslop.lock import DocumentLock, check, inventory
 from deslop.metrics import compute_all, detect_tells
-from deslop.nlp import WORD_RE, Analysis, Sentence, analyze
+from deslop.nlp import WORD_RE, Analysis, Paragraph, Sentence, analyze
 from deslop.patterns import Catalog, load_catalog
 from deslop.providers.base import CachingProvider, ProviderError, Usage, get_provider
 from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, verify_additions
-from deslop.report import JudgeScores, Report, TellHitResult
+from deslop.report import MetricResult, Report, TellHitResult
 from deslop.score import score
-from deslop.semantic import SemanticResult, check_meaning, extract_propositions
+from deslop.semantic import PropositionCheck, SemanticResult, check_meaning, extract_propositions
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
 
 Mode = Literal["rewrite", "edit"]
 DEFAULT_MODELS = ("claude", "gpt")
+DEFAULT_CHUNK_WORDS = 2500  # longer documents are rewritten section by section
 
 
 def pairs_dir() -> Path:
@@ -46,9 +45,8 @@ def pairs_dir() -> Path:
 
 
 CANDIDATE_TEMPERATURE = 0.9
-DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow its paragraph
-SECTION_TELLS = {"T14", "T15"}  # need cross-paragraph room
-CLOSING_RULE_TELL = "T5"  # rule R3: do not end a paragraph on an abstract aphorism
+DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow the original
+ROUNDS = 2  # the first round, then one retry carrying what a reader noticed
 
 
 # ---------------------------------------------------------------- result models
@@ -63,35 +61,41 @@ class CandidateLog(BaseModel):
     model: str
     lexical_ok: bool
     lexical_detail: str = ""
-    semantic: SemanticResult | None = None
+    semantic: SemanticResult | None = None  # every paragraph's propositions, merged
     primary: PrimaryCheck | None = None  # added quotations and citations, verified or not
-    pairs: list[PairVerdict] = Field(default_factory=list)  # comparative judge verdicts
+    coherence: CoherenceResult | None = None
+    verdicts: list[DocumentVerdict] = Field(default_factory=list)  # vs original, then others
     win_rate: float | None = None
-    beats_original: bool | None = None
-    judge: JudgeScores | None = None  # absolute rubric, secondary (winner only)
+    judge_ok: bool | None = None  # won or tied every item against the original
     distance: float | None = None
     growth_pct: float | None = None
     new_tells: list[str] = Field(default_factory=list)
+    reader_notes: list[str] = Field(default_factory=list)  # what the retry prompt was told
     accepted: bool = False
     reason: str = ""
 
     @property
+    def vs_original(self) -> DocumentVerdict | None:
+        return next((v for v in self.verdicts if v.against == "original"), None)
+
+    @property
     def confidence_vs_original(self) -> float:
-        return max(
-            (p.confidence for p in self.pairs if p.against == "original" and p.wins), default=0.0
-        )
+        v = self.vs_original
+        return v.confidence if v is not None else 0.0
 
 
 class UnitLog(BaseModel):
-    """What happened to one unit: its propositions, every candidate, which won and why."""
+    """What happened to one unit (the document, or one section of a long one): its
+    propositions by paragraph, every candidate, which won and why."""
 
     index: int
-    kind: str  # paragraph | section | sentence | passage
+    kind: str  # document | section k/m | sentence | passage
     start: int
     end: int
     original: str
     final: str
     propositions: list[str] = Field(default_factory=list)
+    propositions_by_paragraph: list[list[str]] = Field(default_factory=list)
     candidates: list[CandidateLog] = Field(default_factory=list)
     chosen: int | None = None
     kept_original: bool = False
@@ -117,18 +121,33 @@ class Cost(BaseModel):
     unpriced_calls: int = 0
 
 
+class MetricRow(BaseModel):
+    """One two-sided metric before and after, against the voice's band."""
+
+    name: str
+    before: float
+    after: float
+    band_low: float | None = None
+    band_high: float | None = None
+    status_before: str = "in"  # under | in | over
+    status_after: str = "in"
+
+
 class Result(BaseModel):
     """What [`apply`][deslop.apply.apply] produced.
 
     `text` is the output (the input where nothing was accepted); `report_before` and
-    `report_after` score both; `diff` is a unified diff and `meaning_diff` lists every unit's
-    propositions with whether the output kept them plus its added quotations and citations;
-    `unverified_additions` are the added quotations and citations no primary text confirmed;
-    `growth_pct` is the document's word-count growth; `units` logs each unit's candidates,
-    verdicts, win rates and the winner; `judge_gate` says which providers judged and whether
-    the gate was on; `iterations` is filled in edit mode; `cost` totals tokens and USD;
-    `stopped` says why the loop ended; `exemplars_used` is False when the voice was packed
-    without exemplars; `draft` holds the section logs when a brief was applied.
+    `report_after` score both; `diff` is a unified diff and `meaning_diff` lists every
+    paragraph's propositions with whether the output kept them plus its added quotations and
+    citations; `coherence` holds the winner's tense, antecedent and connective checks and
+    `judge_items` its item-by-item verdict against the original; `metric_table` has every
+    metric before and after against the voice's band; `unverified_additions` are the added
+    quotations and citations no primary text confirmed; `growth_pct` is the document's
+    word-count growth; `units` logs each unit's candidates, verdicts, win rates and the
+    winner; `judge_gate` says which providers judged; `iterations` is filled in edit mode;
+    `cost` totals tokens and USD; `stopped` says why the loop ended; `exemplars_used` is
+    False when the voice was packed without exemplars; `draft` holds the section logs when
+    a brief was applied.
     """
 
     mode: str
@@ -142,9 +161,12 @@ class Result(BaseModel):
     cost: Cost
     stopped: str
     exemplars_used: bool = True
-    min_confidence: float = GATE_CONFIDENCE
     max_growth: float = DEFAULT_MAX_GROWTH
+    chunk_words: int = DEFAULT_CHUNK_WORDS
     growth_pct: float = 0.0
+    coherence: CoherenceResult | None = None
+    judge_items: dict[str, str] = Field(default_factory=dict)
+    metric_table: list[MetricRow] = Field(default_factory=list)
     unverified_additions: list[str] = Field(default_factory=list)
     primary_texts: list[str] = Field(default_factory=list)
     judge_gate: str = ""
@@ -209,33 +231,68 @@ def rhythm_targets(a: Analysis) -> set[int]:
     return {i for run in runs for i in run}
 
 
+READER_PHRASES = {
+    "citation_per_100w": (
+        "cites the source less often than this writer does",
+        "cites the source more often than this writer does",
+    ),
+    "quote_per_para": (
+        "quotes the source less than this writer does",
+        "quotes the source more than this writer does",
+    ),
+    "concrete_per_100w": (
+        "has fewer particulars (names, numbers, terms) than this writer gives",
+        "has more particulars (names, numbers, terms) than this writer gives",
+    ),
+    "sent_len_cv": (
+        "the sentences run to much the same length",
+        "the sentence lengths swing more than this writer's do",
+    ),
+    "sent_len_std": (
+        "the sentences run to much the same length",
+        "the sentence lengths swing more than this writer's do",
+    ),
+    "max_run_similar_len": ("", "several sentences in a row run to the same length"),
+    "opener_top_word_share": (
+        "the sentence openings vary more than this writer's do",
+        "many sentences begin with the same word",
+    ),
+    "opener_pct_adv_conj": ("", "many sentences open with an adverb or a conjunction"),
+    "reader_address_per_1k": (
+        "addresses the reader less often than this writer does",
+        "addresses the reader more often than this writer does",
+    ),
+    "connective_opener_pct": (
+        "fewer sentences open with and, but, so or the like than this writer's do",
+        "more sentences open with and, but, so or the like than this writer's do",
+    ),
+    "first_person_per_1k": (
+        "says 'I' less than this writer does",
+        "says 'I' more than this writer does",
+    ),
+    "sent_len_mean": (
+        "the sentences run shorter than this writer's",
+        "the sentences run longer than this writer's",
+    ),
+    "colons_per_1k": ("", "leans on colons"),
+    "em_dashes_per_1k": ("", "leans on dashes"),
+    "questions_per_1k": ("", "asks more questions than this writer does"),
+    "semicolons_per_1k": ("uses fewer semicolons than this writer", "leans on semicolons"),
+}
+
+
+def reader_phrase(m: MetricResult) -> str:
+    """What a reader would say about a flagged metric, with no metric named."""
+    low, high = READER_PHRASES.get(m.name, ("", ""))
+    phrase = high if m.z > 0 else low
+    if phrase:
+        return phrase
+    direction = "more" if m.z > 0 else "less"
+    return f"{m.group} reads {direction} marked than this writer's"
+
+
 def metric_notes_for(report: Report) -> list[str]:
-    notes = []
-    for m in report.flagged_metrics():
-        if m.name in ("sent_len_std", "sent_len_cv", "max_run_similar_len"):
-            notes.append(
-                "Sentence lengths are too uniform; vary them sharply: merge some into a "
-                "single sentence of over 35 words and cut others to under 8."
-            )
-        elif m.name == "opener_top_word_share":
-            notes.append("Too many sentences begin with the same word; open this one differently.")
-        elif m.name == "opener_pct_adv_conj":
-            notes.append(
-                "Too many sentences open with an adverb or conjunction; start with the subject."
-            )
-        elif m.name in ("colons_per_1k", "em_dashes_per_1k", "questions_per_1k"):
-            notes.append(f"{m.name.replace('_per_1k', '')} are overused; remove them here.")
-        elif m.name in (
-            "first_person_per_1k",
-            "quote_per_para",
-            "citation_per_100w",
-            "concrete_per_100w",
-        ):
-            notes.append(f"{m.name} is too low for this voice; be more concrete and specific.")
-        elif m.name == "sent_len_mean":
-            direction = "longer" if m.z < 0 else "shorter"
-            notes.append(f"Sentences should run {direction} on average in this voice.")
-    return sorted(set(notes))
+    return sorted({reader_phrase(m) for m in report.flagged_metrics()})
 
 
 def edit_units(text: str, a: Analysis, report: Report) -> list[Unit]:
@@ -281,44 +338,6 @@ def edit_units(text: str, a: Analysis, report: Report) -> list[Unit]:
     return units
 
 
-def rewrite_units(text: str, a: Analysis, report: Report) -> list[Unit]:
-    """Rewrite mode: every prose paragraph is a unit. A paragraph flagged for a tell that
-    needs cross-paragraph room (T14, T15) is merged with its predecessor into a section of
-    two or three paragraphs."""
-    hits = flagged_hits(report)
-    by_para: dict[int, list[TellHitResult]] = {}
-    for h in hits:
-        by_para.setdefault(h.para_idx, []).append(h)
-    notes = metric_notes_for(report)
-    units: list[Unit] = []
-    for p in a.paragraphs:
-        p_hits = by_para.get(p.index, [])
-        needs_room = any(h.pattern_id in SECTION_TELLS for h in p_hits)
-        if needs_room and units and units[-1].para_index == p.index - 1:
-            last = units[-1]
-            span = sum(1 for u in [last] for _ in range(1)) + last.text.count("\n\n") + 1
-            if span < 3:
-                last.kind = "section"
-                last.end = p.end
-                last.text = text[last.start : p.end]
-                last.hits = last.hits + p_hits
-                last.para_index = p.index
-                continue
-        units.append(
-            Unit(
-                index=len(units),
-                kind="paragraph",
-                start=p.start,
-                end=p.end,
-                text=text[p.start : p.end],
-                para_index=p.index,
-                hits=p_hits,
-                metric_notes=notes,
-            )
-        )
-    return units
-
-
 # ---------------------------------------------------------------- prompts
 
 SYSTEM_TEMPLATE = """You write prose in one specific writer's voice. You are given the voice's
@@ -331,31 +350,38 @@ return the new passage and nothing else: no preamble, no quotation marks around 
 {rules}
 """
 
-REWRITE_TEMPLATE = """# Exemplars of the voice (nearest in subject)
+DOCUMENT_TEMPLATE = """# Exemplars of the voice
 {exemplars}
 
-# Where this passage sits (DO NOT rewrite; shown for continuity)
-BEFORE: {before}
-AFTER: {after}
+# The original, in full
+{document}
 
-# The {kind} to write afresh
-{unit}
-
-# Its propositions (keep every one, add none)
+# What it asserts, paragraph by paragraph (keep every one, add none)
 {propositions}
-
-# Names, numbers, quotations and citations already in the document (you may use these)
-{allowlist}
-
+{section_block}
 # Instruction
-Write this {kind} as this writer would. Keep every proposition above; add no new claim. You
-may change every sentence, reorder, split and merge sentences, and drop connective filler.
-Cite the primary text where this writer would, quoting it only in its exact words and citing
-only locations that exist in it, and address the reader only where this writer would. Keep it
-as {shape}, {min_words} to {max_words} words; it must not run longer than
-{max_words}.{extra}{issues}{rejected}
+Write {what} as this writer would, from its first paragraph to its last. Keep every
+proposition listed above and add none. Keep the author's tense, grammatical person,
+paragraphing and order of argument unless the voice's profile says otherwise. Keep it about
+the length of the original. Return {returned} and nothing else.{noticed}
 
 Draft {attempt} of {n}."""
+
+SECTION_BLOCK = """
+# The section to write now (paragraphs {first} to {last} of the original)
+{section}
+
+# Already written in the voice (it precedes the section; continue from it)
+{previous}
+
+# What follows the section in the original (for continuity; do not write it)
+{following}
+"""
+
+NOTICED_TEMPLATE = """
+
+# What a reader noticed in earlier drafts (do not repeat these)
+{notes}"""
 
 EDIT_TEMPLATE = """# Exemplars of the voice
 {exemplars}
@@ -492,65 +518,110 @@ def _registers(markdown: str) -> list[str]:
 
 def _context(unit: Unit, text: str, a: Analysis) -> tuple[str, str]:
     para = a.paragraphs[unit.para_index]
-    if unit.kind in ("paragraph", "section"):
-        first_para = next(p for p in a.paragraphs if p.start >= unit.start or p.end > unit.start)
-        prev_p = a.paragraphs[first_para.index - 1] if first_para.index > 0 else None
-        next_p = a.paragraphs[para.index + 1] if para.index + 1 < len(a.paragraphs) else None
-        before = text[prev_p.start : prev_p.end][-400:].strip() if prev_p else "(start of text)"
-        after = text[next_p.start : next_p.end][:400].strip() if next_p else "(end of text)"
-        return before, after
     before = text[max(para.start, unit.start - 400) : unit.start].strip() or "(start of text)"
     after = text[unit.end : min(para.end, unit.end + 400)].strip() or "(end of paragraph)"
     return before, after
 
 
-def rewrite_prompt(
-    unit: Unit,
-    text: str,
-    a: Analysis,
+@dataclass
+class Section:
+    """A run of consecutive paragraphs rewritten as one unit: the whole document, or one
+    chunk of a long one."""
+
+    index: int
+    count: int
+    first: int  # first paragraph index, 0-based
+    last: int  # last paragraph index, inclusive
+    start: int  # character span in the original
+    end: int
+
+    @property
+    def kind(self) -> str:
+        return "document" if self.count == 1 else f"section {self.index + 1}/{self.count}"
+
+
+def sections_of(a: Analysis, chunk_words: int) -> list[Section]:
+    """One section for the whole document when it fits in `chunk_words`, else consecutive
+    runs of paragraphs of at most `chunk_words` words (a single paragraph may exceed it)."""
+    paragraphs = a.paragraphs
+    if not paragraphs:
+        return []
+    runs: list[list[Paragraph]] = []
+    current: list[Paragraph] = []
+    words = 0
+    for p in paragraphs:
+        if current and words + p.word_count > chunk_words:
+            runs.append(current)
+            current, words = [], 0
+        current.append(p)
+        words += p.word_count
+    runs.append(current)
+    if len(runs) == 1:  # the whole document, headings and all
+        return [Section(0, 1, paragraphs[0].index, paragraphs[-1].index, 0, len(a.text))]
+    return [
+        Section(
+            index=i,
+            count=len(runs),
+            first=run[0].index,
+            last=run[-1].index,
+            start=run[0].start,
+            end=run[-1].end,
+        )
+        for i, run in enumerate(runs)
+    ]
+
+
+def _numbered(propositions: list[list[str]], first: int) -> str:
+    lines = []
+    for i, props in enumerate(propositions, first + 1):
+        lines.append(f"Paragraph {i}:")
+        lines.extend(f"  {k}. {p}" for k, p in enumerate(props, 1))
+        if not props:
+            lines.append("  (none)")
+    return "\n".join(lines)
+
+
+def document_prompt(
+    section: Section,
+    original: str,
+    section_text: str,
+    propositions: list[list[str]],
     voice: Voice,
     exemplars: ExemplarIndex,
-    document: DocumentLock,
-    propositions: list[str],
     *,
+    previous: str,
+    following: str,
     attempt: int,
     n: int,
-    issues: list[str],
-    rejected: list[tuple[str, str]],
-    max_growth: float = DEFAULT_MAX_GROWTH,
+    noticed: list[str],
 ) -> tuple[str, str]:
+    """The writer's prompt: profile and rules (system), exemplars nearest the piece, the full
+    original, its propositions by paragraph, and the instruction. A long document adds the
+    section to write with the already-rewritten section before it and the original section
+    after it. `noticed` carries what a reader saw in earlier drafts, for the retry."""
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
-    before, after = _context(unit, text, a)
-    words = len(unit.text.split())
-    allow = []
-    if document.names:
-        allow.append("names: " + ", ".join(sorted(document.names)[:60]))
-    if document.numbers:
-        allow.append("numbers: " + ", ".join(sorted(document.numbers)[:40]))
-    if document.citations:
-        allow.append("citations: " + "; ".join(sorted(document.citations)[:40]))
-    if document.quotes:
-        allow.append("quotations: " + " | ".join(f'"{q}"' for q in sorted(document.quotes)[:20]))
-    shape = "one paragraph" if unit.kind == "paragraph" else "the same number of paragraphs"
-    user = REWRITE_TEMPLATE.format(
-        exemplars="\n\n".join(exemplars.closest(unit.text)) or "(no exemplars in this voice)",
-        before=before,
-        after=after,
-        kind=unit.kind,
-        unit=unit.text,
-        propositions="\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1)) or "(none)",
-        allowlist="\n".join(f"- {line}" for line in allow) or "- (nothing yet)",
-        shape=shape,
-        min_words=min(max(40, int(words * 0.7)), words),
-        max_words=max_words_for(words, max_growth),
-        extra="",
-        issues=(
-            "\n\nAddress these faults in the current version:\n"
-            + "\n".join(f"- {i}" for i in issues)
+    whole = section.count == 1
+    block = (
+        ""
+        if whole
+        else SECTION_BLOCK.format(
+            first=section.first + 1,
+            last=section.last + 1,
+            section=section_text,
+            previous=previous or "(this is the first section)",
+            following=following or "(this is the last section)",
         )
-        if issues
+    )
+    user = DOCUMENT_TEMPLATE.format(
+        exemplars="\n\n".join(exemplars.closest(section_text)) or "(no exemplars in this voice)",
+        document=original,
+        propositions=_numbered(propositions, 0 if whole else section.first) or "(none)",
+        section_block=block,
+        what="this piece" if whole else "this section",
+        returned="the whole piece" if whole else "the section",
+        noticed=NOTICED_TEMPLATE.format(notes="\n".join(f"- {x}" for x in noticed))
+        if noticed
         else "",
-        rejected=_rejected_section(rejected),
         attempt=attempt,
         n=n,
     )
@@ -813,6 +884,65 @@ def _meaning_diff(units: list[UnitLog]) -> str:
     return "\n".join(lines)
 
 
+def coherence_report(result: Result) -> str:
+    """The winner's coherence checks and its item-by-item verdict against the original, as
+    text for the CLI and the saved report."""
+    lines = []
+    c = result.coherence
+    if c is None:
+        lines.append("coherence: not checked (the original was kept)")
+    else:
+        lines.append(
+            f"coherence: {'ok' if c.ok else 'FAILED'}; paragraphs {c.paragraphs_before} -> "
+            f"{c.paragraphs_after}; tense drift in {len(c.tense)} paragraph(s); "
+            f"{len(c.antecedents)} pronoun(s) without an antecedent; connective openers "
+            f"{100 * c.connectives.before:.0f}% -> {100 * c.connectives.after:.0f}%"
+            + (f" ({c.connectives.note})" if c.connectives.note else "")
+        )
+        for d in c.tense:
+            lines.append(
+                f'  tense: paragraph {d.paragraph} {d.before} -> {d.after}: "{d.example[:100]}"'
+            )
+        for f in c.antecedents:
+            lines.append(f'  antecedent: "{f.text[:100]}" ({f.word})')
+    if result.judge_items:
+        lines.append(
+            "judge vs original: " + ", ".join(f"{k} {v}" for k, v in result.judge_items.items())
+        )
+    return "\n".join(lines)
+
+
+def metric_table(before: Report, after: Report) -> list[MetricRow]:
+    """Every metric the voice measures, before and after, with its band and whether each
+    value sits under, in or over it."""
+
+    def status(m: MetricResult) -> str:
+        if m.band_high is not None and m.value > m.band_high:
+            return "over"
+        if m.band_low is not None and m.value < m.band_low:
+            return "under"
+        return "in"
+
+    after_by = {m.name: m for m in after.metrics}
+    rows = []
+    for m in before.metrics:
+        n = after_by.get(m.name)
+        if n is None:
+            continue
+        rows.append(
+            MetricRow(
+                name=m.name,
+                before=round(m.value, 3),
+                after=round(n.value, 3),
+                band_low=m.band_low,
+                band_high=m.band_high,
+                status_before=status(m),
+                status_after=status(n),
+            )
+        )
+    return rows
+
+
 def _cost(usage: Usage) -> Cost:
     return Cost(
         usd=round(usage.cost_usd, 4),
@@ -832,8 +962,8 @@ def apply(
     models: tuple[str, ...] = DEFAULT_MODELS,
     budget: float | None = None,
     n: int = 3,
-    min_confidence: float = GATE_CONFIDENCE,
     max_growth: float = DEFAULT_MAX_GROWTH,
+    chunk_words: int = DEFAULT_CHUNK_WORDS,
     primary_texts: list[str | Path | PrimaryText] | None = None,
     max_iter: int = 4,
     preserve_length: float = 0.15,
@@ -844,20 +974,26 @@ def apply(
 ) -> Result:
     """Write `text_or_brief` in `voice` and return a [`Result`][deslop.Result].
 
-    Rewrite mode (default) treats every paragraph as a unit: its propositions are extracted,
-    `n` candidates are sampled across the configured providers in rotation, and each is
-    checked by the content lock, the length limit (`max_growth` percent over the original),
-    the primary-text check, the semantic lock (a different provider) and the linter in
-    document context; the survivors are judged pairwise against the original and each other
-    by a provider that wrote neither, and the candidate with the best win rate that beats
-    the original with at least `min_confidence` wins, with one retry naming the failures,
-    else the original is kept. A document-level pass then rewrites units flagged for summary
-    closes, monotone runs or aphoristic endings. Edit mode rewrites only flagged sentences
-    and passages under the same locks. A `Brief` is drafted section by section first, then
-    rewritten. `primary_texts` (files, directories or loaded `PrimaryText`s) are supplied by
-    the caller; without any, added quotations and citations are allowed and listed as
-    unverified. `provider_factory` maps a provider
-    name to a `CachingProvider` (tests replay a cache with it); `budget` is USD.
+    Rewrite mode (default) writes the document as a whole: every paragraph's propositions
+    are extracted (cached), then `n` candidates are sampled across the configured providers
+    in rotation from the profile, the rules, the exemplars nearest the piece, the full
+    original and the propositions by paragraph. Each candidate must pass the content lock
+    (nothing locked removed), the length limit (`max_growth` percent), the primary-text
+    check, the semantic lock paragraph by paragraph (every proposition kept, none added,
+    judged by a different provider) and the coherence checks (same paragraphing, same tense
+    per paragraph, every sentence-initial pronoun with an antecedent, connective openers in
+    the voice's band and near the original's share), then is judged against the original by
+    a provider that wrote neither on four items (voice, coherence, tense and person, order
+    and emphasis) and must win or tie on every one. Survivors are judged round-robin; the
+    best win rate wins. If no candidate passes, one retry carries what a reader noticed; if
+    that fails too the result is the original with the report. A document longer than
+    `chunk_words` is rewritten section by section, each with the already-rewritten section
+    before it in context and the original section after it visible. Edit mode rewrites only
+    flagged sentences under the same locks. A `Brief` is drafted section by section first,
+    then rewritten. `primary_texts` (files, directories or loaded `PrimaryText`s) are
+    supplied by the caller; without any, added quotations and citations are allowed and
+    listed as unverified. `provider_factory` maps a provider name to a `CachingProvider`
+    (tests replay a cache with it); `budget` is USD.
     """
     catalog = load_catalog(patterns)
     pool = ProviderPool(models, provider_factory)
@@ -881,15 +1017,15 @@ def apply(
     opts = Options(
         plan=plan,
         texts=texts,
-        min_confidence=min_confidence,
         max_growth=max_growth,
+        chunk_words=chunk_words,
         patterns=patterns,
         n=n,
         progress=progress,
     )
 
     if mode == "edit":
-        result = _edit_loop(
+        final_text, units, iterations, stopped = _edit_loop(
             text,
             voice,
             report_before,
@@ -903,7 +1039,7 @@ def apply(
             preserve_length=preserve_length,
         )
     else:
-        result = _rewrite_loop(
+        final_text, units, iterations, stopped = _rewrite_loop(
             text,
             voice,
             report_before,
@@ -914,7 +1050,6 @@ def apply(
             opts,
             budget=budget,
         )
-    final_text, units, iterations, stopped = result
     report_after = score(final_text, voice, patterns=patterns)
     _log_pairs(voice, units, pairs_path)
     diff = "".join(
@@ -925,6 +1060,11 @@ def apply(
             tofile="after",
         )
     )
+    winner = next(
+        (u.candidates[u.chosen] for u in units if not u.kept_original and u.chosen is not None),
+        None,
+    )
+    vs = winner.vs_original if winner is not None else None
     return Result(
         mode=mode,
         text=final_text,
@@ -937,9 +1077,12 @@ def apply(
         cost=_cost(pool.usage()),
         stopped=stopped,
         exemplars_used=exemplars.available,
-        min_confidence=min_confidence,
         max_growth=max_growth,
+        chunk_words=chunk_words,
         growth_pct=growth_of(text, final_text),
+        coherence=winner.coherence if winner is not None else None,
+        judge_items=dict(vs.items) if vs is not None else {},
+        metric_table=metric_table(report_before, report_after),
         unverified_additions=_unverified(units),
         primary_texts=[t.name for t in texts],
         judge_gate=plan.describe(),
@@ -954,8 +1097,8 @@ class Options:
 
     plan: JudgePlan
     texts: list[PrimaryText]
-    min_confidence: float
     max_growth: float
+    chunk_words: int
     patterns: tuple[str, ...]
     n: int
     progress: Callable[[str], None] | None
@@ -992,154 +1135,191 @@ def _rewrite_loop(
     *,
     budget: float | None,
 ) -> tuple[str, list[UnitLog], list[IterationLog], str]:
-    patterns, progress = opts.patterns, opts.progress
+    """Rewrite the document as a whole, or section by section when it is longer than
+    `chunk_words`. Every section must find a passing candidate, else the whole original is
+    returned: a partial rewrite is never produced."""
+    progress = opts.progress
     a = analyze(text)
-    units = rewrite_units(text, a, report_before)
+    sections = sections_of(a, opts.chunk_words)
+    if not sections:
+        return text, [], [], "nothing_to_rewrite"
+    writer0 = opts.plan.writer(0)
+    by_paragraph = [extract_propositions(p.text, writer0) for p in a.paragraphs]
+    if progress and len(sections) > 1:
+        progress(f"{len(sections)} sections of up to {opts.chunk_words} words")
     logs: list[UnitLog] = []
-    current = text
-    stopped = "done"
-    offset = 0  # how much earlier replacements shifted later units
-    unit_spans: list[tuple[int, int]] = []
-    for unit in units:
+    pieces: list[str] = []  # rewritten section texts, in order
+    pos = 0
+    for section in sections:
         if budget is not None and pool.usage().cost_usd > budget:
-            stopped = "budget"
-            logs.append(_kept(unit, [], "budget exhausted"))
-            continue
-        start, end = unit.start + offset, unit.end + offset
-        log = _rewrite_unit(
-            unit,
-            current,
-            start,
-            end,
+            return (
+                _revert(text, a, sections, by_paragraph, logs, "budget exhausted"),
+                logs,
+                [],
+                "budget",
+            )
+        section_text = text[section.start : section.end]
+        props = by_paragraph[section.first : section.last + 1]
+        previous = pieces[-1] if pieces else ""
+        following = (
+            text[sections[section.index + 1].start : sections[section.index + 1].end]
+            if section.index + 1 < len(sections)
+            else ""
+        )
+        log = _rewrite_section(
+            section,
+            text,
+            a,
+            section_text,
+            props,
             voice,
             pool,
             exemplars,
             document,
             catalog,
             opts,
-            issues=[],
+            previous=previous,
+            following=following,
+            report_before=report_before,
         )
         logs.append(log)
-        current = current[:start] + log.final + current[end:]
-        unit_spans.append((start, start + len(log.final)))
-        offset += len(log.final) - len(unit.text)
-
-    # Document-level pass: summary closes, monotone runs across paragraphs, aphoristic ends.
-    report = score(current, voice, patterns=patterns)
-    doc_hits = [
-        h
-        for t in report.tells
-        if t.id in SECTION_TELLS | {CLOSING_RULE_TELL} and (t.flagged or t.banned)
-        for h in t.hits
-    ]
-    if doc_hits and stopped != "budget":
-        a2 = analyze(current)
-        touched: dict[int, list[TellHitResult]] = {}
-        for h in doc_hits:
-            touched.setdefault(h.para_idx, []).append(h)
-        if progress:
-            progress(f"document pass: {len(touched)} paragraph(s) with T14/T15/T5 after rewriting")
-        offset2 = 0
-        for p in a2.paragraphs:
-            if p.index not in touched:
-                continue
-            unit = Unit(
-                index=len(logs),
-                kind="paragraph",
-                start=p.start,
-                end=p.end,
-                text=current[p.start : p.end],
-                para_index=p.index,
-                hits=touched[p.index],
-                metric_notes=[],
+        if log.kept_original:
+            return (
+                _revert(text, a, sections, by_paragraph, logs, "no candidate passed"),
+                logs,
+                [],
+                "no_candidate_passed",
             )
-            issues = [
-                f"{h.pattern_id} {catalog.by_id(h.pattern_id).name}: {h.text.strip()[:80]}"
-                + (f" Fix: {FIX_HINTS[h.pattern_id]}" if h.pattern_id in FIX_HINTS else "")
-                for h in touched[p.index]
-            ]
-            start, end = p.start + offset2, p.end + offset2
-            log = _rewrite_unit(
-                unit,
-                current,
-                start,
-                end,
-                voice,
-                pool,
-                exemplars,
-                document,
-                catalog,
-                opts,
-                issues=issues,
+        pieces.append(text[pos : section.start] + log.final)
+        pos = section.end
+    final = "".join(pieces) + text[pos:]
+    return final, logs, [], "done"
+
+
+def _revert(
+    text: str,
+    a: Analysis,
+    sections: list[Section],
+    by_paragraph: list[list[str]],
+    logs: list[UnitLog],
+    reason: str,
+) -> str:
+    """Mark every section as kept (the ones already rewritten included) and return the
+    original text."""
+    done = {log.index for log in logs}
+    for log in logs:
+        if not log.kept_original:
+            log.final = log.original
+            log.kept_original = True
+            log.reason = f"reverted: {reason} in a later section"
+    for section in sections:
+        if section.index in done:
+            continue
+        props = by_paragraph[section.first : section.last + 1]
+        logs.append(
+            UnitLog(
+                index=section.index,
+                kind=section.kind,
+                start=section.start,
+                end=section.end,
+                original=text[section.start : section.end],
+                final=text[section.start : section.end],
+                propositions=[p for ps in props for p in ps],
+                propositions_by_paragraph=props,
+                kept_original=True,
+                reason=f"not attempted: {reason}",
             )
-            log.kind = "paragraph (document pass)"
-            logs.append(log)
-            current = current[:start] + log.final + current[end:]
-            offset2 += len(log.final) - len(unit.text)
-    return current, logs, [], stopped
+        )
+    return text
 
 
-def _rank_key(cand: CandidateLog) -> tuple[float, float, float]:
-    """Comparative win rate first, then confidence over the original, then linter distance."""
-    rate = cand.win_rate if cand.win_rate is not None else -1.0
-    distance = cand.distance if cand.distance is not None else 1e9
-    return (-rate, -cand.confidence_vs_original, distance)
+def _lock_notes(detail: str) -> list[str]:
+    return [f"the {part.strip()} from the original" for part in detail.split(";") if part.strip()]
 
 
-def _kept(unit: Unit, propositions: list[str], reason: str) -> UnitLog:
-    return UnitLog(
-        index=unit.index,
-        kind=unit.kind,
-        start=unit.start,
-        end=unit.end,
-        original=unit.text,
-        final=unit.text,
-        propositions=propositions,
-        kept_original=True,
-        reason=reason,
-    )
+def _linter_notes(
+    before_doc: str, spliced: str, report: Report, span: tuple[int, int], catalog: Catalog
+) -> list[str]:
+    """What a reader would say about the linter's findings inside `span` of `spliced`: each
+    new tell with its span and the pattern's plain description, and each flagged metric
+    phrased without its name."""
+    notes = []
+    before_counts = _tell_counts(before_doc, catalog)
+    for t in report.tells:
+        if not (t.flagged or t.banned) or t.count <= before_counts.get(t.id, 0):
+            continue
+        for h in t.hits:
+            if span[0] <= h.start < span[1]:
+                desc = catalog.by_id(h.pattern_id).description.rstrip(".")
+                notes.append(f'"{h.text.strip()[:90]}": {desc[:1].lower()}{desc[1:]}')
+                break
+    notes.extend(metric_notes_for(report))
+    return notes
 
 
-def _verify_candidate(
-    unit: Unit,
+def _verify_section(
+    section_text: str,
     candidate: str,
     cand: CandidateLog,
     document: DocumentLock,
+    voice: Voice,
     opts: Options,
-) -> str | None:
-    """The locks and limits that need no judge: shape, length, lexical lock, primary texts.
-    Returns the rejection reason, or None when the candidate may go on to the semantic lock."""
-    if not candidate or candidate == unit.text:
+) -> list[str]:
+    """The checks that need no judge: shape, length, lexical lock, primary texts, coherence.
+    Returns what a reader noticed (empty when the candidate may go on)."""
+    notes: list[str] = []
+    if not candidate.strip() or candidate.strip() == section_text.strip():
         cand.lexical_ok = False
-        return "empty or unchanged"
-    if unit.kind == "paragraph" and "\n\n" in candidate.strip():
-        cand.lexical_ok = False
-        return "split the paragraph"
-    cand.growth_pct = growth_of(unit.text, candidate)
-    limit = max_words_for(len(unit.text.split()), opts.max_growth)
-    if len(candidate.split()) > limit:
-        return (
-            f"length: {len(candidate.split())} words, over the {limit}-word limit "
-            f"(+{opts.max_growth:.0f}%)"
-        )
-    lock = check(unit.text, candidate, document)
+        return ["the draft was empty or unchanged"]
+    cand.growth_pct = growth_of(section_text, candidate)
+    words, limit = len(candidate.split()), max_words_for(len(section_text.split()), opts.max_growth)
+    if words > limit:
+        notes.append(f"it runs {words} words against the original's {len(section_text.split())}")
+    lock = check(section_text, candidate, document)
     if not lock.ok:
         cand.lexical_ok = False
         cand.lexical_detail = "; ".join(str(v) for v in lock.violations)
-        return "content lock: " + cand.lexical_detail
-    if lock.additions:
+        notes.extend(_lock_notes(cand.lexical_detail))
+    elif lock.additions:
         cand.lexical_detail = "new items for the semantic lock: " + "; ".join(lock.additions)
-    cand.primary = verify_additions(unit.text, candidate, opts.texts)
+    cand.primary = verify_additions(section_text, candidate, opts.texts)
     if not cand.primary.ok:
-        return "primary text: " + "; ".join(str(a) for a in cand.primary.rejected[:3])
-    return None
+        notes.extend(f"{add} is not in the primary text" for add in cand.primary.rejected[:3])
+    band = voice.metrics.thresholds.metrics.get("connective_opener_pct")
+    cand.coherence = check_coherence(section_text, candidate, band=band)
+    notes.extend(cand.coherence.reader_notes())
+    return notes
 
 
-def _rewrite_unit(
-    unit: Unit,
-    current: str,
-    start: int,
-    end: int,
+def _check_meaning_by_paragraph(
+    section_text: str,
+    candidate: str,
+    props: list[list[str]],
+    checker: CachingProvider,
+) -> SemanticResult:
+    """The semantic lock paragraph by paragraph when the candidate keeps the paragraphing,
+    else once over the whole section; the checks are merged with a paragraph prefix."""
+    before, after = analyze(section_text).paragraphs, analyze(candidate).paragraphs
+    merged = SemanticResult()
+    if len(before) == len(after) == len(props):
+        for i, (p, q, ps) in enumerate(zip(before, after, props, strict=True), 1):
+            r = check_meaning(p.text, q.text, ps, checker)
+            merged.checks.extend(
+                PropositionCheck(proposition=f"¶{i} {c.proposition}", kept=c.kept, note=c.note)
+                for c in r.checks
+            )
+            merged.added.extend(r.added)
+            merged.provider, merged.model = r.provider, r.model
+        return merged
+    return check_meaning(section_text, candidate, [p for ps in props for p in ps], checker)
+
+
+def _rewrite_section(
+    section: Section,
+    text: str,
+    a: Analysis,
+    section_text: str,
+    props: list[list[str]],
     voice: Voice,
     pool: ProviderPool,
     exemplars: ExemplarIndex,
@@ -1147,42 +1327,41 @@ def _rewrite_unit(
     catalog: Catalog,
     opts: Options,
     *,
-    issues: list[str],
+    previous: str,
+    following: str,
+    report_before: Report,
 ) -> UnitLog:
     plan, n, progress = opts.plan, opts.n, opts.progress
-    a = analyze(current)
-    writer0 = plan.writer(0)
-    propositions = extract_propositions(unit.text, writer0)
     log = UnitLog(
-        index=unit.index,
-        kind=unit.kind,
-        start=start,
-        end=end,
-        original=unit.text,
-        final=unit.text,
-        propositions=propositions,
+        index=section.index,
+        kind=section.kind,
+        start=section.start,
+        end=section.end,
+        original=section_text,
+        final=section_text,
+        propositions=[p for ps in props for p in ps],
+        propositions_by_paragraph=props,
     )
-    near = exemplars.closest(unit.text, 2)
-    rejected: list[tuple[str, str]] = []
-    for round_index in range(2):
+    near = exemplars.closest(section_text, 2)
+    noticed: list[str] = []
+    for round_index in range(ROUNDS):
         eligible: list[CandidateLog] = []
         writers: dict[int, str] = {}
         for k in range(n):
             attempt = round_index * n + k + 1
             writer = plan.writer(round_index * n + k)
-            system, user = rewrite_prompt(
-                unit,
-                current,
-                a,
+            system, user = document_prompt(
+                section,
+                text,
+                section_text,
+                props,
                 voice,
                 exemplars,
-                document,
-                propositions,
+                previous=previous,
+                following=following,
                 attempt=attempt,
-                n=2 * n,
-                issues=issues,
-                rejected=rejected if round_index else [],
-                max_growth=opts.max_growth,
+                n=ROUNDS * n,
+                noticed=noticed,
             )
             try:
                 completion = writer.complete(system, user, temperature=CANDIDATE_TEMPERATURE)
@@ -1207,103 +1386,115 @@ def _rewrite_unit(
                 lexical_ok=True,
             )
             log.candidates.append(cand)
-            reason = _verify_candidate(unit, candidate, cand, document, opts)
-            if reason is not None:
-                cand.reason = reason
-                if reason != "empty or unchanged":
-                    rejected.append((candidate, reason))
+            notes = _verify_section(section_text, candidate, cand, document, voice, opts)
+            if not notes:
+                checkers = plan.judges_for(writer.name) or [pool.other_than(writer)]
+                cand.semantic = _check_meaning_by_paragraph(
+                    section_text, candidate, props, checkers[0]
+                )
+                if not cand.semantic.ok:
+                    notes.extend(
+                        f'the claim "{c.proposition}" was dropped'
+                        for c in cand.semantic.checks
+                        if not c.kept
+                    )
+                    notes.extend(
+                        f'"{x.text}" is a claim the original does not make'
+                        for x in cand.semantic.added
+                        if x.kind == "claim"
+                    )
+            spliced = text[: section.start] + candidate + text[section.end :]
+            report = score(spliced, voice, patterns=opts.patterns)
+            cand.distance = report.distance
+            cand.new_tells = _new_tells(text, spliced, catalog)
+            linter = _linter_notes(
+                text, spliced, report, (section.start, section.start + len(candidate)), catalog
+            )
+            if notes:
+                cand.reason = "; ".join(notes)[:300]
+                cand.reader_notes = notes + linter
                 continue
-            checkers = plan.judges_for(writer.name) or [pool.other_than(writer)]
-            cand.semantic = check_meaning(unit.text, candidate, propositions, checkers[0])
-            if not cand.semantic.ok:
-                cand.reason = "meaning: " + "; ".join(cand.semantic.failing[:3])
-                rejected.append((candidate, cand.reason))
+            cand.reader_notes = linter
+            judges = plan.judges_for(writer.name)
+            if not judges:
+                cand.reason = "no judge is clear of the writer"
+                cand.reader_notes = linter
                 continue
-            spliced = current[:start] + candidate + current[end:]
-            cand.distance = score(spliced, voice, patterns=opts.patterns).distance
-            cand.new_tells = _new_tells(current, spliced, catalog)
+            cand.verdicts.append(
+                compare_document(
+                    candidate, section_text, section_text, voice, judges[0], exemplars=near
+                )
+            )
+            vs = cand.vs_original
+            cand.judge_ok = vs is not None and vs.no_loss
+            if not cand.judge_ok:
+                lost = [k for k, v in (vs.items if vs else {}).items() if v == "loss"]
+                note = vs.note if vs else ""
+                cand.reason = f"the judge preferred the original for {', '.join(lost)}: {note}"[
+                    :300
+                ]
+                cand.reader_notes = [
+                    f"a second reader preferred the original for {', '.join(lost)}: {note}",
+                    *linter,
+                ]
+                continue
             eligible.append(cand)
             writers[id(cand)] = writer.name
 
-        # Comparative judging: each survivor against the original, then round-robin.
-        for cand in eligible:
-            judges = plan.judges_for(writers[id(cand)])
-            if judges:
-                cand.pairs.append(compare_with(cand.text, unit.text, voice, judges, exemplars=near))
         for i, x in enumerate(eligible):
             for y in eligible[i + 1 :]:
                 judges = plan.judges_for(writers[id(x)], writers[id(y)])
                 if not judges:
                     continue  # no provider is clear of both writers
-                v = compare_with(
-                    x.text, y.text, voice, judges, exemplars=near, against=f"candidate {y.attempt}"
+                v = compare_document(
+                    x.text,
+                    y.text,
+                    section_text,
+                    voice,
+                    judges[0],
+                    exemplars=near,
+                    against=f"candidate {y.attempt}",
                 )
-                x.pairs.append(v)
-                y.pairs.append(
-                    PairVerdict(
-                        against=f"candidate {x.attempt}",
-                        wins=not v.wins,
-                        picked_as_model=not v.picked_as_model,
-                        confidence=v.confidence,
-                        shown_as="B" if v.shown_as == "A" else "A",
-                        provider=v.provider,
-                        model=v.model,
-                        note=v.note,
-                    )
-                )
+                x.verdicts.append(v)
+                y.verdicts.append(v.flipped(f"candidate {x.attempt}"))
         for cand in eligible:
-            cand.win_rate = win_rate(cand.pairs)
-            if plan.enabled:
-                cand.beats_original = beats_original(cand.pairs, opts.min_confidence)
-                if cand.beats_original:
-                    cand.accepted = True
-                    cand.reason = (
-                        f"passed locks; beat the original at {cand.confidence_vs_original:.2f}"
-                    )
-                else:
-                    vs = next((p for p in cand.pairs if p.against == "original"), None)
-                    if vs is None:
-                        cand.reason = "no judge clear of the writer; not gated"
-                    elif vs.wins:
-                        cand.reason = (
-                            f"beat the original only at {vs.confidence:.2f} < "
-                            f"{opts.min_confidence:.2f}: {vs.note}"
-                        )
-                    else:
-                        cand.reason = f"judged less like the writer than the original: {vs.note}"
-                    rejected.append((cand.text, cand.reason))
-            else:
-                cand.accepted = True
-                cand.reason = "passed locks (judge gate off)"
-        passing = [c for c in log.candidates if c.accepted]
-        if passing:
-            winner = min(passing, key=_rank_key)
+            cand.win_rate = document_win_rate(cand.verdicts)
+            cand.accepted = True
+            cand.reason = "passed the locks, the coherence checks and the judge"
+        if eligible:
+            winner = min(eligible, key=_rank_key)
             log.chosen = log.candidates.index(winner)
             log.final = winner.text
-            judges = plan.judges_for(writers.get(id(winner), winner.provider))
-            if judges:
-                winner.judge = judge_paragraph(
-                    winner.text, voice, judges[0], exemplars=near, propositions=propositions
-                )
             rate = f"{100 * winner.win_rate:.0f}%" if winner.win_rate is not None else "n/a"
             log.reason = (
                 f"candidate {log.chosen + 1} of {len(log.candidates)}: win rate {rate} over "
-                f"{len(winner.pairs)} pair(s), distance {winner.distance:.1f}, "
+                f"{len(winner.verdicts)} comparison(s), distance {winner.distance:.1f}, "
                 f"growth {winner.growth_pct:+.0f}%"
             )
             if progress:
-                progress(f"  unit {unit.index + 1}: {log.reason}")
+                progress(f"  {section.kind}: {log.reason}")
             return log
-        if round_index == 0:
-            # Retry once with the specific failures appended.
-            issues = issues + [c.reason for c in log.candidates if c.reason][-n:]
+        if round_index + 1 < ROUNDS:
+            seen: list[str] = []
+            for c in log.candidates:
+                for note in c.reader_notes:
+                    if note not in seen:
+                        seen.append(note)
+            noticed = seen[-12:]
     log.kept_original = True
     log.reason = "no candidate passed: " + "; ".join(
         f"{c.attempt}: {c.reason[:80]}" for c in log.candidates
     )
     if progress:
-        progress(f"  unit {unit.index + 1}: kept original (no candidate passed)")
+        progress(f"  {section.kind}: kept original (no candidate passed)")
     return log
+
+
+def _rank_key(cand: CandidateLog) -> tuple[float, float]:
+    """Comparative win rate first, then linter distance."""
+    rate = cand.win_rate if cand.win_rate is not None else -1.0
+    distance = cand.distance if cand.distance is not None else 1e9
+    return (-rate, distance)
 
 
 def _edit_loop(

@@ -541,6 +541,28 @@ def score_cmd(
 # ------------------------------------------------------------------ apply
 
 
+def print_metric_table(rows: list[Any]) -> None:
+    """Every metric before and after against the voice's band, flagging under and over."""
+    from rich.table import Table
+
+    table = Table(title="Metrics against the voice's band (both sides)")
+    for col in ("metric", "before", "after", "band low", "band high", "before", "after"):
+        table.add_column(col, justify="left" if col == "metric" else "right")
+    for r in rows:
+        if r.band_low is None and r.band_high is None:
+            continue
+        table.add_row(
+            r.name,
+            f"{r.before:.2f}",
+            f"{r.after:.2f}",
+            "-" if r.band_low is None else f"{r.band_low:.2f}",
+            "-" if r.band_high is None else f"{r.band_high:.2f}",
+            r.status_before if r.status_before == "in" else f"[red]{r.status_before}[/]",
+            r.status_after if r.status_after == "in" else f"[red]{r.status_after}[/]",
+        )
+    console.print(table)
+
+
 def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
     before, after = result.report_before, result.report_after
     color = "green" if after.verdict == "PASS" else "red"
@@ -564,7 +586,7 @@ def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
         f"[bold {color}]{after.verdict}[/]: distance {before.distance:.0f} -> "
         f"{after.distance:.0f}{context}; {rewritten}/{len(result.units)} unit(s) rewritten"
         + (f", {len(fallbacks)} kept original" if fallbacks else "")
-        + f"; growth {result.growth_pct:+.0f}% (limit +{result.max_growth:.0f}% per unit)"
+        + f"; growth {result.growth_pct:+.0f}% (limit +{result.max_growth:.0f}%)"
         + f"; ${result.cost.usd:.3f} over {result.cost.calls} call(s){unpriced}; "
         f"stopped: {result.stopped}"
     )
@@ -576,17 +598,20 @@ def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
     for u in result.units:
         tried = len([c for c in u.candidates if c.text])
         console.print(f"  unit {u.index + 1} ({u.kind}): {tried} candidate(s); {u.reason}")
-        if u.chosen is not None and u.candidates[u.chosen].pairs:
-            for c in u.candidates:
-                if c.win_rate is None:
-                    continue
-                mark = "*" if c is u.candidates[u.chosen] else " "
-                console.print(
-                    f"   {mark} candidate {c.attempt} ({c.provider}): win rate "
-                    f"{100 * c.win_rate:.0f}% over {len(c.pairs)}, vs original "
-                    f"{c.confidence_vs_original:.2f}, distance "
-                    f"{c.distance if c.distance is not None else float('nan'):.1f}"
-                )
+        for c in u.candidates:
+            if c.win_rate is None:
+                continue
+            mark = "*" if u.chosen is not None and c is u.candidates[u.chosen] else " "
+            console.print(
+                f"   {mark} candidate {c.attempt} ({c.provider}): win rate "
+                f"{100 * c.win_rate:.0f}% over {len(c.verdicts)}, distance "
+                f"{c.distance if c.distance is not None else float('nan'):.1f}"
+            )
+    if result.mode == "rewrite":
+        from deslop.apply import coherence_report
+
+        console.print(coherence_report(result), markup=False, highlight=False)
+        print_metric_table(result.metric_table)
     if after.fixes:
         console.print("[bold]Remaining:[/] " + "; ".join(after.fixes[:5]))
     if show_diff:
@@ -607,16 +632,16 @@ def apply_cmd(
         None, "--brief", help="Draft from this brief yaml instead of rewriting a file"
     ),
     mode: str | None = typer.Option(
-        None, "--mode", help="rewrite (paragraphs, default) or edit (flagged sentences)"
+        None, "--mode", help="rewrite (the whole document, default) or edit (flagged sentences)"
     ),
     models: str | None = typer.Option(None, "--models", help="Providers in rotation (claude,gpt)"),
     budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
-    n: int | None = typer.Option(None, "--n", help="Candidates per unit in rewrite mode (3)"),
-    min_confidence: float | None = typer.Option(
-        None, "--min-confidence", help="Judge confidence needed to beat the original (0.7)"
-    ),
+    n: int | None = typer.Option(None, "--n", help="Candidates per document in rewrite mode (3)"),
     max_growth: float | None = typer.Option(
         None, "--max-growth", help="Reject candidates more than PCT longer than the original (15)"
+    ),
+    chunk_words: int | None = typer.Option(
+        None, "--chunk-words", help="Rewrite longer documents section by section (2500)"
     ),
     primary_text: list[str] = typer.Option(
         [],
@@ -656,8 +681,8 @@ def apply_cmd(
             models=tuple(_as_list(s.get("models", models, "claude,gpt"))),
             budget=None if budget is None else float(budget),
             n=int(s.get("n", n, 3)),
-            min_confidence=float(s.get("min_confidence", min_confidence, 0.7)),
             max_growth=float(s.get("max_growth", max_growth, 15.0)),
+            chunk_words=int(s.get("chunk_words", chunk_words, 2500)),
             primary_texts=list(texts) or None,
             max_iter=int(s.get("max_iter", max_iter, 4)),
             patterns=s.paths("patterns", patterns),

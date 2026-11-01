@@ -8,7 +8,9 @@ from deslop.stats import DocSamples, MetricsProfile, MetricStat, TellStat
 from deslop.thresholds import (
     CalibrationStats,
     Thresholds,
+    band_for,
     calibrate_thresholds,
+    metric_deviation,
     passes,
     rescale,
     split_heldout,
@@ -118,3 +120,11 @@ def test_rescale_anchors():
     assert rescale(0.0, stats) == 0.0 and rescale(0.05, stats) == 10.0
     assert rescale(0.3, None) == 30.0
     assert Thresholds().stats is None
+
+
+def test_two_sided_band_flags_overshoot_in_both_directions():
+    band = band_for(10.0, 1.0, 2.0, "both", 2.0)
+    assert band.low == 8.0 and band.high == 12.0
+    assert metric_deviation("x", 13.0, band, 10.0).flagged
+    assert metric_deviation("x", 7.0, band, 10.0).flagged
+    assert not metric_deviation("x", 11.0, band, 10.0).flagged

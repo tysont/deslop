@@ -185,6 +185,8 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
     assert out.exists() and "Plainly," in out.read_text()
     assert "Meaning" in flat(r) and "unit 1" in flat(r) and "candidate(s)" in flat(r)
     assert "judge gate on" in flat(r) and "growth" in flat(r)
+    assert "coherence: ok" in flat(r) and "judge vs original" in flat(r)
+    assert "against the voice's band" in flat(r)
     marked = tmp_path / "gen.txt"
     marked.write_text(
         "# title: Genesis\n# book: Genesis\n\n{{Genesis 22:2}} Take now thy son.\n",
@@ -203,15 +205,17 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
             str(marked),
             "--max-growth",
             "40",
-            "--min-confidence",
-            "0.6",
+            "--chunk-words",
+            "150",
             "--json",
         ],
     )
     assert r.exit_code in (0, 2), r.output
     data = json.loads(r.stdout)
     assert data["primary_texts"] == ["Genesis"] and data["max_growth"] == 40.0
-    assert data["min_confidence"] == 0.6 and "growth_pct" in data
+    assert data["chunk_words"] == 150 and "growth_pct" in data
+    assert len(data["units"]) > 1 and data["units"][0]["kind"].startswith("section 1/")
+    assert "coherence" in data and "metric_table" in data and "judge_items" in data
     r = runner.invoke(
         app, ["apply", str(sample), "--voice", str(voice), "--primary-text", "nope.txt"]
     )

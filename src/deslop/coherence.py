@@ -1,0 +1,194 @@
+# ABOUTME: Deterministic coherence checks on a rewrite: tense per paragraph before and after,
+# ABOUTME: sentence-initial pronouns with nothing to refer to, and connective-opened sentences.
+from __future__ import annotations
+
+from collections import Counter
+
+from pydantic import BaseModel, Field
+
+from deslop.metrics.rhythm import connective_opener_ratio
+from deslop.nlp import Analysis, Paragraph, Sentence, analyze
+from deslop.stats import Band
+
+PRONOUN_OPENERS = {"this", "that", "it", "these", "those"}
+CONNECTIVE_TOLERANCE = 0.5  # the output's ratio may differ from the original's by this share
+
+
+def paragraph_tense(para: Paragraph) -> str:
+    """The dominant tense of the paragraph's finite verbs: past, present, mixed (a tie) or
+    none (no finite verb carries a tense)."""
+    counts: Counter[str] = Counter()
+    for tok in para.doc:
+        if tok.pos_ not in ("VERB", "AUX") or "Fin" not in tok.morph.get("VerbForm", []):
+            continue
+        for tense in tok.morph.get("Tense", []):
+            counts[{"Past": "past", "Pres": "present"}.get(tense, tense.lower())] += 1
+    if not counts:
+        return "none"
+    top = counts.most_common(2)
+    if len(top) > 1 and top[0][1] == top[1][1]:
+        return "mixed"
+    return top[0][0]
+
+
+class TenseDrift(BaseModel):
+    paragraph: int  # 1-based
+    before: str
+    after: str
+    example: str  # a sentence of the output in the drifted tense
+
+
+def _example_in_tense(para: Paragraph, tense: str) -> str:
+    for s in para.sentences:
+        for tok in s.span:
+            if tok.pos_ in ("VERB", "AUX") and "Fin" in tok.morph.get("VerbForm", []):
+                got = [
+                    {"Past": "past", "Pres": "present"}.get(t, t)
+                    for t in tok.morph.get("Tense", [])
+                ]
+                if tense in got:
+                    return s.text.strip()
+    return para.sentences[0].text.strip() if para.sentences else ""
+
+
+def tense_drift(before: Analysis, after: Analysis) -> list[TenseDrift]:
+    """Paragraphs whose dominant tense changed, paired by position."""
+    out = []
+    for i, (p, q) in enumerate(zip(before.paragraphs, after.paragraphs, strict=False), 1):
+        a, b = paragraph_tense(p), paragraph_tense(q)
+        if a != b and "none" not in (a, b):
+            out.append(TenseDrift(paragraph=i, before=a, after=b, example=_example_in_tense(q, b)))
+    return out
+
+
+class AntecedentFlag(BaseModel):
+    sentence: int  # 0-based index over the output's sentences
+    paragraph: int  # 1-based
+    word: str
+    text: str
+
+
+def _has_noun_phrase(text_sentences: list[Sentence]) -> bool:
+    return any(any(t.pos_ in ("NOUN", "PROPN") for t in s.span) for s in text_sentences)
+
+
+def antecedent_flags(a: Analysis) -> list[AntecedentFlag]:
+    """Sentences opening with a pronoun, or with this/that/it, when the previous two sentences
+    hold no noun phrase for it to refer to (the first sentence of the text always does)."""
+    sentences = a.sentences
+    out = []
+    for i, s in enumerate(sentences):
+        first = next((t for t in s.span if t.is_alpha), None)
+        if first is None:
+            continue
+        if first.pos_ != "PRON" and first.lower_ not in PRONOUN_OPENERS:
+            continue
+        if not _has_noun_phrase(sentences[max(0, i - 2) : i]):
+            out.append(
+                AntecedentFlag(
+                    sentence=i, paragraph=s.para_index + 1, word=first.text, text=s.text.strip()
+                )
+            )
+    return out
+
+
+class ConnectiveCheck(BaseModel):
+    before: float  # share of the original's sentences opening with a connective
+    after: float
+    band_low: float | None = None  # the voice's band, in percent
+    band_high: float | None = None
+    ok: bool = True
+    note: str = ""
+
+
+def connective_check(before: Analysis, after: Analysis, band: Band | None) -> ConnectiveCheck:
+    """The output's share of connective-opened sentences must sit in the voice's band and
+    within half of the original's share either way, with one sentence of slack."""
+    b, c = connective_opener_ratio(before), connective_opener_ratio(after)
+    slack = 1.0 / max(len(after.sentences), 1)
+    low, high = b * (1 - CONNECTIVE_TOLERANCE) - slack, b * (1 + CONNECTIVE_TOLERANCE) + slack
+    notes = []
+    if not low <= c <= high:
+        notes.append(
+            f"{100 * c:.0f}% of the sentences open with and, but, so or the like; "
+            f"the original has {100 * b:.0f}%"
+        )
+    band_low = band.low if band else None
+    band_high = band.high if band else None
+    pct = 100 * c
+    if (band_low is not None and pct < band_low) or (band_high is not None and pct > band_high):
+        notes.append(
+            f"{pct:.0f}% of the sentences open with a connective, outside this writer's band "
+            f"of {band_low or 0:.0f}% to {band_high if band_high is not None else 100:.0f}%"
+        )
+    return ConnectiveCheck(
+        before=b,
+        after=c,
+        band_low=band_low,
+        band_high=band_high,
+        ok=not notes,
+        note="; ".join(notes),
+    )
+
+
+class CoherenceResult(BaseModel):
+    """The deterministic coherence checks on one rewrite: paragraph counts, tense drift per
+    paragraph, pronouns without antecedents, and the connective-opener check. `ok` is True
+    only when every check passes; `reader_notes()` phrases each failure for a retry prompt."""
+
+    paragraphs_before: int
+    paragraphs_after: int
+    tense: list[TenseDrift] = Field(default_factory=list)
+    antecedents: list[AntecedentFlag] = Field(default_factory=list)
+    connectives: ConnectiveCheck
+
+    @property
+    def ok(self) -> bool:
+        return (
+            self.paragraphs_before == self.paragraphs_after
+            and not self.tense
+            and not self.antecedents
+            and self.connectives.ok
+        )
+
+    def reader_notes(self) -> list[str]:
+        notes = []
+        if self.paragraphs_before != self.paragraphs_after:
+            notes.append(
+                f"it has {self.paragraphs_after} paragraphs where the original has "
+                f"{self.paragraphs_before}"
+            )
+        for d in self.tense:
+            notes.append(
+                f"paragraph {d.paragraph} shifts from the {d.before} tense to the {d.after}: "
+                f'"{d.example[:120]}"'
+            )
+        for f in self.antecedents:
+            notes.append(
+                f'"{f.text[:100]}" opens with "{f.word}" and nothing in the two sentences before '
+                "it says what that refers to"
+            )
+        if not self.connectives.ok:
+            notes.append(self.connectives.note)
+        return notes
+
+
+def check_coherence(
+    original: str,
+    candidate: str,
+    *,
+    band: Band | None,
+    before: Analysis | None = None,
+    after: Analysis | None = None,
+) -> CoherenceResult:
+    """Run every deterministic check on `candidate` against `original`. `band` is the voice's
+    band for `connective_opener_pct`, if it has one."""
+    before = before or analyze(original)
+    after = after or analyze(candidate)
+    return CoherenceResult(
+        paragraphs_before=len(before.paragraphs),
+        paragraphs_after=len(after.paragraphs),
+        tense=tense_drift(before, after),
+        antecedents=antecedent_flags(after),
+        connectives=connective_check(before, after, band),
+    )

@@ -11,6 +11,8 @@ from deslop.metrics.base import mean, metric, pct, stdev
 from deslop.nlp import Analysis
 
 COORDINATORS = {"and", "but", "or", "nor", "yet", "so"}
+# Discourse connectives a sentence may open with; their share is matched to the voice.
+CONNECTIVES = {"and", "but", "so", "then", "because", "since", "while", "yet"}
 
 
 def sentence_lengths(a: Analysis) -> list[float]:
@@ -32,7 +34,7 @@ def sent_len_std(a: Analysis) -> float:
 @metric(
     "sent_len_cv",
     group="rhythm",
-    slop_side="low",
+    slop_side="both",
     description="Coefficient of variation of sentence length",
 )
 def sent_len_cv(a: Analysis) -> float:
@@ -162,7 +164,7 @@ def opener_pct_noun(a: Analysis) -> float:
 @metric(
     "opener_top_word_share",
     group="rhythm",
-    slop_side="high",
+    slop_side="both",
     description="% of sentences that begin with the single most common first word",
 )
 def opener_top_word_share(a: Analysis) -> float:
@@ -174,6 +176,26 @@ def opener_top_word_share(a: Analysis) -> float:
                 break
     total = sum(words.values())
     return 100.0 * words.most_common(1)[0][1] / total if total else 0.0
+
+
+def connective_opener_ratio(a: Analysis) -> float:
+    """Share (0-1) of sentences whose first word is a discourse connective."""
+    opened = 0
+    for s in a.sentences:
+        first = next((t for t in s.span if t.is_alpha), None)
+        if first is not None and first.lower_ in CONNECTIVES:
+            opened += 1
+    return opened / len(a.sentences) if a.sentences else 0.0
+
+
+@metric(
+    "connective_opener_pct",
+    group="rhythm",
+    slop_side="both",
+    description="% of sentences that open with and, but, so, then, because, since, while or yet",
+)
+def connective_opener_pct(a: Analysis) -> float:
+    return 100.0 * connective_opener_ratio(a)
 
 
 EM_DASH_RE = re.compile(r"—|--")

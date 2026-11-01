@@ -175,3 +175,41 @@ def _voice():
         profile="A voice.",
         exemplars="",
     )
+
+
+def test_compare_document_reports_each_item_from_the_candidate_side(fixture_voice):
+    from deslop.judge import DocumentVerdict, compare_document, document_win_rate
+
+    answer = json.dumps(
+        {
+            "voice": "A",
+            "coherent": "tie",
+            "tense_person": "B",
+            "order": "tie",
+            "confidence": 0.8,
+            "note": "A keeps the writer's cadence; B stays in one tense",
+        }
+    )
+    judge = Canned("openai", answer)
+    v = compare_document(
+        "CANDIDATE text.", "ORIGINAL text.", "ORIGINAL text.", fixture_voice, judge, exemplars=["x"]
+    )
+    assert isinstance(v, DocumentVerdict) and v.against == "original"
+    assert set(v.items) == {"voice", "coherent", "tense_person", "order"}
+    assert set(v.items.values()) <= {"win", "tie", "loss"}
+    assert sorted(v.items.values()).count("tie") == 2
+    assert v.confidence == 0.8 and v.provider == "openai"
+    assert v.losses == 1 and v.wins == 1 and not v.no_loss
+    assert "THE ORIGINAL" in judge.prompts[0] and "TEXT A" in judge.prompts[0]
+    # win or tie on every item passes; a loss anywhere fails
+    clean = DocumentVerdict(against="original", items={k: "tie" for k in v.items}, confidence=0.6)
+    assert clean.no_loss and clean.net == 0
+    assert document_win_rate([]) is None
+    assert document_win_rate([v, clean]) == 0.5  # one net loss (0), one tie (0.5)
+
+
+def test_compare_document_without_json_is_a_loss_everywhere(fixture_voice):
+    from deslop.judge import compare_document
+
+    v = compare_document("a", "b", "b", fixture_voice, Canned("openai", "no idea"), exemplars=[])
+    assert v.losses == 4 and v.note == "judge gave no JSON"

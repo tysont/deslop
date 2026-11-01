@@ -1,6 +1,6 @@
-# ABOUTME: LLM judges: a pairwise comparison (which of two paragraphs reads more like the voice's
-# ABOUTME: writer, which more like model prose) that gates apply, and an absolute 1-5 rubric kept
-# ABOUTME: as a secondary trend score. Both are cached like any provider call.
+# ABOUTME: LLM judges: a document-level pairwise comparison on four named items that gates apply,
+# ABOUTME: the paragraph comparison used for judge calibration, and an absolute 1-5 rubric kept
+# ABOUTME: as a secondary trend score. All are cached like any provider call.
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +8,7 @@ import json
 import random
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deslop.providers.base import CachingProvider, ProviderError
 from deslop.report import JudgeScores
@@ -39,6 +39,25 @@ from 0.5 (a coin toss) to 1.0 (certain). Answer in JSON only:
 {"more_like_writer": "A" or "B", "more_like_model": "A" or "B", "confidence": 0.5-1.0,
 "note": "one sentence naming what decided it"}"""
 
+DOCUMENT_SYSTEM = """You are a demanding editor who knows one writer's voice from a description
+and two verbatim samples of it. You are shown the original of a piece and two versions of it,
+TEXT A and TEXT B (one of them may be the original itself). Answer four questions separately,
+each with "A", "B" or "tie":
+
+voice: which reads more like the writer of the samples (judge the prose, not the subject or
+the length).
+coherent: in which does each sentence follow from the last, with every pronoun and "this"
+pointing at something already said.
+tense_person: which keeps a consistent tense and grammatical person throughout.
+order: which better preserves the original's order of argument and its emphasis.
+
+Give your confidence in the answers as a whole from 0.5 (a coin toss) to 1.0 (certain).
+Answer in JSON only:
+
+{"voice": "A"|"B"|"tie", "coherent": "A"|"B"|"tie", "tense_person": "A"|"B"|"tie",
+"order": "A"|"B"|"tie", "confidence": 0.5-1.0, "note": "one sentence naming what decided it"}"""
+
+JUDGE_ITEMS = ("voice", "coherent", "tense_person", "order")
 GATE_CONFIDENCE = 0.7
 CALIBRATION_MIN_ACCURACY = 0.8
 
@@ -56,6 +75,49 @@ class PairVerdict(BaseModel):
     provider: str = ""
     model: str = ""
     note: str = ""
+
+
+class DocumentVerdict(BaseModel):
+    """One document-level comparison of a candidate against another text, answered item by
+    item: `items` maps each of `JUDGE_ITEMS` to win, tie or loss from the candidate's side."""
+
+    against: str  # "original" | "candidate k"
+    items: dict[str, str] = Field(default_factory=dict)
+    confidence: float = 0.5
+    shown_as: str = "A"
+    provider: str = ""
+    model: str = ""
+    note: str = ""
+
+    @property
+    def wins(self) -> int:
+        return sum(1 for v in self.items.values() if v == "win")
+
+    @property
+    def losses(self) -> int:
+        return sum(1 for v in self.items.values() if v == "loss")
+
+    @property
+    def net(self) -> int:
+        return self.wins - self.losses
+
+    @property
+    def no_loss(self) -> bool:
+        """The acceptance rule against the original: a win or a tie on every item."""
+        return self.losses == 0
+
+    def flipped(self, against: str) -> DocumentVerdict:
+        """The same verdict seen from the other text's side."""
+        swap = {"win": "loss", "loss": "win", "tie": "tie"}
+        return DocumentVerdict(
+            against=against,
+            items={k: swap[v] for k, v in self.items.items()},
+            confidence=self.confidence,
+            shown_as="B" if self.shown_as == "A" else "A",
+            provider=self.provider,
+            model=self.model,
+            note=self.note,
+        )
 
 
 class JudgeCalibration(BaseModel):
@@ -174,6 +236,64 @@ def compare_with(
     )
 
 
+def compare_document(
+    candidate: str,
+    other: str,
+    original: str,
+    voice: Voice,
+    provider: CachingProvider,
+    *,
+    exemplars: list[str],
+    against: str = "original",
+) -> DocumentVerdict:
+    """Ask `provider` to compare `candidate` with `other` on the four `JUDGE_ITEMS`, with
+    `original` shown as the reference for order and emphasis. The pair is shown in a
+    deterministic order; the verdict is reported from the candidate's side. `provider` must
+    not have written the candidate."""
+    candidate_is_a = _order(candidate, other)
+    a, b = (candidate, other) if candidate_is_a else (other, candidate)
+    samples = "\n\n".join(f"SAMPLE {i}:\n{e.strip()}" for i, e in enumerate(exemplars[:2], 1))
+    user = (
+        f"THE VOICE:\n{voice.profile.strip()}\n\n{samples or '(no samples available)'}\n\n"
+        f"THE ORIGINAL:\n{original.strip()}\n\nTEXT A:\n{a.strip()}\n\nTEXT B:\n{b.strip()}"
+    )
+    completion = provider.complete(DOCUMENT_SYSTEM, user, temperature=0.0)
+    mine = "A" if candidate_is_a else "B"
+    items: dict[str, str] = {}
+    try:
+        data = _json_object(completion.text)
+        for item in JUDGE_ITEMS:
+            pick = str(data.get(item, "")).strip().lower()[:3]
+            if pick == "tie":
+                items[item] = "tie"
+            elif pick[:1].upper() in ("A", "B"):
+                items[item] = "win" if pick[:1].upper() == mine else "loss"
+            else:
+                items[item] = "loss"
+        confidence = _confidence(data.get("confidence"))
+        note = str(data.get("note", ""))[:300]
+    except (ValueError, json.JSONDecodeError):
+        items = dict.fromkeys(JUDGE_ITEMS, "loss")
+        confidence, note = 0.5, "judge gave no JSON"
+    return DocumentVerdict(
+        against=against,
+        items=items,
+        confidence=confidence,
+        shown_as=mine,
+        provider=completion.provider,
+        model=completion.model,
+        note=note,
+    )
+
+
+def document_win_rate(verdicts: list[DocumentVerdict]) -> float | None:
+    """Share of comparisons the candidate came out ahead in: a net win counts 1, a draw 0.5."""
+    if not verdicts:
+        return None
+    points = sum(1.0 if v.net > 0 else 0.5 if v.net == 0 else 0.0 for v in verdicts)
+    return round(points / len(verdicts), 3)
+
+
 def win_rate(pairs: list[PairVerdict]) -> float | None:
     if not pairs:
         return None
@@ -282,13 +402,17 @@ def _clamp(value: object) -> int:
 
 __all__ = [
     "CALIBRATION_MIN_ACCURACY",
+    "DocumentVerdict",
     "GATE_CONFIDENCE",
+    "JUDGE_ITEMS",
     "JudgeCalibration",
     "PairVerdict",
     "beats_original",
     "calibrate_judge",
     "compare",
+    "compare_document",
     "compare_with",
+    "document_win_rate",
     "judge_paragraph",
     "win_rate",
 ]

@@ -87,3 +87,25 @@ def test_openers():
 def test_empty_text_is_safe():
     values = compute_all(analyze(""))
     assert all(v == 0.0 for v in values.values())
+
+
+def test_connective_openers_share_of_sentences():
+    text = (
+        "The road was long. And the night was cold. But nobody turned back. The village lay ahead."
+    )
+    assert m("connective_opener_pct", text) == pytest.approx(50.0)
+    assert rhythm.connective_opener_ratio(analyze(text)) == pytest.approx(0.5)
+    assert m("connective_opener_pct", "Plain words only.") == 0.0
+
+
+def test_two_sided_anchor_metrics_declare_both_sides():
+    for name in (
+        "citation_per_100w",
+        "quote_per_para",
+        "concrete_per_100w",
+        "sent_len_cv",
+        "opener_top_word_share",
+        "reader_address_per_1k",
+        "connective_opener_pct",
+    ):
+        assert METRICS[name].slop_side == "both", name

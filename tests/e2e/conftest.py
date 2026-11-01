@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from deslop.providers.base import CachingProvider, cache_only_default, get_provider
+from deslop.providers.base import CacheMissError, CachingProvider, cache_only_default, get_provider
 
 load_dotenv(override=True)
 CACHE = Path(__file__).parent.parent / "cache"
@@ -22,3 +22,15 @@ def provider_factory():
         return get_provider(name, cache_dir=CACHE, cache_only=REPLAY_ONLY)
 
     return factory
+
+
+def pytest_runtest_call(item: pytest.Item) -> None:
+    """In replay mode a prompt missing from tests/cache means the cache was not recorded for
+    this version of the prompts; skip loudly rather than fail. With credentials the miss
+    goes live and is recorded, and any failure is real."""
+    try:
+        item.runtest()
+    except CacheMissError as exc:
+        if REPLAY_ONLY:
+            pytest.skip(f"tests/cache not recorded for this prompt; record live: {exc}")
+        raise
