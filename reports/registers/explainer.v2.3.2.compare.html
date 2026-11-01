@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explainer, Chemical History of a Candle</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#f7f5f0;--fg:#23211c;--muted:#6c675c;--rule:#d9d4c7;--panel:#fffdf8;--ins-bg:#dcecd8;--ins-fg:#1e4d22;--del-bg:#f2d9d2;--del-fg:#7a2e1e;--accent:#3c5a78;--serif:"Source Serif 4",Georgia,serif;--sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#1b1a17;--fg:#e8e3d8;--muted:#a39d90;--rule:#3a372f;--panel:#23221e;--ins-bg:#1f3a22;--ins-fg:#b9e0b4;--del-bg:#4a2219;--del-fg:#f0b8a8;--accent:#9cbce0;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1b1a17;--fg:#e8e3d8;--muted:#a39d90;--rule:#3a372f;--panel:#23221e;--ins-bg:#1f3a22;--ins-fg:#b9e0b4;--del-bg:#4a2219;--del-fg:#f0b8a8;--accent:#9cbce0;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--serif);font-size:16px;line-height:1.55;margin:0;padding-block:28px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header,main{max-width:1240px;margin:0 auto} header{margin-bottom:24px}
+h1{font-weight:600;font-size:1.9rem;margin:0 0 6px;text-wrap:balance}
+.sub{font-family:var(--sans);color:var(--muted);margin:0 0 12px;max-width:80ch}
+.facts{display:flex;flex-wrap:wrap;gap:8px 28px;font-family:var(--sans);font-size:.9rem;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:12px 0;font-variant-numeric:tabular-nums}
+.legend{font-family:var(--sans);font-size:.85rem;color:var(--muted);margin-top:12px;display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.legend label{display:flex;gap:6px;align-items:center;color:var(--fg);cursor:pointer}
+ins{background:var(--ins-bg);color:var(--ins-fg);text-decoration:none;border-radius:2px}
+del{background:var(--del-bg);color:var(--del-fg);text-decoration:line-through;border-radius:2px}
+body.clean del{display:none} body.clean ins{background:none;color:inherit}
+main{display:grid;gap:28px}
+.para-head{font-family:var(--sans);font-size:.85rem;color:var(--muted);margin-bottom:8px}
+.num{color:var(--accent);font-weight:600}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.col{min-width:0;background:var(--panel);border:1px solid var(--rule);padding:14px 16px}
+.col h3{font-family:var(--sans);font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+.col p{margin:0}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Explainer: The Chemical History of a Candle</h1>
+  <p class="sub">Green marks words added and struck red marks words removed, relative to the input. Headings and list markers in the input are not shown; the rewrite has none.</p>
+  <div class="facts"><span>distance 57 before, 32 after; verdict FAIL to PASS; judge voice win, coherent win, tense_person win, order win; 57 calls</span></div>
+  <div class="legend"><label><input type="checkbox" id="clean"> Hide change marks</label></div>
+</header>
+<main>
+<section class="para">
+  <div class="para-head"><span class="num">1</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The speaker opens his course with a plain statement of purpose. Over these lectures he intends to present the chemical history of a candle. He offers the lectures in return for the honour the audience does him by coming to see the proceedings, treating the exchange as a courtesy owed rather than a performance given.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>The speaker opens his</del> <ins>I purpose, in return for the honour you do me in coming to see what we are about, to bring before you in the</ins> course <del>with a plain statement</del> of <del>purpose. Over</del> these lectures <del>he intends to present</del> the chemical history of a candle. <del>He offers</del> <ins>I regard</ins> the lectures <del>in return for the honour the audience does him by coming to see the proceedings, treating the exchange</del> as a courtesy <del>owed rather than</del> <ins>which I owe to those who come, and I have no thought of making</ins> a <del>performance given.</del> <ins>display for them.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">2</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>This is not new ground for him. He has lectured on this subject on a former occasion, and he admits that if he were left to his own will he would repeat it almost every year. His reason is that the subject of the candle holds abundant interest. It is not a narrow topic. The candle opens onto many different departments of philosophy, and the reach of the subject is wider still: every law governing any part of the universe comes into play in the phenomena of a candle.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>This is not new ground for him. He has lectured on</del> <ins>I have taken</ins> this subject on a former <del>occasion,</del> <ins>occasion;</ins> and <del>he admits that</del> if <del>he</del> <ins>it</ins> were left to <del>his</del> <ins>my</ins> own <del>will he would</del> <ins>will, I should prefer to</ins> repeat it almost every <del>year. His reason</del> <ins>year, so abundant</ins> is <del>that</del> the <del>subject of the</del> <ins>interest which attaches itself to it. The</ins> candle <del>holds abundant interest. It</del> is <del>not</del> <ins>by no means</ins> a narrow topic. <del>The candle</del> <ins>It</ins> opens <del>onto</del> <ins>a way into</ins> many different departments of <del>philosophy,</del> <ins>philosophy;</ins> and <del>the reach of the subject</del> <ins>indeed there</ins> is <del>wider still: every</del> <ins>not a</ins> law <del>governing</del> <ins>under which</ins> any part of <del>the</del> <ins>this</ins> universe <del>comes</del> <ins>is governed which does not come</ins> into play in the phenomena of a candle.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">3</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>From this he draws a methodological conclusion. Studying the physical phenomena of a candle is the best and most open way into the study of natural philosophy. A beginner needs no specialised apparatus to start, only attention to something burning in front of him. The speaker therefore does not apologise for an old topic. In his judgment no newer topic would be better than the candle, and probably none would be as good.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>From this he draws</del> <ins>There is no better and no more open door by which</ins> a <del>methodological conclusion. Studying</del> <ins>man may enter into the study of natural philosophy than by considering</ins> the physical phenomena of a <del>candle is the best and most open way into the study of natural philosophy. A</del> <ins>candle. The</ins> beginner needs no <del>specialised</del> <ins>special</ins> apparatus to <del>start,</del> <ins>make a start; he has</ins> only <ins>to give his</ins> attention to <del>something burning</del> <ins>the thing which burns before him. I trust, therefore, that I shall not disappoint you</ins> in <del>front of him. The speaker therefore does not apologise</del> <ins>choosing this</ins> for <del>an old</del> <ins>my subject rather than any newer</ins> topic. <del>In his judgment no</del> <ins>A</ins> newer topic <del>would</del> <ins>could not</ins> be better than the candle, and <del>probably</del> <ins>I think it probable that</ins> none would be <del>as</del> <ins>so</ins> good.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">4</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>He sets out the terms on which he will proceed. He intends to treat the subject honestly, seriously, and philosophically. He also declares his chosen audience: he means to address the young people rather than the adults in the room. He claims the privilege of speaking to young people as a young person himself, and he notes that he has addressed young audiences in this way on former occasions. He is aware that his words will be published to the world, but that knowledge will not stop him from speaking familiarly to the young listeners in front of him.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>He sets out the terms on which he will proceed. He intends to treat the</del> <ins>And before proceeding, let me say this also: that though our</ins> subject <ins>be so great, and our intention that of treating it</ins> honestly, seriously, and <del>philosophically. He also declares his chosen audience: he means</del> <ins>philosophically, yet I mean</ins> to <del>address the young people rather than the adults in the room. He claims</del> <ins>pass away from all those who are seniors amongst us. I claim</ins> the privilege of speaking to <del>young people</del> <ins>juveniles</ins> as a <del>young person himself,</del> <ins>juvenile myself,</ins> and <del>he notes that he has addressed young audiences in this way</del> <ins>I have done so</ins> on former occasions. <del>He is aware</del> <ins>Though I stand here with the knowledge</ins> that <del>his</del> <ins>my</ins> words will be <del>published</del> <ins>given</ins> to the world, <del>but</del> that knowledge <del>will</del> <ins>shall</ins> not <del>stop him</del> <ins>deter me</ins> from speaking <del>familiarly</del> <ins>in the same familiar way</ins> to <del>the young listeners in front of him.</del> <ins>those whom I esteem nearest to me on this occasion.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">5</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>Before turning to manufactured candles, the speaker remarks that some candles are great curiosities, and that some kinds of trees are particularly famous for burning well. His chief example is a substance called candle-wood, taken from some bogs in Ireland.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>Before turning to manufactured candles, the speaker remarks that</del> <ins>There are</ins> some candles <ins>which</ins> are great curiosities, and <del>that some</del> <ins>there are certain</ins> kinds of trees <del>are particularly</del> <ins>which have become</ins> famous for <del>burning well. His chief</del> <ins>the manner in which they burn. Of these I may take as an</ins> example <del>is</del> a substance called candle-wood, <del>taken</del> <ins>which is got</ins> from some <ins>of the</ins> bogs in Ireland.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">6</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>Candle-wood is a hard, strong, excellent wood, well suited to resisting force, and it also burns well. Where it is found, people make splinters and torches from it. It burns like a candle and gives a very good light. For these reasons the speaker regards it as one of the best illustrations of the general nature of a candle.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>Candle-wood</del> <ins>The candle-wood</ins> is a hard, strong, excellent wood, <del>well suited to resisting</del> <ins>evidently fitted for good work as a resister of</ins> force, and <del>it also burns well. Where</del> <ins>yet withal burning so well that where</ins> it is <del>found,</del> <ins>found the</ins> people make splinters <ins>of it,</ins> and <del>torches from it. It</del> <ins>torches, since it</ins> burns like a candle and gives a very good <del>light. For these reasons the speaker regards it as</del> <ins>light indeed. In this wood we have</ins> one of the <del>best</del> <ins>most beautiful</ins> illustrations of the general nature of a <del>candle.</del> <ins>candle that I can possibly give.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">7</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>Its value as an illustration comes from the functions it performs. Candle-wood provides fuel. It provides a means of bringing that fuel to the place of chemical action. It provides a regular and gradual supply of air to the same place. And it produces heat and light. Because it combines all of these functions in one material, candle-wood is in effect a natural candle, and it serves as a reference model for the manufactured candles that follow.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff">Its <del>value</del> <ins>fitness</ins> as an illustration <del>comes from</del> <ins>lies in</ins> the functions <ins>which</ins> it performs. <del>Candle-wood provides</del> <ins>In the first place, it furnishes</ins> fuel. <del>It</del> <ins>In the next place, it</ins> provides a means of bringing that fuel to the place of chemical <del>action. It</del> <ins>action; and further, it</ins> provides a regular and gradual supply of air to <del>the</del> <ins>that</ins> same place. <del>And</del> <ins>Lastly,</ins> it <del>produces</del> <ins>gives out</ins> heat and light. <del>Because it combines all</del> <ins>All</ins> of these <del>functions</del> <ins>offices are united</ins> in one material, <ins>so that the</ins> candle-wood is in effect a natural <del>candle, and</del> <ins>candle. We may hold</ins> it <del>serves</del> <ins>in mind</ins> as <del>a reference model for</del> <ins>the pattern against which to measure</ins> the manufactured candles <del>that follow.</del> <ins>we are now to consider.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">8</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The first manufactured type is the candle commonly called a dip. Dips are made by hanging lengths of cotton by a loop and dipping them in melted tallow. Each length is then cooled and re-dipped, over and over, until tallow builds up around the cotton.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff">The first <del>manufactured type</del> <ins>of these</ins> is the candle commonly called a dip. <del>Dips are made by hanging</del> <ins>To make dips,</ins> lengths of cotton <ins>are hung up</ins> by a loop and <del>dipping them in</del> <ins>dipped into</ins> melted tallow. Each length is <ins>taken out and cooled, and</ins> then <del>cooled</del> <ins>dipped again;</ins> and <del>re-dipped,</del> <ins>the dipping and cooling are repeated,</ins> over and over, until <ins>there is an accumulation of</ins> tallow <del>builds up around</del> <ins>round</ins> the cotton.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">9</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>Very small candles were used by miners in coal mines. In former times miners had to supply their own candles. It was believed that a small candle would ignite fire-damp in the mines less readily than a large one, so miners used small candles partly for safety and partly for economy. These candles were made at 20, 30, 40, or 60 to the pound. In time they were replaced by the steel-mill, and the steel-mill was later replaced by the Davy lamp and other safety lamps.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>Very small candles were used by</del> <ins>The</ins> miners in coal <del>mines.</del> <ins>mines used candles of very small size.</ins> In former times <del>miners</del> <ins>the miner</ins> had to <del>supply their</del> <ins>find his</ins> own <del>candles. It</del> <ins>candles, and it</ins> was <del>believed</del> <ins>supposed</ins> that a small candle would <del>ignite</del> <ins>not so soon set fire to the</ins> fire-damp in the <ins>coal</ins> mines <del>less readily than</del> <ins>as</ins> a large <del>one, so miners used</del> <ins>one; hence the miner chose</ins> small <del>candles</del> <ins>candles,</ins> partly for safety and partly for <del>economy. These candles were</del> <ins>economy, and he had them</ins> made at 20, 30, 40, or 60 to the pound. In time <del>they were replaced</del> <ins>their place was taken</ins> by the steel-mill, and the steel-mill <del>was later replaced by</del> <ins>in its turn gave way to</ins> the Davy lamp and <ins>the</ins> other safety <del>lamps.</del> <ins>lamps of various kinds.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">10</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The speaker&#x27;s next specimen concerns durability. Colonel Pasley reportedly took a candle from the wreck of the Royal George. It had been sunk in the sea and exposed to salt water for many years. The example demonstrates that candles can be preserved well over long periods. Although this candle is cracked and broken, it burns regularly when lit, and its tallow returns to its natural condition once melted.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>The speaker&#x27;s next specimen concerns durability.</del> <ins>Here is a candle which</ins> Colonel Pasley <del>reportedly took a candle from the wreck</del> <ins>is said to have taken out</ins> of the Royal George. It <del>had been</del> <ins>was</ins> sunk in the <del>sea</del> <ins>sea,</ins> and <ins>lay there</ins> exposed <del>to salt water</del> for many <del>years.</del> <ins>years to the action of salt water.</ins> The <del>example demonstrates that</del> <ins>specimen shows how well</ins> candles <del>can</del> <ins>may</ins> be preserved <del>well over</del> <ins>through</ins> long periods. <del>Although this candle</del> <ins>Though it</ins> is cracked <ins>about</ins> and <del>broken,</del> <ins>broken a good deal,</ins> it burns regularly when <del>lit,</del> <ins>it is lighted,</ins> and <del>its</del> <ins>the</ins> tallow <del>returns to</del> <ins>resumes</ins> its natural condition <del>once melted.</del> <ins>as soon as it is fused.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">11</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The speaker credits Mr. Field of Lambeth with supplying him with many illustrations of candles and their materials. He then turns to those materials.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>The speaker credits Mr. Field</del> <ins>For many</ins> of <del>Lambeth with supplying him with many</del> <ins>the</ins> illustrations of <del>candles</del> <ins>the candle,</ins> and <del>their materials. He then turns</del> <ins>of the materials of which it is made, I am indebted</ins> to <del>those materials.</del> <ins>Mr. Field, of Lambeth.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">12</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The first is suet, which is the fat of the ox. The speaker believes Russian tallow is used to make dips. A significant advance came when Gay-Lussac, or someone who shared the knowledge with him, converted tallow into stearin. The practical difference is visible in use. Modern candles are clean rather than greasy like ordinary tallow candles. The drips from a modern candle can be scraped off and powdered without soiling anything.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff">The first <ins>of these materials</ins> is suet, <del>which is</del> the fat of the <del>ox. The speaker believes</del> <ins>ox; and</ins> Russian <del>tallow</del> <ins>tallow, I believe,</ins> is <del>used to make</del> <ins>employed in the manufacture of</ins> dips. A <del>significant advance came</del> <ins>great step was made</ins> when Gay-Lussac, or <del>someone</del> <ins>some one</ins> who <del>shared the knowledge</del> <ins>entrusted him</ins> with <del>him,</del> <ins>his knowledge,</ins> converted <ins>that</ins> tallow into <ins>the beautiful substance called</ins> stearin. The <del>practical</del> difference <del>is visible</del> <ins>shows itself at once</ins> in use. <del>Modern candles are clean rather than greasy like</del> <ins>A modern candle is clean, whereas the</ins> ordinary tallow <del>candles. The drips</del> <ins>candle is greasy; and the drops which fall</ins> from <del>a</del> <ins>the</ins> modern candle <del>can</del> <ins>may</ins> be scraped off and <del>powdered</del> <ins>beaten into powder</ins> without soiling anything.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">13</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The conversion proceeds in stages:</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff">The conversion <del>proceeds in stages:</del> <ins>is carried out by several successive operations.</ins></p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">14</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>Saponification. Tallow is first boiled with quicklime to make a soap. Acid decomposition. The soap is then decomposed with sulphuric acid, which removes the lime. This decomposition leaves the fat rearranged as stearic acid. By-product. Glycerin is produced at the same time as the stearic acid. Glycerin is a sugar, or a substance similar to sugar, and it comes out of the tallow during this chemical change. Pressing. The oil is then pressed out of the stearic acid. As the pressure increases, the oily part carries the impurities out with it. Casting. The substance left after pressing is melted and cast into candles.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><del>Saponification. Tallow</del> <ins>The tallow</ins> is first boiled with <del>quicklime to make</del> <ins>quicklime, and</ins> a <del>soap. Acid decomposition.</del> <ins>soap is made of it.</ins> The soap is then decomposed <del>with</del> <ins>by</ins> sulphuric acid, which <del>removes</del> <ins>takes away</ins> the <del>lime. This decomposition</del> <ins>lime and</ins> leaves the fat rearranged as stearic <del>acid. By-product. Glycerin is produced</del> <ins>acid; and</ins> at the same time <del>as the stearic acid. Glycerin</del> <ins>a quantity of glycerin is produced. This glycerin</ins> is a sugar, or a substance <del>similar to</del> <ins>very like</ins> sugar, and it comes out of the tallow <del>during this</del> <ins>in the course of the</ins> chemical change. <del>Pressing.</del> The oil is <del>then</del> <ins>next</ins> pressed out of the stearic <del>acid. As</del> <ins>acid, and as</ins> the pressure increases, the oily part carries the impurities <del>out</del> <ins>away</ins> with it. <del>Casting. The substance left</del> <ins>What remains</ins> after <ins>the</ins> pressing is melted and cast into candles.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">15</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The products of this process are stearin candles, made from stearin derived from tallow.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff">The products of this process are <ins>the</ins> stearin candles, made <ins>of stearin which has been obtained</ins> from <del>stearin derived from</del> <ins>the</ins> tallow.</p></div>
+  </div>
+</section>
+<section class="para">
+  <div class="para-head"><span class="num">16</span></div>
+  <div class="cols">
+    <div class="col"><h3>Input (model prose from propositions)</h3><p>The speaker closes this survey with the remaining materials. Sperm candles come from the purified oil of the spermaceti whale. Candles are also made from yellow beeswax and from refined beeswax. Paraffin is a curious substance from which candles are made, and it can be obtained from the bogs of Ireland. Finally, a kind of wax brought from Japan is a new material for making candles; it became available only after Japan was forced open to outside access.</p></div>
+    <div class="col"><h3>v2.3.2 rewrite, candidate 1</h3><p class="diff"><ins>There remain the other materials.</ins> The <del>speaker closes this survey with the remaining materials. Sperm candles come</del> <ins>sperm candle comes</ins> from the purified oil of the spermaceti whale. Candles are also made <del>from</del> <ins>of</ins> yellow <del>beeswax</del> <ins>beeswax,</ins> and <del>from</del> <ins>of</ins> refined beeswax. Paraffin is <del>a</del> <ins>another</ins> curious substance from which candles are made, and it <del>can</del> <ins>may</ins> be obtained from the bogs of Ireland. <del>Finally,</del> <ins>Lastly, there is</ins> a kind of wax brought from <del>Japan is</del> <ins>Japan,</ins> a new material for <del>making candles; it became available</del> <ins>the candle-maker, which came within our reach</ins> only after Japan <del>was</del> <ins>had been</ins> forced open to <del>outside access.</del> <ins>the access of other nations.</ins></p></div>
+  </div>
+</section>
+</main>
+<script>document.getElementById("clean").addEventListener("change",e=>document.body.classList.toggle("clean",e.target.checked));</script>
+</body>
+</html>
