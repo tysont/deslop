@@ -244,7 +244,8 @@ def voice_build(
         try:
             profile_provider = get_provider(provider_name(s, provider))
         except ProviderError as exc:
-            fail(str(exc))
+            err.print(f"[yellow]no provider for the profile ({exc}); using the template[/]")
+            use_llm = False
     try:
         voice = Voice.from_texts(
             [str(p) for p in sources],
