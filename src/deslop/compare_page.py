@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from deslop.nlp import WORD_RE, analyze
+from deslop.recitation import NGRAM
 
 MATCH_RATIO = 0.45  # content-word overlap below which a sentence counts as new, not changed
 SAME_RATIO = 0.98
@@ -167,6 +168,25 @@ def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[st
                 "text": f"paragraphs {coh.get('paragraphs_before')} -> {coh.get('paragraphs_after')}",
             }
         )
+    rec = cand.get("recitation")
+    if rec:
+        notes.append(
+            {
+                "kind": "recitation",
+                "paragraph": -1,
+                "text": f"recitation: {rec['share']:.1f}% of words in {rec['ngrams']} shared "
+                f"run(s) of {NGRAM}+ words not in the input",
+            }
+        )
+        for span in rec.get("spans", []):
+            found = _find_paragraph(span, paragraphs)
+            notes.append(
+                {
+                    "kind": "recitation",
+                    "paragraph": -1 if found is None else found,
+                    "text": f"recited ({len(span.split())} words): {span}",
+                }
+            )
     for v in cand.get("verdicts", []):
         items = ", ".join(f"{k} {x}" for k, x in v.get("items", {}).items())
         notes.append(
@@ -217,6 +237,7 @@ def page_data(result: dict[str, Any], reference: str | None) -> dict[str, Any]:
                     for s in aligned
                 ],
                 "notes": candidate_notes(c, paragraphs),
+                "recitation": c.get("recitation"),
                 "judge": next(
                     (
                         v.get("items", {})
@@ -253,6 +274,9 @@ def page_data(result: dict[str, Any], reference: str | None) -> dict[str, Any]:
             "cached": result.get("cost", {}).get("cached", 0),
             "selected": (chosen + 1) if chosen is not None else None,
             "kept_original": bool(unit and unit.get("kept_original")),
+            "reference": result.get("reference"),
+            "max_recitation": result.get("max_recitation"),
+            "recitation": result.get("recitation"),
         },
     }
 
@@ -275,7 +299,7 @@ ins{background:var(--ins);color:var(--insfg);text-decoration:none}del{background
 .s.changed:hover .plain,.s.moved:hover .plain{display:none}.s.changed:hover .diff,.s.moved:hover .diff{display:inline}
 body.clean .s{background:none;border:none}body.clean .diff{display:none!important}body.clean .plain{display:inline!important}
 .notes{font:13px/1.45 system-ui,sans-serif;border-left:3px solid var(--rule);padding:4px 8px;margin:0 0 1em;color:var(--muted)}
-.notes .lock{color:var(--delfg)}.notes .added{color:var(--delfg)}.notes .dropped{color:var(--delfg)}.notes .cleared{color:var(--accent)}.notes .coherence{color:var(--delfg)}.notes .judge{color:var(--fg)}
+.notes .recitation{color:var(--delfg)}.notes .lock{color:var(--delfg)}.notes .added{color:var(--delfg)}.notes .dropped{color:var(--delfg)}.notes .cleared{color:var(--accent)}.notes .coherence{color:var(--delfg)}.notes .judge{color:var(--fg)}
 .legend span{padding:0 6px;border-radius:2px;margin-right:6px}
 select{font:inherit}
 """
@@ -303,7 +327,8 @@ function renderCandidate(i){
   });
   el.innerHTML = out;
   const j = c.judge || {}; const items = Object.keys(j).map(k => k + ' ' + j[k]).join(', ');
-  document.getElementById('candfacts').textContent = 'candidate ' + c.attempt + ' (' + c.model + '): ' + (c.winner ? 'winner' : c.accepted ? 'accepted' : 'rejected') + (items ? '; judge: ' + items : '') + (c.confidence ? ' (' + c.confidence.toFixed(2) + ')' : '') + '; ' + c.reason;
+  const rec = c.recitation ? '; recitation ' + c.recitation.share.toFixed(1) + '% (' + c.recitation.ngrams + ' shared runs)' : '';
+  document.getElementById('candfacts').textContent = 'candidate ' + c.attempt + ' (' + c.model + '): ' + (c.winner ? 'winner' : c.accepted ? 'accepted' : 'rejected') + (items ? '; judge: ' + items : '') + (c.confidence ? ' (' + c.confidence.toFixed(2) + ')' : '') + rec + '; ' + c.reason;
 }
 document.addEventListener('DOMContentLoaded', () => {
   renderParas(document.getElementById('ref'), DATA.reference.length ? DATA.reference : ['(no reference given)']);
@@ -338,6 +363,13 @@ def build_page(result: dict[str, Any], *, reference: str | None = None) -> str:
         f"selected: {selected}",
         f"stopped: {h['stopped']}",
     ]
+    if h.get("reference"):
+        rec = h.get("recitation")
+        facts.append(
+            f"recitation vs {h['reference']}: "
+            + (f"{rec['share']:.1f}% ({rec['ngrams']} shared runs)" if rec else "n/a")
+            + f", limit {h.get('max_recitation')}%"
+        )
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'

@@ -36,6 +36,7 @@ from deslop.providers.base import (
     get_provider,
     resolve_model,
 )
+from deslop.recitation import DEFAULT_MAX_RECITATION, NGRAM, RecitationResult, recitation
 from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, verify_additions
 from deslop.report import MetricResult, Report, TellHitResult
 from deslop.score import score
@@ -78,6 +79,7 @@ class CandidateLog(BaseModel):
     semantic: SemanticResult | None = None  # every paragraph's propositions, merged
     primary: PrimaryCheck | None = None  # added quotations and citations, verified or not
     coherence: CoherenceResult | None = None
+    recitation: RecitationResult | None = None  # runs shared with the reference, when given
     verdicts: list[DocumentVerdict] = Field(default_factory=list)  # vs original, then others
     win_rate: float | None = None
     judge_ok: bool | None = None  # won or tied every item against the original
@@ -161,7 +163,8 @@ class Result(BaseModel):
     winner; `judge_gate` says which providers judged; `iterations` is filled in edit mode;
     `cost` totals tokens and USD; `stopped` says why the loop ended; `exemplars_used` is
     False when the voice was packed without exemplars; `draft` holds the section logs when
-    a brief was applied.
+    a brief was applied; `recitation` is the winner's recitation check against the
+    reference (`reference` names it) under `max_recitation` percent, when one was given.
     """
 
     mode: str
@@ -188,6 +191,9 @@ class Result(BaseModel):
     judge_gate: str = ""
     draft: list[SectionLog] | None = None
     draft_text: str | None = None
+    reference: str | None = None
+    max_recitation: float = DEFAULT_MAX_RECITATION
+    recitation: RecitationResult | None = None
 
     def to_json(self, indent: int | None = 1) -> str:
         return self.model_dump_json(indent=indent)
@@ -956,6 +962,9 @@ def apply(
     primary_texts: list[str | Path | PrimaryText] | None = None,
     fidelity: Fidelity = "content",
     report_all: bool = False,
+    reference: str | None = None,
+    reference_name: str = "reference",
+    max_recitation: float = DEFAULT_MAX_RECITATION,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -983,6 +992,10 @@ def apply(
     the same locks. A `Brief` is drafted section by section first, then rewritten.
     `primary_texts` (files, directories or loaded `PrimaryText`s) are supplied by the caller;
     without any, added quotations and citations are allowed and listed as unverified.
+    `reference` is the human text the input was made from, when there is one: it is never
+    shown to the writer or the judge, only compared against, and a candidate whose words are
+    more than `max_recitation` percent covered by runs of eight or more words it shares with
+    the reference but not with the input is rejected for recitation (rewrite mode).
     `provider_factory` maps a provider name to a `CachingProvider` (tests replay a cache with
     it); `budget` is USD. `writer` and `judge` are model names or aliases (`opus`, `sonnet`,
     `haiku`) and must differ; `provider` is `anthropic` (the API) or `claude-cli`, default from
@@ -1022,6 +1035,8 @@ def apply(
         progress=progress,
         fidelity=fidelity,
         report_all=report_all,
+        reference=reference,
+        max_recitation=max_recitation,
     )
 
     if mode == "edit":
@@ -1088,6 +1103,9 @@ def apply(
         report_all=report_all,
         draft=draft_logs,
         draft_text=draft_text,
+        reference=reference_name if reference is not None else None,
+        max_recitation=max_recitation,
+        recitation=winner.recitation if winner is not None else None,
     )
 
 
@@ -1104,6 +1122,8 @@ class Options:
     progress: Callable[[str], None] | None
     fidelity: Fidelity = "content"
     report_all: bool = False
+    reference: str | None = None  # never shown to a model; compared against only
+    max_recitation: float = DEFAULT_MAX_RECITATION
 
 
 def _load_texts(sources: list[str | Path | PrimaryText]) -> list[PrimaryText]:
@@ -1306,6 +1326,14 @@ def _verify_section(
     band = voice.metrics.thresholds.metrics.get("connective_opener_pct")
     cand.coherence = check_coherence(section_text, candidate, band=band)
     notes.extend(cand.coherence.reader_notes())
+    if opts.reference is not None:
+        cand.recitation = recitation(candidate, opts.reference, section_text)
+        if cand.recitation.share > opts.max_recitation:
+            # The spans stay in the log for the report; the writer is told only that it recited.
+            notes.append(
+                f"recitation: {cand.recitation.share:.1f}% of its words recited a published "
+                f"text in runs of {NGRAM} words or more; it must be put in the writer's own words"
+            )
     return notes
 
 
@@ -1316,13 +1344,18 @@ def _check_meaning_by_paragraph(
     checker: CachingProvider,
     fidelity: Fidelity = "content",
 ) -> SemanticResult:
-    """The semantic lock paragraph by paragraph when the candidate keeps the paragraphing,
+    """The semantic lock paragraph by paragraph when the candidate keeps the paragraphing
+    (each check sees the original's neighbouring paragraphs, so what they state is not new),
     else once over the whole section; the checks are merged with a paragraph prefix."""
     before, after = analyze(section_text).paragraphs, analyze(candidate).paragraphs
     merged = SemanticResult()
     if len(before) == len(after) == len(props):
         for i, (p, q, ps) in enumerate(zip(before, after, props, strict=True), 1):
-            r = check_meaning(p.text, q.text, ps, checker, fidelity=fidelity)
+            context = (
+                before[i - 2].text if i >= 2 else "",
+                before[i].text if i < len(before) else "",
+            )
+            r = check_meaning(p.text, q.text, ps, checker, fidelity=fidelity, context=context)
             merged.checks.extend(
                 PropositionCheck(proposition=f"¶{i} {c.proposition}", kept=c.kept, note=c.note)
                 for c in r.checks

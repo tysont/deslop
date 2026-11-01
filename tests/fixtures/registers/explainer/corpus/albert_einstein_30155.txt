@@ -18,7 +18,7 @@ It follows that a natural object is associated also with a straight line. Three 
 
 Of course the conviction of the "truth" of geometrical propositions in this sense is founded exclusively on rather incomplete experience. For the present we shall assume the "truth" of the geometrical propositions, then at a later stage (in the general theory of relativity) we shall see that this "truth" is limited, and we shall consider the extent of its limitation.
 
-II. THE SYSTEM OF CO-ORDINATES
+## Ii. The System Of Co-Ordinates
 
 On the basis of the physical interpretation of distance which has been indicated, we are also in a position to establish the distance between two points on a rigid body by means of measurements. For this purpose we require a "distance" (rod _S_) which is to be used once and for all, and which we employ as a standard measure. If, now, _A_ and _B_ are two points on a rigid body, we can construct the line joining them according to the rules of geometry; then, starting from _A_, we can mark off the distance _S_ time after time until we reach _B_. The number of these operations required is the numerical measure of the distance _AB_. This is the basis of all measurement of length.
 
@@ -48,9 +48,9 @@ A refinement and modification of these views does not become necessary until we 
 
 We thus obtain the following result: Every description of events in space involves the use of a rigid body to which such events have to be referred. The resulting relationship takes for granted that the laws of Euclidean geometry hold for "distances;" the "distance" being represented physically by means of the convention of two marks on a rigid body.
 
-III.
+## Iii
 
-SPACE AND TIME IN CLASSICAL MECHANICS
+## Space And Time In Classical Mechanics
 
 The purpose of mechanics is to describe how bodies change their position in space with "time." I should load my conscience with grave sins against the sacred spirit of lucidity were I to formulate the aims of mechanics in this way, without serious reflection and detailed explanations. Let us proceed to disclose these sins.
 
@@ -60,13 +60,13 @@ That is, a curve along which the body moves.
 
 In order to have a _complete_ description of the motion, we must specify how the body alters its position _with time; i.e._ for every point on the trajectory it must be stated at what time the body is situated there. These data must be supplemented by such a definition of time that, in virtue of this definition, these time-values can be regarded essentially as magnitudes (results of measurements) capable of observation. If we take our stand on the ground of classical mechanics, we can satisfy this requirement for our illustration in the following manner. We imagine two clocks of identical construction; the man at the railway-carriage window is holding one of them, and the man on the footpath the other. Each of the observers determines the position on his own reference-body occupied by the stone at each tick of the clock he is holding in his hand. In this connection we have not taken account of the inaccuracy involved by the finiteness of the velocity of propagation of light. With this and with a second difficulty prevailing here we shall have to deal in detail later.
 
-IV. THE GALILEIAN SYSTEM OF CO-ORDINATES
+## Iv. The Galileian System Of Co-Ordinates
 
 As is well known, the fundamental law of the mechanics of Galilei-Newton, which is known as the _law of inertia_, can be stated thus: A body removed sufficiently far from other bodies continues in a state of rest or of uniform motion in a straight line. This law not only says something about the motion of the bodies, but it also indicates the reference-bodies or systems of coordinates, permissible in mechanics, which can be used in mechanical description. The visible fixed stars are bodies for which the law of inertia certainly holds to a high degree of approximation. Now if we use a system of co-ordinates which is rigidly attached to the earth, then, relative to this system, every fixed star describes a circle of immense radius in the course of an astronomical day, a result which is opposed to the statement of the law of inertia. So that if we adhere to this law we must refer these motions only to systems of coordinates relative to which the fixed stars do not move in a circle. A system of co-ordinates of which the state of motion is such that the law of inertia holds relative to it is called a "Galileian system of co-ordinates." The laws of the mechanics of Galilei-Newton can be regarded as valid only for a Galileian system of co-ordinates.
 
-V.
+## V
 
-THE PRINCIPLE OF RELATIVITY (IN THE RESTRICTED SENSE)
+## The Principle Of Relativity (In The Restricted Sense)
 
 In order to attain the greatest possible clearness, let us return to our example of the railway carriage supposed to be travelling uniformly. We call its motion a uniform translation ("uniform" because it is of constant velocity and direction, "translation" because although the carriage changes its position relative to the embankment yet it does not rotate in so doing). Let us imagine a raven flying through the air in such a manner that its motion, as observed from the embankment, is uniform and in a straight line. If we were to observe the flying raven from the moving railway carriage. we should find that the motion of the raven would be one of different velocity and direction, but that it would still be uniform and in a straight line. Expressed in an abstract manner we may say: If a mass _m_ is moving uniformly in a straight line with respect to a co-ordinate system _K_, then it will also be moving uniformly and in a straight line relative to a second co-ordinate system _K'_ provided that the latter is executing a uniform translatory motion with respect to _K_. In accordance with the discussion contained in the preceding section, it follows that:
 
@@ -82,13 +82,13 @@ We now proceed to the second argument, to which, moreover, we shall return later
 
 Now in virtue of its motion in an orbit round the sun, our earth is comparable with a railway carriage travelling with a velocity of about 30 kilometres per second. If the principle of relativity were not valid we should therefore expect that the direction of motion of the earth at any moment would enter into the laws of nature, and also that physical systems in their behaviour would be dependent on the orientation in space with respect to the earth. For owing to the alteration in direction of the velocity of revolution of the earth in the course of a year, the earth cannot be at rest relative to the hypothetical system _K0_ throughout the whole year. However, the most careful observations have never revealed such anisotropic properties in terrestrial physical space, _i.e._ a physical non-equivalence of different directions. This is very powerful argument in favour of the principle of relativity.
 
-VI.
+## Vi
 
 THE THEOREM OF THE ADDITION OF VELOCITIES EMPLOYED IN CLASSICAL MECHANICS
 
 Let us suppose our old friend the railway carriage to be travelling along the rails with a constant velocity _v_, and that a man traverses the length of the carriage in the direction of travel with a velocity _w_. How quickly or, in other words, with what velocity _W_ does the man advance relative to the embankment during the process? The only possible answer seems to result from the following consideration: If the man were to stand still for a second, he would advance relative to the embankment through a distance _v_ equal numerically to the velocity of the carriage. As a consequence of his walking, however, he traverses an additional distance w relative to the carriage, and hence also relative to the embankment, in this second, the distance w being numerically equal to the velocity with which he is walking. Thus in total he covers the distance _W = v + w_ relative to the embankment in the second considered. We shall see later that this result, which expresses the theorem of the addition of velocities employed in classical mechanics, cannot be maintained; in other words, the law that we have just written down does not hold in reality. For the time being, however, we shall assume its correctness.
 
-VII.
+## Vii
 
 THE APPARENT INCOMPATIBILITY OF THE LAW OF PROPAGATION OF LIGHT WITH THE PRINCIPLE OF RELATIVITY
 
@@ -108,9 +108,9 @@ In view of this dilemma there appears to be nothing else for it than to abandon 
 
 At this juncture the theory of relativity entered the arena. As a result of an analysis of the physical conceptions of time and space, it became evident that _in reality there is not the least incompatibilitiy between the principle of relativity and the law of propagation of light_, and that by systematically holding fast to both these laws a logically rigid theory could be arrived at. This theory has been called the _special theory of relativity_ to distinguish it from the extended theory, with which we shall deal later. In the following pages we shall present the fundamental ideas of the special theory of relativity.
 
-VIII.
+## Viii
 
-ON THE IDEA OF TIME IN PHYSICS
+## On The Idea Of Time In Physics
 
 Lightning has struck the rails on our railway embankment at two places _A_ and _B_ far distant from each other. I make the additional assertion that these two lightning flashes occurred simultaneously. If I ask you whether there is sense in this statement, you will answer my question with a decided "Yes." But if I now approach you with the request to explain to me the sense of the statement more precisely, you find after some consideration that the answer to this question is not so easy as it appears at first sight.
 
@@ -128,9 +128,9 @@ We suppose further that, when three events _A, B_ and _C_ occur in different pla
 
 This stipulation contains a further physical hypothesis, the validity of which will hardly be doubted without empirical evidence to the contrary. It has been assumed that all these clocks _go at the same rate_ if they are of identical construction. Stated more exactly: When two clocks arranged at rest in different places of a reference-body are set in such a manner that a _particular_ position of the pointers of the one clock is _simultaneous_ (in the above sense) with the _same_ position, of the pointers of the other clock, then identical "settings" are always simultaneous (in the sense of the above definition).
 
-IX.
+## Ix
 
-THE RELATIVITY OF SIMULTANEITY
+## The Relativity Of Simultaneity
 
 Up to now our considerations have been referred to a particular body of reference, which we have styled a "railway embankment." We suppose a very long train travelling along the rails with the constant velocity v and in the direction indicated in Fig 1. People travelling in this train will with a vantage view the train as a rigid reference-body (co-ordinate system); they regard all events in reference to the train. Then every event which takes place along the line also takes place at a particular point of the train. Also the definition of simultaneity can be given relative to the train in exactly the same way as with respect to the embankment. As a natural consequence, however, the following question arises:
 
@@ -148,9 +148,9 @@ We were led to that conflict by the considerations of Section VI, which are now 
 
 Moreover, the considerations of Section VI are based on yet a second assumption, which, in the light of a strict consideration, appears to be arbitrary, although it was always tacitly made even before the introduction of the theory of relativity.
 
-X.
+## X
 
-ON THE RELATIVITY OF THE CONCEPTION OF DISTANCE
+## On The Relativity Of The Conception Of Distance
 
 Let us consider two particular points on the train  travelling along the embankment with the velocity _v_, and inquire as to their distance apart. We already know that it is necessary to have a body of reference for the measurement of a distance, with respect to which body the distance can be measured up. It is the simplest plan to use the train itself as reference-body (co-ordinate system). An observer in the train measures the interval by marking off his measuring-rod in a straight line (_e.g._ along the floor of the carriage) as many times as is necessary to take him from the one marked point to the other. Then the number which tells us how often the rod has to be laid down is the required distance.
 
@@ -160,9 +160,9 @@ It is a different matter when the distance has to be judged from the railway lin
 
 _A priori_ it is by no means certain that this last measurement will supply us with the same result as the first. Thus the length of the train as measured from the embankment may be different from that obtained by measuring in the train itself. This circumstance leads us to a second objection which must be raised against the apparently obvious consideration of Section VI. Namely, if the man in the carriage covers the distance _w_ in a unit of time—_measured from the train_,—then this distance—_as measured from the embankment_ is not necessarily also equal to _w_.
 
-XI.
+## Xi
 
-THE LORENTZ TRANSFORMATION
+## The Lorentz Transformation
 
 The results of the last three sections show that the apparent incompatibility of the law of propagation of light with the principle of relativity (Section VII) has been derived by means of a consideration which borrowed two unjustifiable hypotheses from classical mechanics; these are as follows:
 
@@ -216,9 +216,9 @@ _x'_ = _ct'_
 
 immediately follows. If referred to the system _K'_, the propagation of light takes place according to this equation. We thus see that the velocity of transmission relative to the reference-body _K'_ is also equal to _c_. The same result is obtained for rays of light advancing in any other direction whatsoever. Of cause this is not surprising, since the equations of the Lorentz transformation were derived conformably to this point of view.
 
-XII.
+## Xii
 
-THE BEHAVIOUR OF MEASURING-RODS AND CLOCKS IN MOTION
+## The Behaviour Of Measuring-Rods And Clocks In Motion
 
 Place a metre-rod in the _x'_-axis of _K'_ in such a manner that one end (the beginning) coincides with the point _x'_ = 0 whilst the other end (the end of the rod) coincides with the point _x'_ = 1. What is the length of the metre-rod relatively to the system _K_? In order to learn this, we need only ask where the beginning of the rod and the end of the rod lie with respect to _K_ at a particular time _t_ of the system _K_. By means of the first equation of the Lorentz transformation the values of these two points at the time _t_ = 0 can be shown to be
 
@@ -262,7 +262,7 @@ image012
 
 seconds, _i.e._ a somewhat larger time. As a consequence of its motion the clock goes more slowly than when at rest. Here also the velocity _c_ plays the part of an unattainable limiting velocity.
 
-XIII.
+## Xiii
 
 THEOREM OF THE ADDITION OF VELOCITIES. THE EXPERIMENT OF FIZEAU
 
@@ -320,9 +320,9 @@ which agrees with Fizeau's result.
 
 Nevertheless we must now draw attention to the fact that a theory of this phenomenon was given by H. A. Lorentz long before the statement of the theory of relativity. This theory was of a purely electrodynamical nature, and was obtained by the use of particular hypotheses as to the electromagnetic structure of matter. This circumstance, however, does not in the least diminish the conclusiveness of the experiment as a crucial test in favour of the theory of relativity, for the electrodynamics of Maxwell-Lorentz, on which the original theory was based, in no way opposes the theory of relativity. Rather has the latter been developed trom electrodynamics as an astoundingly simple combination and generalisation of the hypotheses, formerly independent of each other, on which electrodynamics was built.
 
-XIV.
+## Xiv
 
-THE HEURISTIC VALUE OF THE THEORY OF RELATIVITY
+## The Heuristic Value Of The Theory Of Relativity
 
 Our train of thought in the foregoing pages can be epitomised in the following manner. Experience has led to the conviction that, on the one hand, the principle of relativity holds true and that on the other hand the velocity of transmission of light _in vacuo_ has to be considered equal to a constant _c_. By uniting these two postulates we obtained the law of transformation for the rectangular co-ordinates _x, y, z_ and the time _t_ of the events which constitute the processes of nature. In this connection we did not obtain the Galilei transformation, but, differing from classical mechanics, the _Lorentz transformation_.
 
@@ -332,9 +332,9 @@ Every general law of nature must be so constituted that it is transformed into a
 
 This is a definite mathematical condition that the theory of relativity demands of a natural law, and in virtue of this, the theory becomes a valuable heuristic aid in the search for general laws of nature. If a general law of nature were to be found which did not satisfy this condition, then at least one of the two fundamental assumptions of the theory would have been disproved. Let us now examine what general results the latter theory has hitherto evinced.
 
-XV.
+## Xv
 
-GENERAL RESULTS OF THE THEORY
+## General Results Of The Theory
 
 It is clear from our previous considerations that the (special) theory of relativity has grown out of electrodynamics and optics. In these fields it has not appreciably altered the predictions of theory, but it has considerably simplified the theoretical structure, _i.e._ the derivation of laws, and—what is incomparably more important—it has considerably reduced the number of independent hypotheses forming the basis of theory. The special theory of relativity has rendered the Maxwell-Lorentz theory so plausible, that the latter would have been generally accepted by physicists even if experiment had decided less unequivocally in its favour.
 
@@ -398,9 +398,9 @@ Let me add a final remark of a fundamental nature. The success of the Faraday-Ma
 
 According to the theory of relativity, action at a distance with the velocity of light always takes the place of instantaneous action at a distance or of action at a distance with an infinite velocity of transmission. This is connected with the fact that the velocity _c_ plays a fundamental role in this theory. In Part II we shall see in what way this result becomes modified in the general theory of relativity.
 
-XVI.
+## Xvi
 
-EXPERIENCE AND THE SPECIAL THEORY OF RELATIVITY
+## Experience And The Special Theory Of Relativity
 
 To what extent is the special theory of relativity supported by experience? This question is not easily answered for the reason already mentioned in connection with the fundamental experiment of Fizeau. The special theory of relativity has crystallised out from the Maxwell-Lorentz theory of electromagnetic phenomena. Thus all facts of experience which support the electromagnetic theory also support the theory of relativity. As being of particular importance, I mention here the fact that the theory of relativity enables us to predict the effects produced on the light reaching us from the fixed stars. These results are obtained in an exceedingly simple manner, and the effects indicated, which are due to the relative motion of the earth with reference to those fixed stars are found to be in accord with experience. We refer to the yearly movement of the apparent position of the fixed stars resulting from the motion of the earth round the sun (aberration), and to the influence of the radial components of the relative motions of the fixed stars with respect to the earth on the colour of the light reaching us from them. The latter effect manifests itself in a slight displacement of the spectral lines of the light transmitted to us from a fixed star, as compared with the position of the same spectral lines when they are produced by a terrestrial source of light (Doppler principle). The experimental arguments in favour of the Maxwell-Lorentz theory, which are at the same time arguments in favour of the theory of relativity, are too numerous to be set forth here. In reality they limit the theoretical possibilities to such an extent, that no other theory than that of Maxwell and Lorentz has been able to hold its own when tested by experience.
 
@@ -422,9 +422,9 @@ The second class of facts to which we have alluded has reference to the question
 
 In one of the most notable of these attempts Michelson devised a method which appears as though it must be decisive. Imagine two mirrors so arranged on a rigid body that the reflecting surfaces face each other. A ray of light requires a perfectly definite time _T_ to pass from one mirror to the other and back again, if the whole system be at rest with respect to the æther. It is found by calculation, however, that a slightly different time _T'_ is required for this process, if the body, together with the mirrors, be moving relatively to the æther. And yet another point: it is shown by calculation that for a given velocity _v_ with reference to the æther, this time _T'_ is different when the body is moving perpendicularly to the planes of the mirrors from that resulting when the motion is parallel to these planes. Although the estimated difference between these two times is exceedingly small, Michelson and Morley performed an experiment involving interference in which this difference should have been clearly detectable. But the experiment gave a negative result—a fact very perplexing to physicists. Lorentz and FitzGerald rescued the theory from this difficulty by assuming that the motion of the body relative to the æther produces a contraction of the body in the direction of motion, the amount of contraction being just sufficient to compensate for the difference in time mentioned above. Comparison with the discussion in Section XII shows that also from the standpoint of the theory of relativity this solution of the difficulty was the right one. But on the basis of the theory of relativity the method of interpretation is incomparably more satisfactory. According to this theory there is no such thing as a "specially favoured" (unique) co-ordinate system to occasion the introduction of the æther-idea, and hence there can be no æther-drift, nor any experiment with which to demonstrate it. Here the contraction of moving bodies follows from the two fundamental principles of the theory, without the introduction of particular hypotheses; and as the prime factor involved in this contraction we find, not the motion in itself, to which we cannot attach any meaning, but the motion with respect to the body of reference chosen in the particular case in point. Thus for a co-ordinate system moving with the earth the mirror system of Michelson and Morley is not shortened, but it _is_ shortened for a co-ordinate system which is at rest relatively to the sun.
 
-XVII.
+## Xvii
 
-MINKOWSKI'S FOUR-DIMENSIONAL SPACE
+## Minkowski'S Four-Dimensional Space
 
 The non-mathematician is seized by a mysterious shuddering when he hears of "four-dimensional" things, by a feeling not unlike that awakened by thoughts of the occult. And yet there is no more common-place statement than that the world in which we live is a four-dimensional space-time continuum.
 

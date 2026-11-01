@@ -1,66 +1,38 @@
 ---
 title: explainer (model prose from propositions)
-generated_by: anthropic:claude-opus-5-5
+generated_by: claude-cli:claude-opus-5-5
 generated_on: 2026-11-01
-propositions: 64
-score_vs_voice: 56.9 (FAIL)
-mean_abs_z_vs_voice: 0.74
-mean_abs_z_vs_llm_reference: 0.64
+propositions: 55
+score_vs_voice: 26.1 (PASS)
+mean_abs_z_vs_voice: 0.86
+mean_abs_z_vs_llm_reference: 0.81
 closeness: closer to the LLM baseline
 note: Written by scripts/build_register_slop.py from the original's proposition
   list alone; the model never saw the original.
 ---
 
-# The Candle as a Way into Natural Philosophy
+The coastline of the British Isles is not fixed. Its outline changes continually, and in some places you can see the change within a single lifetime.
 
-The speaker opens his course with a plain statement of purpose. Over these lectures he intends to present the chemical history of a candle. He offers the lectures in return for the honour the audience does him by coming to see the proceedings, treating the exchange as a courtesy owed rather than a performance given.
+On parts of the east coast of England, the sea appears to be slowly encroaching on the land. Between Harwich and Walton-on-the-Naze, places that were grazing-fields twenty or thirty years ago are now covered by the sea at high tide. When the tide goes out they do not return to pasture. At low tide they are sandy wastes threaded by rivulets of sea-water, and the cattle that once grazed there have nothing to graze on.
 
-## Why Return to the Candle
+The south coast of the Isle of Wight is losing land as well. A fort once stood near the edge of the cliff between Sandown and the Culver Cliff, which is the most easterly point of the island. It was once possible to climb round the fort's seaward wall. That can no longer be done, because the outer sea-wall slipped into the sea long ago. Some of the inner fortifications went the same way. In the end the whole fort had to be dismantled so that the inner landward wall would not slide down the cliff along with the ground beneath it.
 
-This is not new ground for him. He has lectured on this subject on a former occasion, and he admits that if he were left to his own will he would repeat it almost every year. His reason is that the subject of the candle holds abundant interest. It is not a narrow topic. The candle opens onto many different departments of philosophy, and the reach of the subject is wider still: every law governing any part of the universe comes into play in the phenomena of a candle.
+The cause is simple to state. Wind and waves are undermining and honeycombing the cliff. As they weaken its base and body, the upper crust on which the fort was built loses its support and slips away. The top of the cliff gives way because the parts beneath it have been worn out. If nothing were done to protect it, the cliff would gradually be eaten away and its gravel and clay drawn into the sea. Left to nature, the Isle of Wight would become a little smaller.
 
-From this he draws a methodological conclusion. Studying the physical phenomena of a candle is the best and most open way into the study of natural philosophy. A beginner needs no specialised apparatus to start, only attention to something burning in front of him. The speaker therefore does not apologise for an old topic. In his judgment no newer topic would be better than the candle, and probably none would be as good.
+These are not isolated cases. The same loss of land is going on at many places along the coast of the British Isles. It is going on outside Britain too, along the coast of Florida and in the Gulf of California. Heligoland is a small islet in the North Sea that once belonged to Great Britain and was later handed over to Germany. The sea attacks it so fiercely that it almost has to be armour-plated to keep it intact, and it is fenced in stone to protect it.
 
-## Tone and Audience
+Coastal erosion like that on England and Heligoland is happening all over the world, and it is not new. It has always happened. Without coastal erosion in past ages there would be no British Isles at all.
 
-He sets out the terms on which he will proceed. He intends to treat the subject honestly, seriously, and philosophically. He also declares his chosen audience: he means to address the young people rather than the adults in the room. He claims the privilege of speaking to young people as a young person himself, and he notes that he has addressed young audiences in this way on former occasions. He is aware that his words will be published to the world, but that knowledge will not stop him from speaking familiarly to the young listeners in front of him.
+England, Scotland and Ireland were once joined to Europe. It was once possible to walk across the North Sea from Harwich to the Hook of Holland, because the North Sea was then dry land. The sea encroached on that land from the north. From the south, the Atlantic Ocean broke through until the English Channel was bored through into the shallow waters of the newly formed North Sea. Through this process, lands that were once part of Europe became the British Isles.
 
-## Natural Candles: Candle-Wood
+The sea does not only take land away. It also gives land back. Sir Thomas Holditch says that on parts of the Pacific coast of America there is dry land that once lay under the sea, and the shells found on it show this. He also says that right next to this raised land a boat can be sailed over forests now sunk beneath the sea. Land has risen out of the sea and sunk into it within a short distance of each other.
 
-Before turning to manufactured candles, the speaker remarks that some candles are great curiosities, and that some kinds of trees are particularly famous for burning well. His chief example is a substance called candle-wood, taken from some bogs in Ireland.
+Even so, the loss of parts of England to the sea is a serious matter. The process by which the sea wears away land is called sea erosion. A Royal Commission on Sea Erosion was appointed to look into how much land had been lost and how the loss might be remedied. The answer is not a simple tally of losses, because in some parts of the English coast the land is gaining rather than losing.
 
-Candle-wood is a hard, strong, excellent wood, well suited to resisting force, and it also burns well. Where it is found, people make splinters and torches from it. It burns like a candle and gives a very good light. For these reasons the speaker regards it as one of the best illustrations of the general nature of a candle.
+The reason is that the material the sea removes does not disappear. The sand, gravel, chalk, shale and clay it takes from cliffs are not lost. Wherever tides and currents deposit this material, the sea becomes shallower. The sea may lay it down as beds or sand-banks, or it may carry it round the coast and drop it somewhere else. The same sea may tear down the coast at one point while building it up at others. It may even build natural breakwaters out of material it has taken from elsewhere.
 
-Its value as an illustration comes from the functions it performs. Candle-wood provides fuel. It provides a means of bringing that fuel to the place of chemical action. It provides a regular and gradual supply of air to the same place. And it produces heat and light. Because it combines all of these functions in one material, candle-wood is in effect a natural candle, and it serves as a reference model for the manufactured candles that follow.
+Rivers, like the sea, lay down beds of material, and their supply starts with rain. Every shower of rain washes some sand, gravel, loam or chalk from the land into the nearest rivulet. Rivulets carry this material to rivers, and rivers carry it to the sea.
 
-## Dips
+How much sediment a river carries depends on how fast it moves. A fast-moving river carries most of its sediment along with it. This is why rivers are generally muddy after rain, when they are full and running fast. A river usually slows down as it nears the sea and meets the tides, and when it slows down it drops its sediment. That is how mud-banks or sand-banks form at the mouths of rivers.
 
-The first manufactured type is the candle commonly called a dip. Dips are made by hanging lengths of cotton by a loop and dipping them in melted tallow. Each length is then cooled and re-dipped, over and over, until tallow builds up around the cotton.
-
-## Miners' Candles
-
-Very small candles were used by miners in coal mines. In former times miners had to supply their own candles. It was believed that a small candle would ignite fire-damp in the mines less readily than a large one, so miners used small candles partly for safety and partly for economy. These candles were made at 20, 30, 40, or 60 to the pound. In time they were replaced by the steel-mill, and the steel-mill was later replaced by the Davy lamp and other safety lamps.
-
-## A Candle from the Royal George
-
-The speaker's next specimen concerns durability. Colonel Pasley reportedly took a candle from the wreck of the Royal George. It had been sunk in the sea and exposed to salt water for many years. The example demonstrates that candles can be preserved well over long periods. Although this candle is cracked and broken, it burns regularly when lit, and its tallow returns to its natural condition once melted.
-
-## Materials and the Stearin Process
-
-The speaker credits Mr. Field of Lambeth with supplying him with many illustrations of candles and their materials. He then turns to those materials.
-
-The first is suet, which is the fat of the ox. The speaker believes Russian tallow is used to make dips. A significant advance came when Gay-Lussac, or someone who shared the knowledge with him, converted tallow into stearin. The practical difference is visible in use. Modern candles are clean rather than greasy like ordinary tallow candles. The drips from a modern candle can be scraped off and powdered without soiling anything.
-
-The conversion proceeds in stages:
-
-1. **Saponification.** Tallow is first boiled with quicklime to make a soap.
-2. **Acid decomposition.** The soap is then decomposed with sulphuric acid, which removes the lime. This decomposition leaves the fat rearranged as stearic acid.
-3. **By-product.** Glycerin is produced at the same time as the stearic acid. Glycerin is a sugar, or a substance similar to sugar, and it comes out of the tallow during this chemical change.
-4. **Pressing.** The oil is then pressed out of the stearic acid. As the pressure increases, the oily part carries the impurities out with it.
-5. **Casting.** The substance left after pressing is melted and cast into candles.
-
-The products of this process are stearin candles, made from stearin derived from tallow.
-
-## Other Candle Materials
-
-The speaker closes this survey with the remaining materials. Sperm candles come from the purified oil of the spermaceti whale. Candles are also made from yellow beeswax and from refined beeswax. Paraffin is a curious substance from which candles are made, and it can be obtained from the bogs of Ireland. Finally, a kind of wax brought from Japan is a new material for making candles; it became available only after Japan was forced open to outside access.
+If a river is left alone long enough, the sand-banks at its mouth grow until the mouth becomes shallower and spreads. River mouths therefore silt up over time. A river that ships use cannot be left to do this. Large sums must be spent dredging mud to keep the channels clear, and this dredging is done in the Scheldt and at the mouth of the Thames.

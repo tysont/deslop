@@ -2,6 +2,7 @@
 # ABOUTME: original, a generated model-prose version and a small voice that loads and scores.
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -17,13 +18,18 @@ def body_of(path: Path) -> str:
     return text.split("---", 2)[2].strip() if text.startswith("---") else text.strip()
 
 
+def test_fixture_set_states_the_validity_rule():
+    readme = (REGISTERS / "README.md").read_text(encoding="utf-8")
+    assert "deslop lab fixture-check" in readme and "under 1% recitation" in readme
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_register_fixture_is_complete_and_marked(name):
     folder = REGISTERS / name
     original = (folder / "original.md").read_text(encoding="utf-8")
     assert original.startswith("---") and "license:" in original and "author:" in original
     slop = (folder / "slop.md").read_text(encoding="utf-8")
-    assert "generated_by: anthropic:" in slop and "scripts/build_register_slop.py" in slop
+    assert re.search(r"generated_by: (anthropic|claude-cli):", slop) and "scripts/build_register_slop.py" in slop
     words = len(body_of(folder / "original.md").split())
     assert (300 <= words <= 500) if name == "product" else (850 <= words <= 1100)
     corpus = sorted((folder / "corpus").glob("*.txt"))

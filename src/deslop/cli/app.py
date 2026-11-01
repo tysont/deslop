@@ -199,6 +199,9 @@ def voice_build(
     exemplar_words: int | None = typer.Option(None, "--exemplar-words", help="Default 2500"),
     no_llm: bool = typer.Option(False, "--no-llm", help="Template profile.md instead of a model"),
     llm_model: str | None = typer.Option(None, "--llm-model"),
+    provider: str | None = typer.Option(
+        None, "--provider", help="anthropic or claude-cli for the profile (config, else API)"
+    ),
     base: Path | None = typer.Option(
         None, "--from", help="Fold --add texts into this voice instead of building anew"
     ),
@@ -232,6 +235,16 @@ def voice_build(
     except (OSError, ValueError) as exc:
         fail(str(exc))
     name = out.name.removesuffix(".voice").removesuffix(".zip")
+    use_llm = not s.get("no_llm", no_llm or None, False) and profile_from is None
+    profile_provider = None
+    if use_llm:
+        from deslop.providers.base import ProviderError, get_provider
+
+        arm_budget(s, None, command="voice build", voice=name, input_file=str(sources[0]))
+        try:
+            profile_provider = get_provider(provider_name(s, provider))
+        except ProviderError as exc:
+            fail(str(exc))
     try:
         voice = Voice.from_texts(
             [str(p) for p in sources],
@@ -239,8 +252,9 @@ def voice_build(
             author_map=amap,
             max_share=float(s.get("max_share", max_share, 0.15)),
             exemplar_words=int(s.get("exemplar_words", exemplar_words, 2500)),
-            use_llm=not s.get("no_llm", no_llm or None, False) and profile_from is None,
+            use_llm=use_llm,
             llm_model=s.get("llm_model", llm_model),
+            provider=profile_provider,
             patterns=s.paths("patterns", patterns),
             base=load_voice(base) if base is not None else None,
             min_docs=int(s.get("min_docs", min_docs, 10)),
@@ -734,7 +748,16 @@ def apply_cmd(
         None, "--compare", help="Write a self-contained HTML comparison page here"
     ),
     reference: Path | None = typer.Option(
-        None, "--reference", help="Human reference text for the comparison page's first column"
+        None,
+        "--reference",
+        help="The human text the input was made from: candidates are checked for recitation "
+        "against it (never shown to a model) and it fills the comparison page's first column",
+    ),
+    max_recitation: float | None = typer.Option(
+        None,
+        "--max-recitation",
+        help="Reject a candidate when more than PCT of its words lie in runs of 8+ words "
+        "shared with the reference and not with the input (2)",
     ),
     budget: float | None = typer.Option(
         None,
@@ -787,6 +810,8 @@ def apply_cmd(
         max_calls=max_calls,
     )
     texts = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
+    reference = s.path("reference", reference)
+    ref_text = split_frontmatter(reference.read_text(encoding="utf-8"))[1] if reference else None
     try:
         result = apply(
             source,
@@ -801,6 +826,9 @@ def apply_cmd(
             chunk_words=int(s.get("chunk_words", chunk_words, 2500)),
             fidelity="strict" if s.get("fidelity", fidelity, "content") == "strict" else "content",
             report_all=bool(s.get("report_all", report_all or None, False)),
+            reference=ref_text,
+            reference_name=reference.name if reference else "reference",
+            max_recitation=float(s.get("max_recitation", max_recitation, 2.0)),
             primary_texts=list(texts) or None,
             max_iter=int(s.get("max_iter", max_iter, 4)),
             patterns=s.paths("patterns", patterns),
@@ -817,9 +845,6 @@ def apply_cmd(
     if compare is not None:
         from deslop.compare_page import build_page
 
-        ref_text = (
-            split_frontmatter(reference.read_text(encoding="utf-8"))[1] if reference else None
-        )
         compare.write_text(
             build_page(json.loads(result.to_json()), reference=ref_text), encoding="utf-8"
         )
@@ -965,6 +990,97 @@ def lab_calibrate_judge(
     if results and not any(c.usable for c in results.values()):
         console.print("[yellow]no provider reached 80%; apply will not gate on the judge[/]")
     console.print(f"written to {target}" if target else "not written (read-only voice; use --out)")
+
+
+@lab_app.command("recitation")
+def lab_recitation(
+    result: Path = typer.Argument(..., help="An apply --json result file"),
+    reference: Path = typer.Option(..., "--reference", help="The human text to compare against"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Re-score every candidate of a saved result for recitation of a reference: runs of
+    eight or more words shared with the reference and not with the input. Offline."""
+    from deslop.lab import rescore_recitation
+
+    try:
+        data = json.loads(result.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read {result}: {exc}")
+    ref_text = split_frontmatter(reference.read_text(encoding="utf-8"))[1]
+    rows = rescore_recitation(data, ref_text)
+    if json_out:
+        print_json(json.dumps(rows, indent=1))
+        return
+    for r in rows:
+        console.print(
+            f"candidate {r['attempt']} ({r['status']}): {r['ngrams']} shared run(s), "
+            f"{r['covered']}/{r['words']} words covered, {r['share']:.1f}%"
+        )
+        for span in r["spans"]:
+            console.print(f"    {len(span.split())} words: {span}", markup=False)
+
+
+@lab_app.command("fixture-check")
+def lab_fixture_check(
+    ctx: typer.Context,
+    original: Path = typer.Argument(..., help="The candidate fixture text"),
+    voice: Path = typer.Option(..., "--voice", "-v"),
+    writer: str | None = typer.Option(None, "--writer", help="Writer model (claude-opus-5-5)"),
+    judge: str | None = typer.Option(None, "--judge", help="Judge model (claude-sonnet-5-5)"),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or claude-cli"),
+    max_calls: int | None = typer.Option(None, "--max-calls", help="Max live calls (200)"),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
+    show_draft: bool = typer.Option(False, "--draft", help="Print the draft too"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Can this text be a held-out fixture? Its propositions are extracted, one draft is
+    written from them alone (the text is never shown), and the draft is checked for
+    recitation of the text. It qualifies only under 1%. Two live calls, cached."""
+    from deslop.apply import build_models
+    from deslop.lab import fixture_check
+    from deslop.providers.base import DEFAULT_JUDGE, DEFAULT_WRITER, BudgetExceeded, ProviderError
+
+    s = Settings(ctx, "fixture-check")
+    v = load_voice(voice)
+    arm_budget(
+        s,
+        budget,
+        command="lab fixture-check",
+        voice=v.name,
+        input_file=str(original),
+        max_calls=max_calls,
+    )
+    body = split_frontmatter(read_input(original))[1]
+    try:
+        models = build_models(
+            str(s.get("writer", writer, DEFAULT_WRITER)),
+            str(s.get("judge", judge, DEFAULT_JUDGE)),
+            provider=provider_name(s, provider),
+            calibration=v.meta.judge_calibration,
+        )
+        check = fixture_check(body, v, models)
+    except (ValueError, BudgetExceeded, ProviderError) as exc:
+        fail(str(exc), code=2)
+    report_budget()
+    if json_out:
+        print_json(check.model_dump_json(indent=1))
+        return
+    r = check.recitation
+    console.print(
+        f"{original}: {check.words} words, {len(check.propositions)} propositions; draft of "
+        f"{r.words} words recites {r.share:.1f}% ({r.ngrams} shared run(s), {r.covered} words)"
+    )
+    for span in r.spans:
+        console.print(f"    {len(span.split())} words: {span}", markup=False)
+    console.print(
+        f"{check.novel_words} of the {r.covered} recited words are outside the propositions' "
+        "vocabulary (reassembly of the propositions gives 0; memory of the text gives more)"
+    )
+    verdict = "qualifies" if check.qualifies else "does not qualify"
+    console.print(f"{verdict} as a fixture (under {check.threshold:.0f}% recitation)")
+    if show_draft:
+        console.print("", check.draft, markup=False)
+    raise typer.Exit(0 if check.qualifies else 2)
 
 
 @lab_app.command("blind")

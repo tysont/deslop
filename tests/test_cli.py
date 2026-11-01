@@ -272,6 +272,22 @@ def test_apply_brief(fixture_voice, fixtures_dir, tmp_path, monkeypatch):
     assert data["draft"] and data["draft_text"]
 
 
+def test_voice_build_resolves_the_profile_provider_like_every_live_command(tmp_path):
+    r = runner.invoke(
+        app,
+        [
+            "voice",
+            str(FIXTURES / "corpus_small"),
+            "-o",
+            str(tmp_path / "x.voice"),
+            "--provider",
+            "bogus",
+        ],
+    )
+    assert r.exit_code == 1 and "unknown provider 'bogus'" in r.output
+    assert not (tmp_path / "x.voice").exists()
+
+
 def test_lab_calibrate_thresholds_and_export(fixture_voice, tmp_path, monkeypatch):
     monkeypatch.setenv("DESLOP_HOME", str(tmp_path / "home"))
     voice = fixture_voice.save(tmp_path / "f.voice")
@@ -515,11 +531,44 @@ def test_apply_compare_page_and_report_html(fixture_voice, slop_text, tmp_path, 
     assert r.exit_code in (0, 2), r.output
     assert page.exists() and "The human reference." in page.read_text()
     assert "title: ref" not in page.read_text()
+    assert "recitation vs ref.md" in page.read_text()
     result = tmp_path / "result.json"
     result.write_text(r.stdout)
+    data = json.loads(r.stdout)
+    assert data["reference"] == "ref.md" and data["max_recitation"] == 2.0
+    assert data["units"][0]["candidates"][0]["recitation"]["ngrams"] == 0
     out = tmp_path / "again.html"
     r = runner.invoke(
         app, ["report", "--html", str(result), "-o", str(out), "--reference", str(ref)]
     )
     assert r.exit_code == 0, r.output
     assert out.exists() and "<!doctype html>" in out.read_text()
+
+
+def test_lab_recitation_and_fixture_check(fixture_voice, slop_text, tmp_path, monkeypatch):
+    from tests.test_apply import RECITED
+
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    ref = tmp_path / "ref.md"
+    ref.write_text("---\ntitle: ref\n---\n\nA human wrote this.\n\n" + RECITED + "\n")
+    sample = tmp_path / "sample.md"
+    sample.write_text(slop_text)
+    scripted_factory(monkeypatch, recite=RECITED)
+    r = runner.invoke(
+        app, ["apply", str(sample), "--voice", str(voice), "--n", "1", "--report-all", "--json"]
+    )
+    assert r.exit_code in (0, 2), r.output
+    result = tmp_path / "result.json"
+    result.write_text(r.stdout)
+    r = runner.invoke(app, ["lab", "recitation", str(result), "--reference", str(ref)])
+    assert r.exit_code == 0, r.output
+    assert "shared run(s)" in r.output and "resister of force" in r.output
+    r = runner.invoke(
+        app, ["lab", "fixture-check", str(ref), "--voice", str(voice), "--max-calls", "10"]
+    )
+    assert r.exit_code == 2, r.output
+    assert "does not qualify" in r.output and "resister of force" in r.output
+    scripted_factory(monkeypatch)
+    r = runner.invoke(app, ["lab", "fixture-check", str(ref), "--voice", str(voice), "--json"])
+    assert r.exit_code == 0, r.output
+    assert json.loads(r.stdout)["recitation"]["ngrams"] == 0

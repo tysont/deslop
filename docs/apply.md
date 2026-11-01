@@ -63,6 +63,19 @@ and report tense drift only between two different dominant tenses (a paragraph i
 when no tense holds more than half of its finite verbs). `--compare PAGE.html` writes the
 comparison page described under `deslop report`.
 
+## Recitation
+
+A writer that has read the human original can recite it instead of writing from the
+propositions. `--reference FILE` names that original when there is one: it is never shown
+to the writer or the judge, only compared against. For each candidate the check collects
+the runs of eight or more words (lowercased, punctuation stripped) shared with the reference
+and not present in the input, and reports their count, the share of the candidate's words
+they cover and the longest three spans. A candidate over `--max-recitation` (2% of its words)
+is rejected for recitation; the retry prompt says only that the draft recited a published
+text, never which words. `deslop lab recitation` re-scores a saved result offline, and
+`deslop lab fixture-check` applies the same measure to a prospective fixture text (under 1%
+to qualify).
+
 ## Primary texts
 
 `--primary-text` (repeatable) names plain-text sources for the work under discussion. Any

@@ -1,14 +1,20 @@
 # ABOUTME: Helpers behind `deslop lab`: paragraph pools for judge calibration (held-out corpus
-# ABOUTME: vs LLM-reference) and the blind-set export a person can judge offline.
+# ABOUTME: vs LLM-reference), the blind-set export, recitation rescoring and the fixture check.
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
+from pydantic import BaseModel
+
+from deslop.apply import SYSTEM_TEMPLATE, ExemplarIndex, Models, clean_response
 from deslop.blind import MIN_WORDS, Pair, Pairing, shown
 from deslop.judge import JudgeCalibration, calibrate_judge
 from deslop.nlp import count_words, is_prose_paragraph, split_paragraphs
 from deslop.providers.base import CachingProvider, ProviderError
+from deslop.recitation import FIXTURE_MAX_RECITATION, RecitationResult, recitation, words_of
+from deslop.semantic import extract_propositions
 from deslop.thresholds import split_heldout
 from deslop.voice.collect import collect
 from deslop.voice.exemplars import parse_exemplars
@@ -135,11 +141,89 @@ def export_blind(pairing: Pairing, out_dir: Path, voice: str) -> tuple[Path, Pat
     return pairs_path, key_path
 
 
+def rescore_recitation(result: dict[str, Any], reference: str) -> list[dict[str, Any]]:
+    """The recitation check of every candidate in a saved apply result against `reference`,
+    with each unit's original as the input; offline."""
+    rows = []
+    for unit in result.get("units", []):
+        for c in unit.get("candidates", []):
+            if not c.get("text"):
+                continue
+            r = recitation(c["text"], reference, unit["original"])
+            status = (
+                "winner"
+                if unit.get("chosen") is not None and unit["candidates"][unit["chosen"]] is c
+                else ("accepted" if c.get("accepted") else "rejected")
+            )
+            rows.append(
+                {"unit": unit["index"], "attempt": c["attempt"], "status": status, **r.model_dump()}
+            )
+    return rows
+
+
+FIXTURE_DRAFT_TEMPLATE = """# Exemplars of the voice
+{exemplars}
+
+# What the piece asserts (keep every one, add none)
+{propositions}
+
+# Instruction
+Write a piece of about {words} words as this writer would, from these propositions alone and
+in this order. Keep every proposition and add none. Return the piece and nothing else."""
+
+
+class FixtureCheck(BaseModel):
+    """Whether a text can serve as a held-out fixture: a draft written from its propositions
+    alone must recite under `threshold` percent of it."""
+
+    words: int
+    propositions: list[str]
+    draft: str
+    recitation: RecitationResult
+    threshold: float = FIXTURE_MAX_RECITATION
+    novel_words: int = 0  # recited words that are not in the propositions' vocabulary
+
+    @property
+    def qualifies(self) -> bool:
+        return self.recitation.share < self.threshold
+
+
+def fixture_check(
+    text: str, voice: Voice, models: Models, *, threshold: float = FIXTURE_MAX_RECITATION
+) -> FixtureCheck:
+    """Extract the text's propositions (one call), write one draft from them alone with the
+    writer model (one call, temperature 0, cached), and measure how much of the text the
+    draft recites in runs of eight or more words the propositions do not contain. The text
+    itself is never shown to the writer."""
+    props = extract_propositions(text, models.writer)
+    listed = "\n".join(f"{i}. {p}" for i, p in enumerate(props, 1))
+    system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
+    user = FIXTURE_DRAFT_TEMPLATE.format(
+        exemplars="\n\n".join(ExemplarIndex(voice).closest(listed)) or "(no exemplars)",
+        propositions=listed or "(none)",
+        words=count_words(text),
+    )
+    draft = clean_response(models.writer.complete(system, user, temperature=0.0).text)
+    rec = recitation(draft, text, listed)
+    vocabulary = set(words_of(listed))
+    return FixtureCheck(
+        words=count_words(text),
+        propositions=props,
+        draft=draft,
+        recitation=rec,
+        threshold=threshold,
+        novel_words=sum(w not in vocabulary for run in rec.runs for w in words_of(run)),
+    )
+
+
 __all__ = [
+    "FixtureCheck",
     "Pair",
     "calibrate_judges",
     "export_blind",
+    "fixture_check",
     "heldout_paragraphs",
     "llm_paragraphs",
     "prose_paragraphs",
+    "rescore_recitation",
 ]

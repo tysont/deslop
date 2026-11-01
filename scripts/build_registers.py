@@ -60,6 +60,14 @@ CORPORA = {
             None,
             12000,
         ),
+        (
+            28553,
+            "Archibald Williams",
+            "How It Works, Chapters V and VI",
+            "WHAT IS ELECTRICITY?",
+            "Chapter VII.",
+            12000,
+        ),
     ],
     "product": [
         (
@@ -129,13 +137,14 @@ ORIGINALS = {
         "the opening of the essay",
     ),
     "explainer": (
-        14474,
-        "Michael Faraday",
-        "The Chemical History of a Candle, Lecture I",
-        "^I purpose, in return",
-        "LECTURE II",
-        1150,
-        "the opening of the first lecture",
+        65307,
+        "Edwin Sharpe Grew",
+        "The Romance of Modern Geology, Chapter I: The Building of the Earth",
+        "^Everybody who has ever been to the coast",
+        None,
+        1050,
+        "the opening of the first chapter; chosen by `deslop lab fixture-check` over Williams "
+        "and Munro (lowest recitation); the Faraday lecture it replaces recited at 4.9%",
     ),
     "fiction": (
         269,
@@ -177,7 +186,8 @@ Sizes: 1.2 litre (this page), 1.8 litre, 2.5 litre. Colours: grey, green. Made i
 def slice_between(text: str, start: str, end: str | None, cap: int) -> str:
     """The text from `start` (its last occurrence, so a table of contents is skipped; a
     leading ^ asks for the first) to `end`, as unwrapped paragraphs, cut at a paragraph
-    boundary under `cap` words. A short all-capitals first paragraph becomes a heading."""
+    boundary under `cap` words. A short all-capitals paragraph becomes a heading (the first
+    a title, the rest sections)."""
     i = text.find(start[1:]) if start.startswith("^") else text.rfind(start)
     start = start.lstrip("^")
     if i < 0:
@@ -195,8 +205,9 @@ def slice_between(text: str, start: str, end: str | None, cap: int) -> str:
             break
         paragraphs.append(para)
         words += n
-    if paragraphs and paragraphs[0].isupper() and len(paragraphs[0].split()) <= 8:
-        paragraphs[0] = "# " + paragraphs[0].title()
+    for k, para in enumerate(paragraphs):
+        if para.isupper() and len(para.split()) <= 8:
+            paragraphs[k] = ("# " if k == 0 else "## ") + para.rstrip(".").title()
     return "\n\n".join(paragraphs) + "\n"
 
 
@@ -214,8 +225,10 @@ def load(src: Path, gid: int) -> str:
     return text
 
 
-def main(src: Path) -> None:
+def main(src: Path, only: str | None = None) -> None:
     for register, docs in CORPORA.items():
+        if only and register != only:
+            continue
         corpus = OUT / register / "corpus"
         corpus.mkdir(parents=True, exist_ok=True)
         for gid, author, title, start, end, cap in docs:
@@ -254,4 +267,4 @@ def main(src: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main(Path(sys.argv[1]), *sys.argv[2:3])

@@ -15,6 +15,25 @@ def body_of(path: Path) -> str:
     return text.split("---", 2)[2].strip() if text.startswith("---") else text.strip()
 
 
+def author_of(path: Path) -> str:
+    for line in path.read_text(encoding="utf-8").splitlines()[:12]:
+        if line.startswith("author:"):
+            return line.split(":", 1)[1].strip()
+    return "original"
+
+
+def recitation_lines(c: dict) -> list[str]:
+    rec = c.get("recitation")
+    if not rec:
+        return ["Recitation: not checked (no --reference)"]
+    out = [
+        f"Recitation: {rec['share']:.1f}% of words in {rec['ngrams']} run(s) of 8+ words "
+        f"shared with the reference and not the input ({rec['covered']}/{rec['words']} words)"
+    ]
+    out.extend(f"- recited ({len(span.split())} words): {span}" for span in rec["spans"])
+    return out
+
+
 def row(cells: list[str]) -> str:
     return "| " + " | ".join(cells) + " |"
 
@@ -114,7 +133,7 @@ def main(register: str, result_path: Path, out: Path) -> None:
     slop = body_of(REGISTERS / register / "slop.md")
     unit = d["units"][0]
     before, after = d["report_before"], d["report_after"]
-    lines = [f"# {register}: original, model prose, and the v2.3 rewrite", ""]
+    lines = [f"# {register}: original, model prose, and the rewrite", ""]
     lines += [
         f"Distance {before['distance']:.0f} -> {after['distance']:.0f} "
         f"({before['verdict']} -> {after['verdict']}); growth {d['growth_pct']:+.0f}%; "
@@ -122,7 +141,20 @@ def main(register: str, result_path: Path, out: Path) -> None:
         "",
         d["judge_gate"],
         "",
-        "## Original (Faraday)",
+    ]
+    if d.get("reference"):
+        rec = d.get("recitation")
+        lines += [
+            f"Recitation against {d['reference']} (limit {d['max_recitation']}%): "
+            + (
+                f"winner {rec['share']:.1f}% in {rec['ngrams']} shared run(s)"
+                if rec
+                else "no winner"
+            ),
+            "",
+        ]
+    lines += [
+        f"## Original ({author_of(REGISTERS / register / 'original.md')})",
         "",
         original,
         "",
@@ -166,6 +198,7 @@ def main(register: str, result_path: Path, out: Path) -> None:
                 f"Lock: {'ok' if c['lexical_ok'] else 'failed'}"
                 + (f" ({c['lexical_detail']})" if c.get("lexical_detail") else "")
             )
+            lines.extend(recitation_lines(c))
             sem = c.get("semantic")
             if sem:
                 dropped = [x["proposition"] for x in sem["checks"] if not x["kept"]]

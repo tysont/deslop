@@ -28,6 +28,7 @@ class Scripted(CachingProvider):
         pad_words: int = 0,
         add_quote: str = "",
         drop_paragraph: bool = False,
+        recite: str = "",
     ):
         super().__init__(use_cache=False, cache_only=False)
         self.name = name
@@ -39,6 +40,7 @@ class Scripted(CachingProvider):
         self.pad_words = pad_words
         self.add_quote = add_quote
         self.drop_paragraph = drop_paragraph
+        self.recite = recite
         self.calls: list[tuple[str, str]] = []
 
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
@@ -75,7 +77,9 @@ class Scripted(CachingProvider):
             v = 5 if para.startswith(("Plainly,", "Rewritten:")) else 2
             text = json.dumps({"voice": v, "model_prose": 6 - v, "fidelity": 5, "note": "ok"})
         elif "write prose in one specific writer" in system:
-            if "to rewrite\n" in user:  # edit mode template
+            if "from these propositions alone" in user:  # the fixture check's draft
+                text = "Plainly, a draft from the propositions alone. " + self.recite
+            elif "to rewrite\n" in user:  # edit mode template
                 unit = user.split("to rewrite\n", 1)[-1].split("\n\n# What is wrong", 1)[0]
                 text = "Rewritten: " + unit.strip()
             else:
@@ -95,6 +99,8 @@ class Scripted(CachingProvider):
                     text += " " + " ".join(["more"] * self.pad_words)
                 if self.add_quote:
                     text += f' As the text says, "{self.add_quote}" (Gen 22:2).'
+                if self.recite:
+                    text += " " + self.recite
         else:
             text = "?"
         return Completion(text=text, model=model, provider=self.name, usage=usage)
@@ -357,3 +363,41 @@ def test_report_all_judges_every_candidate_and_the_prompt_frees_person(fixture_v
     assert "when the exemplars have no headings the output has none" in flat
     strict = apply(slop_text, fixture_voice, n=1, fidelity="strict", provider_factory=factory)
     assert strict.fidelity == "strict" and result.fidelity == "content"
+
+
+RECITED = (
+    "The candle-wood is a hard, strong, excellent wood, evidently fitted for good work as a "
+    "resister of force, and yet withal burning so well that the people make torches of it."
+)
+REFERENCE = "A human wrote this first.\n\n" + RECITED + "\n\nAnd went on to other matters."
+
+
+def test_a_candidate_reciting_the_reference_is_rejected_and_the_reference_stays_hidden(
+    fixture_voice, slop_text
+):
+    a, _, factory = pair(recite=RECITED)
+    result = apply(slop_text, fixture_voice, n=1, reference=REFERENCE, provider_factory=factory)
+    unit = result.units[0]
+    assert unit.kept_original and result.max_recitation == 2.0
+    cand = unit.candidates[0]
+    assert cand.recitation is not None and cand.recitation.share > 2.0
+    assert cand.recitation.spans[0].startswith("The candle-wood is a hard")
+    assert cand.reason.startswith("recitation:")
+    assert "resister of force" not in cand.reason, "the span is for the report, not the writer"
+    for system, user in a.calls:
+        assert "resister of force" not in system + user, "the reference reached a prompt"
+    retry = [u for s, u in a.calls if "What a reader noticed" in u]
+    assert retry and "recited" in retry[-1]
+
+    loose = apply(
+        slop_text,
+        fixture_voice,
+        n=1,
+        reference=REFERENCE,
+        max_recitation=100.0,
+        provider_factory=factory,
+    )
+    assert not loose.units[0].kept_original
+    assert loose.recitation is not None and loose.recitation.share > 2.0
+    plain = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
+    assert plain.units[0].candidates[0].recitation is None and plain.recitation is None

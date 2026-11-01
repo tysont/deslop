@@ -53,3 +53,52 @@ def test_export_blind_writes_pairs_without_answers_and_a_key(tmp_path):
             "overlap": 0.2,
         }
     ]
+
+
+def test_rescore_recitation_checks_every_candidate_against_the_reference():
+    run = " ".join(f"w{i}" for i in range(10))
+    result = {
+        "units": [
+            {
+                "index": 0,
+                "original": "the input text",
+                "chosen": 1,
+                "candidates": [
+                    {"attempt": 1, "text": "", "accepted": False},
+                    {"attempt": 2, "text": f"clean. {run}", "accepted": True},
+                    {"attempt": 3, "text": "nothing recited here at all", "accepted": False},
+                ],
+            }
+        ]
+    }
+    rows = lab.rescore_recitation(result, f"reference says {run} and more")
+    assert [(r["attempt"], r["status"], r["ngrams"]) for r in rows] == [
+        (2, "winner", 3),
+        (3, "rejected", 0),
+    ]
+    assert rows[0]["spans"] == [run]
+
+
+def test_fixture_check_drafts_from_propositions_alone_and_measures_recitation(fixture_voice):
+    from tests.test_apply import RECITED, Scripted, build_models, factory_for
+
+    text = "Abraham is told to take his son. " + RECITED + " The chapter withholds its answer."
+    reciter = Scripted("anthropic", recite=RECITED)
+    models = build_models("opus", "sonnet", factory=factory_for(reciter))
+    check = lab.fixture_check(text, fixture_voice, models)
+    assert check.propositions == [
+        "The chapter withholds its answer.",
+        "Abraham is told to take his son.",
+    ]
+    assert check.recitation.share > 1.0 and not check.qualifies
+    assert check.recitation.spans[0].startswith("The candle-wood")
+    assert check.novel_words == 29, (
+        "every recited word but 'the' and 'is' is outside the propositions"
+    )
+    system, user = next(c for c in reciter.calls if "write prose" in c[0])
+    assert "from these propositions alone" in user and RECITED not in user
+    assert "withholds its answer" in user and "resister of force" not in system
+
+    clean = build_models("opus", "sonnet", factory=factory_for(Scripted("anthropic")))
+    ok = lab.fixture_check(text, fixture_voice, clean)
+    assert ok.qualifies and ok.recitation.ngrams == 0

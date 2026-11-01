@@ -2,6 +2,23 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.3.3 - 2026-11-01
+
+- Recitation check: with `--reference FILE` every candidate is measured for runs of eight or
+  more words shared with the reference and not with the input (count, share of words,
+  longest three spans); over `--max-recitation` (2%) it is rejected for recitation. The
+  reference is never shown to the writer or the judge. `deslop lab recitation` re-scores a
+  saved result offline; the comparison page and the register report show the numbers.
+- `deslop lab fixture-check ORIGINAL.md --voice V`: one draft from the text's propositions
+  alone, checked for recitation of the text; a fixture qualifies only under 1%. The rule is
+  in `tests/fixtures/registers/README.md`. The Faraday explainer failed it and is replaced.
+- Semantic lock: the paragraph-by-paragraph check shows the judge the original's
+  neighbouring paragraphs, in both passes, so what they state is not reported as new (the
+  defect that rejected candidate 2 of the v2.3.2 explainer run). Prompts without context are
+  unchanged, so edit-mode caches replay.
+- tests/e2e go live only with `DESLOP_RECORD=1` and a key; otherwise a cache miss skips. A
+  recording run logs its calls to the real spend file.
+
 ## v2.3.2 - 2026-11-01
 
 - Lexical lock: removals are compared case-insensitively, like additions; a proper noun is

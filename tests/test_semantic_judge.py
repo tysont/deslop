@@ -329,3 +329,51 @@ def test_judge_retries_once_with_a_stricter_format_before_giving_up(fixture_voic
     hopeless = Canned("anthropic", "no")
     v = compare_document("cand", "orig", "orig", fixture_voice, hopeless, exemplars=[])
     assert v.note == "judge gave no JSON" and len(hopeless.prompts) == 2
+
+
+def test_neighbouring_paragraphs_reach_both_passes_only_when_given():
+    from deslop.semantic import CONTEXT_NOTE, ENTAILMENT_SYSTEM, REVIEW_SYSTEM, check_meaning
+
+    class Flagger(CachingProvider):
+        def __init__(self):
+            super().__init__(use_cache=False, cache_only=False)
+            self.name, self.default_model, self.systems, self.prompts = "anthropic", "m", [], []
+
+        def _raw_complete(self, system, user, model, temperature):
+            self.systems.append(system)
+            self.prompts.append(user)
+            if "first reader flagged" in system:
+                text = json.dumps({"new": "BEFORE:" not in user, "why": "seen above"})
+            else:
+                text = json.dumps(
+                    {
+                        "original": [{"n": 1, "kept": True}],
+                        "added": [
+                            {
+                                "sentence": "Tallow becomes stearin.",
+                                "text": "tallow",
+                                "category": "entity",
+                            }
+                        ],
+                    }
+                )
+            return Completion(text=text, model=model, provider=self.name, usage=Usage(calls=1))
+
+    p = Flagger()
+    bare = check_meaning("The conversion proceeds.", "Tallow becomes stearin.", ["It proceeds."], p)
+    assert not bare.ok and p.systems[0] == ENTAILMENT_SYSTEM and p.systems[1] == REVIEW_SYSTEM
+    assert "AROUND" not in p.prompts[0], "no context, no change to the cached prompt"
+
+    p = Flagger()
+    seen = check_meaning(
+        "The conversion proceeds.",
+        "Tallow becomes stearin.",
+        ["It proceeds."],
+        p,
+        context=("Gay-Lussac converted tallow into stearin.", "1. Boil the tallow."),
+    )
+    assert seen.ok and [c.text for c in seen.cleared] == ["tallow"]
+    for system, user in zip(p.systems, p.prompts, strict=True):
+        assert system.endswith(CONTEXT_NOTE)
+        assert "BEFORE:\nGay-Lussac converted tallow into stearin." in user
+        assert "AFTER:\n1. Boil the tallow." in user

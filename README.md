@@ -108,7 +108,8 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--fidelity` | `content` | `content` protects facts, entities, numbers, quotations, causal and attributed evaluative claims and permits changes of person, discourse words, emphasis, figurative restatement, hedging and reordering; `strict` fails any new claim |
 | `--report-all` | off | judge and report every candidate in full, pass or fail |
 | `--compare PATH` | none | write a self-contained HTML comparison page (reference, input, candidate; sentence-aligned diff; checks pinned to paragraphs) |
-| `--reference FILE` | none | human reference text for the comparison page's first column |
+| `--reference FILE` | none | the human text the input was made from: every candidate is checked for recitation of it (it is never shown to a model), and it fills the comparison page's first column |
+| `--max-recitation` | `2` | reject a candidate when more than this percent of its words lie in runs of eight or more words shared with the reference and not with the input |
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
@@ -211,6 +212,20 @@ one paragraph from the voice's held-out authors (the same author split threshold
 uses), report the accuracy, and store it in the voice. `--llm-texts` is a directory of
 `.md`/`.txt` essays or of `.json` files with a `text` key, as `scripts/build_llm_reference.py`
 caches them.
+
+### `deslop lab recitation RESULT.json --reference FILE [--json]`
+
+Re-score every candidate of a saved `apply --json` result for recitation of a reference text,
+offline: the runs of eight or more words (lowercased, punctuation stripped) it shares with the
+reference and not with the input, their count, the share of the candidate's words they cover
+and the longest three.
+
+### `deslop lab fixture-check ORIGINAL.md --voice VOICE [--draft] [--json]`
+
+Can a text serve as a held-out fixture? Its propositions are extracted, one draft is written
+from them alone in the voice (the text itself is never shown; two live calls, cached), and the
+draft is checked for recitation of the text. A text qualifies only under 1% recitation; exit 2
+when it does not. `tests/fixtures/registers/README.md` states the rule for the fixture set.
 
 ### `deslop lab blind --candidates DIR [--texts DIR] [--n 5] [--seed N] [--min-overlap 0.03] [--export DIR]`
 
@@ -446,6 +461,6 @@ make llm-reference    # rebuild baselines/llm_reference.json (needs keys)
 make english-generic  # rebuild baselines/english_generic.json from Gutenberg
 ```
 
-End-to-end tests call real providers when keys are present and record the responses under
-`tests/cache`; CI replays them without keys (`DESLOP_CACHE_ONLY=1`) and fails on any prompt
-that is not cached.
+End-to-end tests replay responses recorded under `tests/cache`; a prompt that is not cached
+skips. To record, run them with `DESLOP_RECORD=1` and a key: the misses go live, are written
+to the cache, and are logged to the spend file. CI replays without keys (`DESLOP_CACHE_ONLY=1`).

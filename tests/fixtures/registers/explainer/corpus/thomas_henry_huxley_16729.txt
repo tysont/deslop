@@ -4,9 +4,9 @@ title: Lay Sermons, Addresses and Reviews
 source: https://www.gutenberg.org/ebooks/16729
 license: Public domain (Project Gutenberg)
 ---
-# On A Piece Of Chalk.
+# On A Piece Of Chalk
 
-A LECTURE TO WORKING MEN.
+## A Lecture To Working Men
 
 If a well were to be sunk at our feet in the midst of the city of Norwich, the diggers would very soon find themselves at work in that white substance almost too soft to be called rock, with which we are all familiar as "chalk."
 
@@ -194,7 +194,7 @@ Few will venture to affirm that the reasoning which applies to crocodiles loses 
 
 A small beginning has led us to a great ending. If I were to put the bit of chalk with which we started into the hot but obscure flame of burning hydrogen, it would presently shine like the sun. It seems to me that this physical metamorphosis is no false image of what has been the result of our subjecting it to a jet of fervent, though nowise brilliant, thought to-night. It has become luminous, and its clear rays, penetrating the abyss of the remote past, have brought within our ken some stages of the evolution of the earth. And in the shifting "without haste, but without rest" of the land and sea, as in the endless variation of the forms assumed by living beings, we have observed nothing but the natural product of the forces originally possessed by the substance of the universe.
 
-FOOTNOTES:
+## Footnotes:
 
 See Appendix to Captain Dayman's "Deep Sea Soundings in the North Atlantic Ocean, between Ireland and Newfoundland, made in H.M.S. _Cyclops_. Published by order of the Lords Commissioners of the Admiralty, 1858." They have since formed the subject of an elaborate Memoir by Messrs. Parker and Jones, published in the _Philosophical Transactions_ for 1865.
 
@@ -204,4 +204,4 @@ I have recently traced out the development of the "coccoliths" from a diameter o
 
 "Elements of Geology," by Sir Charles Lyell, Bart. F.R.S., p. 23.
 
-X.
+## X

@@ -41,6 +41,20 @@ making an implicit causal link explicit are not additions."""
 
 REVIEW_QUESTION = "Would a careful reader of the original learn anything new from this sentence?"
 
+CONTEXT_NOTE = """
+The original's neighbouring paragraphs are shown as well, for context only: the rewrite is
+judged against the paragraph under check, but information those neighbours state or imply
+is not new either."""
+
+CONTEXT_BLOCK = """
+
+THE PARAGRAPHS AROUND IT IN THE ORIGINAL (context only; what they state is not new):
+BEFORE:
+{before}
+
+AFTER:
+{after}"""
+
 REVIEW_SYSTEM = f"""You are shown a paragraph of an original text and one sentence of a rewrite
 that a first reader flagged as adding information. Decide the flag. {REVIEW_QUESTION}
 Answer yes or no, then one line why. Answer in JSON only:
@@ -160,6 +174,7 @@ def check_meaning(
     provider: CachingProvider,
     *,
     fidelity: Fidelity = "content",
+    context: tuple[str, str] = ("", ""),
 ) -> SemanticResult:
     """Ask `provider` (the judge model) whether `candidate` keeps every proposition of
     `original` (the dropped check, against the proposition list) and whether any of its
@@ -167,14 +182,18 @@ def check_meaning(
     added check, against the passage). Under `content` fidelity only material additions
     count (a new entity, number, event, or unstated cause), and each flagged sentence is
     re-asked in a second pass with the original shown; only a "yes" survives, the rest are
-    listed as `cleared`. `strict` is the older rule: any new claim fails. Both passes are
-    deterministic, so the cache answers repeats."""
+    listed as `cleared`. `strict` is the older rule: any new claim fails. `context` is the
+    original's (previous, next) paragraph when `original` is one paragraph of a document:
+    both passes see them, and what they state is not new. Both passes are deterministic, so
+    the cache answers repeats."""
     numbered = "\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1))
     user = (
         f"ORIGINAL:\n{original.strip()}\n\nORIGINAL PROPOSITIONS:\n{numbered}\n\n"
-        f"REWRITE:\n{candidate.strip()}"
+        f"REWRITE:\n{candidate.strip()}" + _context_block(context)
     )
     system = ENTAILMENT_SYSTEM if fidelity == "content" else ENTAILMENT_SYSTEM_STRICT
+    if any(context):
+        system += CONTEXT_NOTE
     completion = provider.complete(system, user, temperature=0.0)
     try:
         data = _json_block(completion.text)
@@ -228,7 +247,7 @@ def check_meaning(
             if item.kind != "claim":
                 kept_items.append(item)
                 continue
-            new, why = review_addition(original, item, provider)
+            new, why = review_addition(original, item, provider, context=context)
             item.note = why
             (kept_items if new else cleared).append(item)
         added = kept_items
@@ -241,15 +260,30 @@ def check_meaning(
     )
 
 
-def review_addition(original: str, item: AddedClaim, provider: CachingProvider) -> tuple[bool, str]:
-    """Second pass on one flagged sentence: with the original paragraph shown, would a careful
-    reader learn anything new from it? Returns (yes, one line why). A reply with no JSON is
-    read as yes, so a flag is never cleared by accident."""
+def _context_block(context: tuple[str, str]) -> str:
+    if not any(context):
+        return ""
+    before, after = context
+    return CONTEXT_BLOCK.format(before=before.strip() or "(none)", after=after.strip() or "(none)")
+
+
+def review_addition(
+    original: str,
+    item: AddedClaim,
+    provider: CachingProvider,
+    *,
+    context: tuple[str, str] = ("", ""),
+) -> tuple[bool, str]:
+    """Second pass on one flagged sentence: with the original paragraph (and its neighbours,
+    when given) shown, would a careful reader learn anything new from it? Returns (yes, one
+    line why). A reply with no JSON is read as yes, so a flag is never cleared by accident."""
     user = (
         f"ORIGINAL PARAGRAPH:\n{original.strip()}\n\nFLAGGED SENTENCE:\n"
         f"{item.sentence or item.text}\n\nWHAT THE FIRST READER THOUGHT WAS NEW:\n{item.text}"
+        + _context_block(context)
     )
-    completion = provider.complete(REVIEW_SYSTEM, user, temperature=0.0)
+    system = REVIEW_SYSTEM + (CONTEXT_NOTE if any(context) else "")
+    completion = provider.complete(system, user, temperature=0.0)
     try:
         data = _json_block(completion.text)
     except (ValueError, json.JSONDecodeError):
