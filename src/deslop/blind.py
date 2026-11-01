@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from deslop.nlp import WORD_RE, count_words, is_prose_paragraph, split_paragraphs
-from deslop.voice.collect import gather_files
+from deslop.voice.collect import collect
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
 
@@ -97,13 +97,14 @@ def candidates_from_dir(directory: Path) -> list[tuple[str, str]]:
 
 
 def control_pool(voice: Voice, texts: Path | None) -> list[tuple[str, str]]:
-    """Human-written paragraphs to pair candidates with: every file under `texts` when
-    given, else the voice's own exemplars."""
+    """Human-written paragraphs to pair candidates with: every document under `texts`
+    (files, directories, or a crawl directory with a manifest) when given, else the voice's
+    own exemplars."""
     out: list[tuple[str, str]] = []
     if texts is not None:
-        for path in gather_files([texts]):
-            if path.is_file():
-                out.extend(paragraphs_of(path.read_text(encoding="utf-8"), path.name))
+        corpus, _ = collect([texts], name="blind-controls")
+        for doc in corpus.documents():
+            out.extend(paragraphs_of(doc.text, doc.entry.title))
         return out
     for i, body in enumerate(parse_exemplars(voice.exemplars), 1):
         out.extend(paragraphs_of(body, f"exemplar {i}"))

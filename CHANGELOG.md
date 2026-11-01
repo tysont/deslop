@@ -2,6 +2,12 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## Unreleased
+
+- `lab blind --texts DIR` now loads a crawl directory with a `manifest.jsonl` through the
+  corpus collector instead of silently skipping it, so the control pool is no longer empty
+  for a manifest-backed corpus.
+
 ## v2.1.0 - 2026-11-01
 
 - Primary-text verification: `apply --primary-text FILE...` (and `primary_texts:` in a brief

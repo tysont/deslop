@@ -167,3 +167,17 @@ def test_candidates_from_dir_and_control_pool(tmp_path, fixture_voice):
     assert len(pool) > 50 and all(blind.count_words(p) >= blind.MIN_WORDS for _, p in pool)
     from_exemplars = blind.control_pool(fixture_voice, None)
     assert from_exemplars and all(src.startswith("exemplar") for src, _ in from_exemplars)
+
+
+def test_control_pool_reads_manifest_directories(tmp_path, fixture_voice):
+    src = tmp_path / "crawl"
+    src.mkdir()
+    body = " ".join(f"word{i}" for i in range(60))
+    (src / "a.txt").write_text(f"{body}.\n\n{body}.\n", encoding="utf-8")
+    (src / "manifest.jsonl").write_text(
+        json.dumps({"file": "a.txt", "author": "Ann Author", "title": "Listed"}) + "\n",
+        encoding="utf-8",
+    )
+    pool = blind.control_pool(fixture_voice, src)
+    assert len(pool) == 2
+    assert all(source == "Listed" for source, _ in pool)
