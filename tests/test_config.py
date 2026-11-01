@@ -58,7 +58,7 @@ def test_cli_reads_voice_and_options_from_config(
     r = runner.invoke(app, ["score", heldout, "--voice", str(tmp_path / "nope.voice")])
     assert r.exit_code == 1, r.output  # the flag overrides the config, and is checked
     r = runner.invoke(app, ["--config", str(tmp_path / "missing.yaml"), "score", heldout])
-    assert r.exit_code == 1 and "missing.yaml" in r.output
+    assert r.exit_code == 1 and "missing.yaml" in "".join(r.output.split())
 
 
 def test_cli_requires_voice_when_absent_everywhere(fixtures_dir, tmp_path, monkeypatch):

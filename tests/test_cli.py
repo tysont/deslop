@@ -16,6 +16,11 @@ runner = CliRunner()
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def flat(r) -> str:
+    """stdout with rich's line wrapping undone, so substrings survive narrow terminals."""
+    return " ".join(r.stdout.split())
+
+
 def scripted_factory(monkeypatch, providers=None, **kw):
     providers = providers or {
         "anthropic": Scripted("anthropic", **kw),
@@ -33,7 +38,7 @@ def scripted_factory(monkeypatch, providers=None, **kw):
 
 def test_version():
     r = runner.invoke(app, ["--version"])
-    assert r.exit_code == 0 and "deslop 2." in r.stdout
+    assert r.exit_code == 0 and "deslop 2." in flat(r)
 
 
 def test_voice_build_show_validate(tmp_path):
@@ -64,18 +69,18 @@ def test_voice_build_show_validate(tmp_path):
         ],
     )
     assert r.exit_code == 0, r.output
-    assert out.is_file() and "4 documents" in r.stdout and "thresholds" in r.stdout
+    assert out.is_file() and "4 documents" in flat(r) and "thresholds" in flat(r)
     r = runner.invoke(app, ["voice", "show", str(out), "--clusters"])
     assert r.exit_code == 0, r.output
-    assert "Registers" in r.stdout and "95% CI" in r.stdout and "Samuel Johnson" in r.stdout
+    assert "Registers" in flat(r) and "95% CI" in flat(r) and "Samuel Johnson" in flat(r)
     r = runner.invoke(app, ["voice", "show", str(out), "--json"])
     data = json.loads(r.stdout)
     assert data["meta"]["document_count"] == 4 and data["metrics"]["thresholds"]["stats"]
     r = runner.invoke(app, ["voice", "validate", str(out)])
     assert r.exit_code == 0, r.output
-    assert "checksum" in r.stdout and "thresholds" in r.stdout
+    assert "checksum" in flat(r) and "thresholds" in flat(r)
     r = runner.invoke(app, ["voice", "--help"])
-    assert r.exit_code == 0 and "show" in r.stdout and "pack" in r.stdout
+    assert r.exit_code == 0 and "show" in flat(r) and "pack" in flat(r)
 
 
 def test_voice_from_add_and_diff(fixture_voice, fixtures_dir, tmp_path):
@@ -94,9 +99,9 @@ def test_voice_from_add_and_diff(fixture_voice, fixtures_dir, tmp_path):
         ],
     )
     assert r.exit_code == 0, r.output
-    assert "5 documents" in r.stdout
+    assert "5 documents" in flat(r)
     r = runner.invoke(app, ["voice", "diff", str(base), str(out)])
-    assert r.exit_code == 0 and "Metric means" in r.stdout
+    assert r.exit_code == 0 and "Metric means" in flat(r)
     r = runner.invoke(app, ["voice", "--from", str(base), "-o", str(out)])
     assert r.exit_code == 1 and "--add" in r.output
 
@@ -116,9 +121,9 @@ def test_voice_pack_unpack_strip(fixture_voice, tmp_path):
             "--strip-exemplars",
         ],
     )
-    assert r.exit_code == 0 and "stripped" in r.stdout
+    assert r.exit_code == 0 and "stripped" in flat(r)
     r = runner.invoke(app, ["voice", "validate", str(tmp_path / "shared.voice")])
-    assert r.exit_code == 0 and "exemplars stripped" in r.stdout
+    assert r.exit_code == 0 and "exemplars stripped" in flat(r)
 
 
 def test_score_exit_codes_and_json(fixture_voice, fixtures_dir, slop_text, tmp_path):
@@ -178,7 +183,7 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
     )
     assert r.exit_code in (0, 2), r.output
     assert out.exists() and "Plainly," in out.read_text()
-    assert "Meaning" in r.stdout and "unit 1" in r.stdout and "candidate(s)" in r.stdout
+    assert "Meaning" in flat(r) and "unit 1" in flat(r) and "candidate(s)" in flat(r)
     r = runner.invoke(
         app,
         [
@@ -243,13 +248,13 @@ def test_lab_calibrate_thresholds_and_export(fixture_voice, tmp_path, monkeypatc
         app, ["lab", "calibrate-thresholds", str(voice), "-o", str(tmp_path / "re.voice")]
     )
     assert r.exit_code == 0, r.output
-    assert "LLM-reference documents fail" in r.stdout and (tmp_path / "re.voice").exists()
+    assert "LLM-reference documents fail" in flat(r) and (tmp_path / "re.voice").exists()
     r = runner.invoke(
         app,
         ["lab", "export", str(voice), "--out", str(tmp_path / "ft.jsonl"), "--no-chunks"],
     )
     assert r.exit_code == 0, r.output
-    assert "No job" in r.stdout and "0 pairs" in r.stdout
+    assert "No job" in flat(r) and "0 pairs" in flat(r)
 
 
 def test_lab_blind_with_voice_exemplars(fixture_voice, tmp_path, monkeypatch):
@@ -277,7 +282,7 @@ def test_lab_blind_with_voice_exemplars(fixture_voice, tmp_path, monkeypatch):
         input="A\nhmm\n",
     )
     assert r.exit_code == 0, r.output
-    assert "this session: " in r.stdout
+    assert "this session: " in flat(r)
 
 
 def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path):
