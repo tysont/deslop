@@ -899,8 +899,8 @@ def lab_calibrate_judge(
     for jp in providers:
         usage.add(jp.usage)
     report_budget()
-    for name, cal in results.items():
-        v.meta.judge_calibration[name] = cal.model_dump()
+    for model_name, cal in results.items():
+        v.meta.judge_calibration[model_name] = cal.model_dump()
     target = out or voice
     v.read_only = False
     v.save(target)
@@ -911,14 +911,14 @@ def lab_calibrate_judge(
         f"{len(corpus_paras)} held-out paragraphs ({method}), {len(llm_paras)} LLM-reference "
         f"paragraphs; ${usage.cost_usd:.3f} over {usage.calls} call(s) via {name}"
     )
-    for name, cal in results.items():
+    for model_name, cal in results.items():
         verdict = (
             "usable"
             if cal.usable
             else f"below {100 * CALIBRATION_MIN_ACCURACY:.0f}%: unreliable as judge"
         )
         console.print(
-            f"  {name} ({cal.model}): {100 * cal.accuracy:.0f}% picked the corpus paragraph as the "
+            f"  {model_name}: {100 * cal.accuracy:.0f}% picked the corpus paragraph as the "
             f"writer's over {cal.pairs} pairs, {100 * cal.model_prose_accuracy:.0f}% picked the "
             f"LLM paragraph as model prose, mean confidence {cal.mean_confidence:.2f}, "
             f"position bias {cal.position_bias:+.2f}; {verdict}"
