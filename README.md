@@ -107,6 +107,8 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--max-calls` | `200` | live calls this invocation may make, so subscription runs have a cap too |
 | `--fidelity` | `content` | `content` protects facts, entities, numbers, quotations, causal and attributed evaluative claims and permits changes of person, discourse words, emphasis, figurative restatement, hedging and reordering; `strict` fails any new claim |
 | `--report-all` | off | judge and report every candidate in full, pass or fail |
+| `--compare PATH` | none | write a self-contained HTML comparison page (reference, input, candidate; sentence-aligned diff; checks pinned to paragraphs) |
+| `--reference FILE` | none | human reference text for the comparison page's first column |
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
@@ -222,6 +224,14 @@ which is machine-written. Results append to `$DESLOP_HOME/blind/<voice>.jsonl`. 
 
 Fine-tuning data from accepted apply pairs and summarized corpus chunks, with a token count
 and cost estimate. Never launches a job.
+
+### `deslop report --html RESULT.json -o PAGE.html [--reference FILE]`
+
+Render a saved `apply --json` result as the three-column comparison page: human reference
+(undiffed), input, and the selected candidate (a selector when the result was made with
+`--report-all`), with changed, moved and new sentences marked, a word-level diff on hover or
+toggle, a read-clean toggle, and every lock, meaning, coherence and judge finding pinned to
+the paragraph it concerns. One HTML file, nothing external.
 
 ### `deslop doctor [--json]` and `deslop providers test [--json]`
 

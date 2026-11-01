@@ -353,5 +353,7 @@ def test_report_all_judges_every_candidate_and_the_prompt_frees_person(fixture_v
     flat = " ".join(user.split())
     assert "grammatical person and mode of address" in flat
     assert "not a constraint on person or address" in flat
+    assert "Formatting (title, headings, lists, emphasis) follows the exemplars" in flat
+    assert "when the exemplars have no headings the output has none" in flat
     strict = apply(slop_text, fixture_voice, n=1, fidelity="strict", provider_factory=factory)
     assert strict.fidelity == "strict" and result.fidelity == "content"

@@ -730,6 +730,12 @@ def apply_cmd(
     report_all: bool = typer.Option(
         False, "--report-all", help="Judge and report every candidate, pass or fail"
     ),
+    compare: Path | None = typer.Option(
+        None, "--compare", help="Write a self-contained HTML comparison page here"
+    ),
+    reference: Path | None = typer.Option(
+        None, "--reference", help="Human reference text for the comparison page's first column"
+    ),
     budget: float | None = typer.Option(
         None,
         "--budget",
@@ -807,6 +813,17 @@ def apply_cmd(
     out = s.path("out", out)
     if out is not None:
         out.write_text(front + result.text, encoding="utf-8")
+    compare = s.path("compare", compare)
+    if compare is not None:
+        from deslop.compare_page import build_page
+
+        ref_text = (
+            split_frontmatter(reference.read_text(encoding="utf-8"))[1] if reference else None
+        )
+        compare.write_text(
+            build_page(json.loads(result.to_json()), reference=ref_text), encoding="utf-8"
+        )
+        err.print(f"[dim]comparison page: {compare}[/]")
     report_budget()
     if json_out:
         print_json(result.to_json())
@@ -1101,6 +1118,31 @@ def lab_export(
 
 
 # ------------------------------------------------------------------ doctor, providers
+
+
+@app.command("report")
+def report_cmd(
+    result: Path = typer.Argument(..., help="An apply --json result file"),
+    html_out: bool = typer.Option(False, "--html", help="Write the HTML comparison page"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Where to write it"),
+    reference: Path | None = typer.Option(
+        None, "--reference", help="Human reference text for the first column"
+    ),
+) -> None:
+    """Render a saved apply result: `--html` writes the three-column comparison page."""
+    from deslop.compare_page import build_page
+
+    try:
+        data = json.loads(result.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read {result}: {exc}")
+    if not html_out:
+        fail("give --html (the only report format so far)")
+    if out is None:
+        fail("--out PATH is required")
+    ref_text = split_frontmatter(reference.read_text(encoding="utf-8"))[1] if reference else None
+    out.write_text(build_page(data, reference=ref_text), encoding="utf-8")
+    console.print(f"wrote {out}")
 
 
 @app.command("doctor")

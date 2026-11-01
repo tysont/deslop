@@ -31,8 +31,20 @@ aphorisms (restate the idea plainly), and claims attributed to named others ("X 
 claim about X). Do not include questions, instructions to the reader, or citations. Return a
 numbered list, one proposition per line, nothing else."""
 
-PROTECTED = ("fact", "entity", "number", "quotation", "causal", "evaluative")
+PROTECTED = ("fact", "entity", "number", "quotation", "causal", "evaluative", "event")
 PERMITTED = ("person", "discourse", "emphasis", "figurative", "hedging", "reordering")
+
+MATERIALITY = """An addition is reported only if it introduces a new named entity, a new number or
+quantity, a new event, or a causal or conditional claim whose cause or condition is not stated
+or implied in the original. Restatement, elaboration of a stated claim in other words, and
+making an implicit causal link explicit are not additions."""
+
+REVIEW_QUESTION = "Would a careful reader of the original learn anything new from this sentence?"
+
+REVIEW_SYSTEM = f"""You are shown a paragraph of an original text and one sentence of a rewrite
+that a first reader flagged as adding information. Decide the flag. {REVIEW_QUESTION}
+Answer yes or no, then one line why. Answer in JSON only:
+{{"new": true or false, "why": "one line"}}"""
 
 ENTAILMENT_SYSTEM_STRICT = """You compare an original passage with a rewrite. Answer in JSON only.
 
@@ -48,31 +60,27 @@ discussion, such as a verse, page, line or Stephanus number).
 Return exactly: {"original": [{"n": 1, "kept": true, "note": ""}, ...],
 "added": [{"text": "...", "kind": "claim" | "reader_address" | "citation"}, ...]}"""
 
-ENTAILMENT_SYSTEM = """You compare an original passage with a rewrite. Answer in JSON only.
+ENTAILMENT_SYSTEM = f"""You compare an original passage with a rewrite of it. Answer in JSON only.
 
-Given the original's numbered propositions, decide for each whether the rewrite still asserts
-or clearly entails it (true) or drops, weakens or contradicts it (false). A plainer, reordered
-or differently voiced statement of the same idea still counts as kept.
+First, for each of the original's numbered propositions, decide whether the rewrite still
+asserts or clearly entails it (true) or drops, weakens or contradicts it (false). A plainer,
+reordered or differently voiced statement of the same idea still counts as kept.
 
-Then list what the rewrite adds. Definition of "a claim the original does not make": the
-check protects facts about the world, named entities, numbers and quantities, quotations,
-causal and conditional claims, and evaluative claims attributed to someone in the original.
-It explicitly permits and never reports: change of grammatical person or address (third to
-first, "the audience" to "you"); discourse markers and sequence words (next, then, now,
-first); emphasis and intensifiers; metaphor or figurative restatement of a retained claim;
-hedging; and reordering. Statements about the document itself or about the act of speaking
-are framing, not claims.
+Second, read the rewrite sentence by sentence against the original passage itself. For each
+sentence that contains information a reader could not have learned from the original
+passage, report it. {MATERIALITY}
+A change of grammatical person or address, a discourse or sequence word, emphasis, a
+figurative restatement, hedging, reordering, a change of formatting, and a statement about
+the act of speaking are never additions.
 
-Report each addition with its category: "fact", "entity", "number", "quotation", "causal"
-or "evaluative" for a protected addition; "person", "discourse", "emphasis", "figurative",
-"hedging" or "reordering" for a permitted change (listed for the record, never a failure);
-"reader_address" for an imperative or question to the reader that adds no content;
-"citation" for a reference to the primary text (verse, page, line or Stephanus number).
+Report each addition with the rewrite's sentence, what is new in it, and its category:
+"entity" (a new named entity), "number" (a new number or quantity), "event" (a new event),
+or "causal" (a causal or conditional claim whose cause or condition the original neither
+states nor implies).
 
-Return exactly: {"original": [{"n": 1, "kept": true, "note": ""}, ...],
-"added": [{"text": "...", "category": "fact" | "entity" | "number" | "quotation" | "causal"
-| "evaluative" | "person" | "discourse" | "emphasis" | "figurative" | "hedging" |
-"reordering" | "reader_address" | "citation"}, ...]}"""
+Return exactly: {{"original": [{{"n": 1, "kept": true, "note": ""}}, ...],
+"added": [{{"sentence": "...", "text": "what is new", "category": "entity" | "number" |
+"event" | "causal"}}, ...]}}"""
 
 
 class PropositionCheck(BaseModel):
@@ -82,9 +90,11 @@ class PropositionCheck(BaseModel):
 
 
 class AddedClaim(BaseModel):
-    text: str
+    text: str  # what is new (strict mode: the claim)
     kind: str  # claim | permitted | reader_address | citation
-    category: str = ""  # protected or permitted category under content fidelity
+    category: str = ""  # entity | number | event | causal (strict mode: free)
+    sentence: str = ""  # the rewrite sentence it sits in (content mode)
+    note: str = ""  # the reviewer's one line, for cleared items
 
 
 class SemanticResult(BaseModel):
@@ -93,6 +103,7 @@ class SemanticResult(BaseModel):
 
     checks: list[PropositionCheck] = Field(default_factory=list)
     added: list[AddedClaim] = Field(default_factory=list)
+    cleared: list[AddedClaim] = Field(default_factory=list)  # flagged, then cleared on review
     provider: str = ""
     model: str = ""
 
@@ -151,11 +162,13 @@ def check_meaning(
     fidelity: Fidelity = "content",
 ) -> SemanticResult:
     """Ask `provider` (the judge model) whether `candidate` keeps every proposition of
-    `original` and adds none. Under `content` fidelity an addition fails only in a protected
-    category (fact, entity, number, quotation, causal, evaluative); changes of person,
-    discourse markers, emphasis, figurative restatement, hedging and reordering are listed
-    as permitted. `strict` is the older rule: any new claim fails. Reader-address imperatives
-    and primary-text citations are exempt under both."""
+    `original` (the dropped check, against the proposition list) and whether any of its
+    sentences adds information a reader could not have learned from `original` itself (the
+    added check, against the passage). Under `content` fidelity only material additions
+    count (a new entity, number, event, or unstated cause), and each flagged sentence is
+    re-asked in a second pass with the original shown; only a "yes" survives, the rest are
+    listed as `cleared`. `strict` is the older rule: any new claim fails. Both passes are
+    deterministic, so the cache answers repeats."""
     numbered = "\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1))
     user = (
         f"ORIGINAL:\n{original.strip()}\n\nORIGINAL PROPOSITIONS:\n{numbered}\n\n"
@@ -191,9 +204,12 @@ def check_meaning(
     ]
     added = []
     for item in data.get("added", []) or []:
-        if not isinstance(item, dict) or not str(item.get("text", "")).strip():
+        if not isinstance(item, dict):
             continue
-        text = str(item["text"]).strip()
+        text = str(item.get("text", "") or item.get("sentence", "")).strip()
+        if not text:
+            continue
+        sentence = str(item.get("sentence", "")).strip()
         category = str(item.get("category", "")).strip().lower()
         kind = str(item.get("kind", "")).strip().lower()
         if category in PERMITTED:
@@ -204,7 +220,41 @@ def check_meaning(
             kind = "claim"
         if is_primary_citation(text):
             kind = "citation"
-        added.append(AddedClaim(text=text, kind=kind, category=category))
+        added.append(AddedClaim(text=text, kind=kind, category=category, sentence=sentence))
+    cleared: list[AddedClaim] = []
+    if fidelity == "content":
+        kept_items = []
+        for item in added:
+            if item.kind != "claim":
+                kept_items.append(item)
+                continue
+            new, why = review_addition(original, item, provider)
+            item.note = why
+            (kept_items if new else cleared).append(item)
+        added = kept_items
     return SemanticResult(
-        checks=checks, added=added, provider=completion.provider, model=completion.model
+        checks=checks,
+        added=added,
+        cleared=cleared,
+        provider=completion.provider,
+        model=completion.model,
     )
+
+
+def review_addition(original: str, item: AddedClaim, provider: CachingProvider) -> tuple[bool, str]:
+    """Second pass on one flagged sentence: with the original paragraph shown, would a careful
+    reader learn anything new from it? Returns (yes, one line why). A reply with no JSON is
+    read as yes, so a flag is never cleared by accident."""
+    user = (
+        f"ORIGINAL PARAGRAPH:\n{original.strip()}\n\nFLAGGED SENTENCE:\n"
+        f"{item.sentence or item.text}\n\nWHAT THE FIRST READER THOUGHT WAS NEW:\n{item.text}"
+    )
+    completion = provider.complete(REVIEW_SYSTEM, user, temperature=0.0)
+    try:
+        data = _json_block(completion.text)
+    except (ValueError, json.JSONDecodeError):
+        return True, "reviewer gave no JSON"
+    new = data.get("new")
+    if isinstance(new, str):
+        new = new.strip().lower().startswith("y") or new.strip().lower() == "true"
+    return bool(new), str(data.get("why", ""))[:200]

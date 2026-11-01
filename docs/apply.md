@@ -47,13 +47,21 @@ content: headings, rules, list markers and emphasis are never locked, so a list 
 rendered as prose and prose as a list; a word the document also writes in lower case, or one
 capitalised only at a sentence or item start, is not a proper noun. Propositions are content
 statements about the subject with framing dropped and no author as grammatical subject.
-Under `--fidelity content` (the default) the semantic lock protects facts about the world,
-named entities, numbers and quantities, quotations, causal and conditional claims, and
-evaluative claims attributed to someone in the original, and permits changes of grammatical
-person or address, discourse and sequence words, emphasis, figurative restatement of a
-retained claim, hedging and reordering; each rejection names its category. `--fidelity
-strict` fails any new claim, for originals already in the target voice. `--report-all`
-judges and reports every candidate, pass or fail.
+Under `--fidelity content` (the default) the semantic lock keeps the proposition list for
+the dropped check and runs the added check against the original paragraph itself, sentence
+by sentence: an addition is reported only if it introduces a new named entity, a new number
+or quantity, a new event, or a causal or conditional claim whose cause or condition is not
+stated or implied in the original; restatement, elaboration of a stated claim in other
+words, and making an implicit causal link explicit are not additions. Everything the first
+pass flags is re-asked in a second pass with the original shown ("would a careful reader of
+the original learn anything new from this sentence?"); only a yes survives, and the rest are
+listed as cleared on review. Each rejection names its category. `--fidelity strict` fails
+any new claim, for originals already in the target voice. `--report-all` judges and reports
+every candidate, pass or fail. The lexical lock compares words case-insensitively in both
+directions. The coherence checks exempt first and second person from the antecedent rule
+and report tense drift only between two different dominant tenses (a paragraph is mixed
+when no tense holds more than half of its finite verbs). `--compare PAGE.html` writes the
+comparison page described under `deslop report`.
 
 ## Primary texts
 

@@ -11,12 +11,31 @@ from deslop.nlp import Analysis, Paragraph, Sentence, analyze
 from deslop.stats import Band
 
 PRONOUN_OPENERS = {"this", "that", "it", "these", "those"}
+# First and second person never need an antecedent: the writer and the reader are given.
+PERSONAL = {
+    "i",
+    "we",
+    "you",
+    "me",
+    "us",
+    "my",
+    "our",
+    "your",
+    "mine",
+    "ours",
+    "yours",
+    "myself",
+    "ourselves",
+    "yourself",
+    "yourselves",
+}
+DOMINANT_SHARE = 0.5  # a tense is dominant when it carries more than half the finite verbs
 CONNECTIVE_TOLERANCE = 0.5  # the output's ratio may differ from the original's by this share
 
 
 def paragraph_tense(para: Paragraph) -> str:
-    """The dominant tense of the paragraph's finite verbs: past, present, mixed (a tie) or
-    none (no finite verb carries a tense)."""
+    """The dominant tense of the paragraph's finite verbs: past or present when one carries
+    more than half of them, mixed when none does, none when no finite verb carries a tense."""
     counts: Counter[str] = Counter()
     for tok in para.doc:
         if tok.pos_ not in ("VERB", "AUX") or "Fin" not in tok.morph.get("VerbForm", []):
@@ -25,10 +44,8 @@ def paragraph_tense(para: Paragraph) -> str:
             counts[{"Past": "past", "Pres": "present"}.get(tense, tense.lower())] += 1
     if not counts:
         return "none"
-    top = counts.most_common(2)
-    if len(top) > 1 and top[0][1] == top[1][1]:
-        return "mixed"
-    return top[0][0]
+    tense, n = counts.most_common(1)[0]
+    return tense if n > DOMINANT_SHARE * sum(counts.values()) else "mixed"
 
 
 class TenseDrift(BaseModel):
@@ -52,11 +69,12 @@ def _example_in_tense(para: Paragraph, tense: str) -> str:
 
 
 def tense_drift(before: Analysis, after: Analysis) -> list[TenseDrift]:
-    """Paragraphs whose dominant tense changed, paired by position."""
+    """Paragraphs whose dominant tense changed to a different dominant tense, paired by
+    position; a paragraph that is mixed or has no finite verb on either side is not drift."""
     out = []
     for i, (p, q) in enumerate(zip(before.paragraphs, after.paragraphs, strict=False), 1):
         a, b = paragraph_tense(p), paragraph_tense(q)
-        if a != b and "none" not in (a, b):
+        if a != b and a not in ("none", "mixed") and b not in ("none", "mixed"):
             out.append(TenseDrift(paragraph=i, before=a, after=b, example=_example_in_tense(q, b)))
     return out
 
@@ -73,14 +91,17 @@ def _has_noun_phrase(text_sentences: list[Sentence]) -> bool:
 
 
 def antecedent_flags(a: Analysis) -> list[AntecedentFlag]:
-    """Sentences opening with a pronoun, or with this/that/it, when the previous two sentences
-    hold no noun phrase for it to refer to (the first sentence of the text always does)."""
+    """Sentences opening with a third-person pronoun, or with this/that/it, when the previous
+    two sentences hold no noun phrase for it to refer to. First and second person (I, we,
+    you and their forms) are exempt."""
     sentences = a.sentences
     out = []
     for i, s in enumerate(sentences):
         first = next((t for t in s.span if t.is_alpha), None)
         if first is None:
             continue
+        if first.lower_ in PERSONAL:
+            continue  # first and second person need no antecedent
         if first.pos_ != "PRON" and first.lower_ not in PRONOUN_OPENERS:
             continue
         if not _has_noun_phrase(sentences[max(0, i - 2) : i]):

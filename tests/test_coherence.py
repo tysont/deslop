@@ -82,3 +82,29 @@ def test_check_coherence_collects_every_failure_as_a_reader_note():
     assert good.ok and good.reader_notes() == []
     short = check_coherence(PAST, PAST.split("\n\n")[0], band=None)
     assert not short.ok and any("paragraphs" in n for n in short.reader_notes())
+
+
+def test_mixed_tense_needs_a_majority_and_is_never_drift():
+    even = analyze(
+        "The road ran north. Nobody walks it now. The miller closed his gate. He lights the lamp."
+    )
+    assert paragraph_tense(even.paragraphs[0]) == "mixed"
+    mostly_past = analyze(
+        "The road ran north. Nobody walked it. The miller closed his gate. He lights the lamp."
+    )
+    assert paragraph_tense(mostly_past.paragraphs[0]) == "past"
+    assert tense_drift(mostly_past, even) == [], "present -> mixed is not drift"
+    assert tense_drift(even, mostly_past) == []
+    present = analyze(
+        "The road runs north. Nobody walks it. The miller closes his gate. He lights the lamp."
+    )
+    assert [d.before + ">" + d.after for d in tense_drift(mostly_past, present)] == ["past>present"]
+
+
+def test_first_and_second_person_need_no_antecedent():
+    a = analyze(
+        "I propose to bring before you the history of a candle. We shall begin. You will see."
+    )
+    assert antecedent_flags(a) == []
+    b = analyze("It is my purpose to begin. This is the plan.")
+    assert [f.word for f in antecedent_flags(b)] == ["It"]  # "This" has "purpose" before it

@@ -128,3 +128,15 @@ def test_a_tagged_entity_capitalised_only_at_sentence_start_is_not_a_name():
     document = DocumentLock.build(doc)
     rewrite = "At the same time glycerin is produced, a sugar or something like one. The candle came from the Royal George."
     assert check(doc, rewrite, document).ok
+
+
+def test_removals_are_case_insensitive():
+    doc = "The miners used Tallow candles. Glycerin comes out of the tallow. Then Noah builds."
+    document = DocumentLock.build(doc)
+    lowered = "The miners used tallow candles; glycerin comes out of the tallow. Then noah builds."
+    result = check(doc, lowered, document)
+    assert result.ok, [str(v) for v in result.violations]
+    quoted = 'He said "The Bright Day Is Done" and 3 men left.'
+    assert check(
+        quoted, 'He said "the bright day is done" and 3 men left.', DocumentLock.build(quoted)
+    ).ok

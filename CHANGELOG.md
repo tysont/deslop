@@ -2,6 +2,27 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.3.2 - 2026-11-01
+
+- Lexical lock: removals are compared case-insensitively, like additions; a proper noun is
+  locked only when the original capitalises it somewhere other than a sentence or item start.
+- Semantic lock: the added check runs against the original paragraph, sentence by sentence,
+  and reports only material additions (a new entity, number, event, or a causal claim whose
+  cause the original neither states nor implies; restatement, elaboration and making an
+  implicit link explicit are not additions). A second pass re-asks every flag with the
+  original shown; only a yes survives, the rest are reported as cleared on review. Both
+  passes are cached.
+- Coherence: first and second person need no antecedent; tense drift is reported only when
+  one dominant tense (more than half the finite verbs) changes to another. The judge retries
+  once with a stricter format instruction before falling back on a parse failure.
+- Writer prompt: formatting follows the exemplars, the input's formatting is not a
+  constraint, and no headings when the exemplars have none. The judge's order item covers
+  the argument's content, not headings or lists.
+- `apply --compare PAGE.html [--reference FILE]` and `deslop report --html RESULT.json`:
+  a self-contained three-column comparison page with sentence-aligned diffs, moved and new
+  sentences marked, word diff on hover or toggle, read-clean toggle, a candidate selector
+  under `--report-all`, and every finding pinned to its paragraph.
+
 ## v2.3.1 - 2026-11-01
 
 - Input: YAML frontmatter is stripped on ingest and kept on output; propositions come from

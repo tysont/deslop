@@ -188,6 +188,10 @@ def main(register: str, result_path: Path, out: Path) -> None:
                     lines.append(f"- added: {x}")
                 for x in permitted:
                     lines.append(f"- permitted: {x}")
+                for x in sem.get("cleared", []):
+                    lines.append(
+                        f"- cleared on review ({x['category']}): {x['text']} — {x['note']}"
+                    )
             cc = c.get("coherence")
             if cc:
                 lines.append(

@@ -379,7 +379,9 @@ DOCUMENT_TEMPLATE = """# Exemplars of the voice
 Write {what} as this writer would, from its first paragraph to its last. Keep every
 proposition listed above and add none. Adopt this writer's grammatical person and mode of
 address as shown in the exemplars and profile; the propositions' phrasing is not a constraint
-on person or address. Keep the author's tense, paragraphing and order of argument unless the
+on person or address. Formatting (title, headings, lists, emphasis) follows the exemplars;
+the input's formatting is not a constraint, and when the exemplars have no headings the
+output has none. Keep the author's tense, paragraphing and order of argument unless the
 voice's profile says otherwise. Keep it about the length of the original. Return {returned}
 and nothing else.{noticed}
 
@@ -861,6 +863,8 @@ def _meaning_diff(units: list[UnitLog]) -> str:
             lines.append(f"  {mark} {c.proposition}" + (f" ({c.note})" if c.note else ""))
         for added in chosen.semantic.added:
             lines.append(f"  + [{added.kind}] {added.text}")
+        for item in chosen.semantic.cleared:
+            lines.append(f"  ~ cleared on review [{item.category}] {item.text}: {item.note}")
         for add in chosen.primary.additions if chosen.primary else []:
             mark = "✓" if add.verified else "?"
             lines.append(f"  {mark} [{add.kind}] {add}")
@@ -1324,6 +1328,7 @@ def _check_meaning_by_paragraph(
                 for c in r.checks
             )
             merged.added.extend(r.added)
+            merged.cleared.extend(r.cleared)
             merged.provider, merged.model = r.provider, r.model
         return merged
     return check_meaning(

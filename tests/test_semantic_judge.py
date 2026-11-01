@@ -81,7 +81,7 @@ def test_check_meaning_reports_dropped_and_added_claims():
         }
     )
     p = Canned("openai", answer)
-    result = check_meaning("orig", "cand", ["A", "B"], p)
+    result = check_meaning("orig", "cand", ["A", "B"], p, fidelity="strict")
     assert not result.ok
     assert result.failing == ["dropped: B", "added: Zeus fought his father"]
     assert [a.kind for a in result.added] == ["claim", "reader_address", "citation"]
@@ -217,41 +217,59 @@ def test_compare_document_without_json_is_a_loss_everywhere(fixture_voice):
     assert v.losses == 4 and v.note == "judge gave no JSON"
 
 
-def test_content_fidelity_reports_categories_and_permits_framing_changes():
-    from deslop.semantic import PERMITTED, PROTECTED, check_meaning
+def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
+    from deslop.semantic import MATERIALITY, REVIEW_QUESTION, check_meaning
 
-    answer = json.dumps(
-        {
-            "original": [{"n": 1, "kept": True}],
-            "added": [
-                {"text": "The lamp was lit in 1834", "category": "number"},
-                {"text": "we may enter", "category": "person"},
-                {"text": "He next lays down the terms", "category": "discourse"},
-                {"text": "the plain proof", "category": "emphasis"},
-                {"text": "a door into philosophy", "category": "figurative"},
-                {"text": "Gen 6:5", "category": "fact"},
-                {"text": "Consider this", "category": "reader_address"},
-            ],
-        }
+    class TwoPass(CachingProvider):
+        def __init__(self):
+            super().__init__(use_cache=False, cache_only=False)
+            self.name, self.default_model, self.systems, self.prompts = "anthropic", "m", [], []
+
+        def _raw_complete(self, system, user, model, temperature):
+            self.systems.append(system)
+            self.prompts.append(user)
+            if "first reader flagged" in system:
+                new = "1834" in user
+                text = json.dumps(
+                    {
+                        "new": new,
+                        "why": "a date the original lacks" if new else "restates the sinking",
+                    }
+                )
+            else:
+                text = json.dumps(
+                    {
+                        "original": [{"n": 1, "kept": True}],
+                        "added": [
+                            {
+                                "sentence": "The lamp was lit in 1834.",
+                                "text": "1834",
+                                "category": "number",
+                            },
+                            {
+                                "sentence": "It had gone down with the ship.",
+                                "text": "went down with the ship",
+                                "category": "event",
+                            },
+                            {"sentence": "See Gen 6:5.", "text": "Gen 6:5", "category": "entity"},
+                        ],
+                    }
+                )
+            return Completion(text=text, model=model, provider=self.name, usage=Usage(calls=1))
+
+    p = TwoPass()
+    result = check_meaning(
+        "The ship sank in 1830.", "cand", ["The ship sank."], p, fidelity="content"
     )
-    p = Canned("anthropic", answer)
-    result = check_meaning("orig", "cand", ["A"], p, fidelity="content")
-    assert "a claim the original does not make" in p.systems[0]
-    assert "change of grammatical person or address" in p.systems[0]
-    assert result.failing == ["added (number): The lamp was lit in 1834"]
-    kinds = [(a.category, a.kind) for a in result.added]
-    assert ("person", "permitted") in kinds and ("discourse", "permitted") in kinds
-    assert ("fact", "citation") in kinds, "a citation is never a claim"
-    assert ("reader_address", "reader_address") in kinds
-    assert set(PROTECTED) >= {"fact", "entity", "number", "quotation", "causal", "evaluative"}
-    assert set(PERMITTED) >= {
-        "person",
-        "discourse",
-        "emphasis",
-        "figurative",
-        "hedging",
-        "reordering",
-    }
+    assert MATERIALITY in p.systems[0] and "sentence by sentence" in p.systems[0]
+    assert len(p.systems) == 3, (
+        "pass one, then one review per flagged claim (the citation is exempt)"
+    )
+    assert REVIEW_QUESTION in p.systems[1] and "ORIGINAL PARAGRAPH:" in p.prompts[1]
+    assert result.failing == ["added (number): 1834"]
+    assert [c.text for c in result.cleared] == ["went down with the ship"]
+    assert result.cleared[0].note == "restates the sinking" and result.cleared[0].sentence
+    assert [a.kind for a in result.added] == ["claim", "citation"]
 
 
 def test_strict_fidelity_keeps_the_old_behaviour():
@@ -276,3 +294,38 @@ def test_proposition_extraction_asks_for_content_not_framing():
     strict = Canned("anthropic", "1. x")
     extract_propositions("text", strict, fidelity="strict")
     assert "perspective-neutral" not in strict.systems[0]
+
+
+def test_judge_retries_once_with_a_stricter_format_before_giving_up(fixture_voice):
+    from deslop.judge import compare_document
+
+    class Flaky(CachingProvider):
+        def __init__(self):
+            super().__init__(use_cache=False, cache_only=False)
+            self.name, self.default_model, self.systems = "anthropic", "m", []
+
+        def _raw_complete(self, system, user, model, temperature):
+            self.systems.append(system)
+            text = (
+                "Sure! Here is my verdict."
+                if len(self.systems) == 1
+                else json.dumps(
+                    {
+                        "voice": "A",
+                        "coherent": "tie",
+                        "tense_person": "tie",
+                        "order": "tie",
+                        "confidence": 0.9,
+                    }
+                )
+            )
+            return Completion(text=text, model=model, provider=self.name, usage=Usage(calls=1))
+
+    judge = Flaky()
+    v = compare_document("cand", "orig", "orig", fixture_voice, judge, exemplars=[])
+    assert len(judge.systems) == 2 and "JSON object only" in judge.systems[1]
+    assert v.note != "judge gave no JSON" and v.confidence == 0.9
+    assert "headings and lists is not part of this item" in judge.systems[0]
+    hopeless = Canned("anthropic", "no")
+    v = compare_document("cand", "orig", "orig", fixture_voice, hopeless, exemplars=[])
+    assert v.note == "judge gave no JSON" and len(hopeless.prompts) == 2

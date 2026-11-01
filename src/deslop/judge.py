@@ -49,7 +49,8 @@ the length).
 coherent: in which does each sentence follow from the last, with every pronoun and "this"
 pointing at something already said.
 tense_person: which keeps a consistent tense and grammatical person throughout.
-order: which better preserves the original's order of argument and its emphasis.
+order: which better preserves the order and emphasis of the argument's content. The presence
+or absence of a title, headings and lists is not part of this item.
 
 Give your confidence in the answers as a whole from 0.5 (a coin toss) to 1.0 (certain).
 Answer in JSON only:
@@ -143,6 +144,29 @@ def _order(candidate: str, other: str) -> bool:
     return digest[0] % 2 == 0
 
 
+STRICT_FORMAT = (
+    "\n\nYour previous answer was not valid JSON. Reply with the JSON object only: no prose, "
+    "no code fence, double quotes around every key and string value."
+)
+
+
+def _complete_json(
+    provider: CachingProvider, system: str, user: str
+) -> tuple[dict[str, Any] | None, Any]:
+    """Ask once; on a JSON parse failure ask again with a stricter format instruction. Both
+    calls are cached. Returns the parsed object (None if both failed) and the completion."""
+    completion = provider.complete(system, user, temperature=0.0)
+    try:
+        return _json_object(completion.text), completion
+    except (ValueError, json.JSONDecodeError):
+        pass
+    completion = provider.complete(system + STRICT_FORMAT, user, temperature=0.0)
+    try:
+        return _json_object(completion.text), completion
+    except (ValueError, json.JSONDecodeError):
+        return None, completion
+
+
 def _json_object(text: str) -> dict[str, Any]:
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
@@ -185,14 +209,13 @@ def compare(
         f"THE VOICE:\n{voice.profile.strip()}\n\n{samples or '(no samples available)'}\n\n"
         f"PARAGRAPH A:\n{a.strip()}\n\nPARAGRAPH B:\n{b.strip()}"
     )
-    completion = provider.complete(COMPARE_SYSTEM, user, temperature=0.0)
-    try:
-        data = _json_object(completion.text)
+    data, completion = _complete_json(provider, COMPARE_SYSTEM, user)
+    if data is not None:
         writer_pick = _pick(data.get("more_like_writer"))
         model_pick = _pick(data.get("more_like_model"))
         confidence = _confidence(data.get("confidence"))
         note = str(data.get("note", ""))[:300]
-    except (ValueError, json.JSONDecodeError):
+    else:
         writer_pick, model_pick, confidence, note = "", "", 0.5, "judge gave no JSON"
     mine = "A" if candidate_is_a else "B"
     return PairVerdict(
@@ -257,11 +280,10 @@ def compare_document(
         f"THE VOICE:\n{voice.profile.strip()}\n\n{samples or '(no samples available)'}\n\n"
         f"THE ORIGINAL:\n{original.strip()}\n\nTEXT A:\n{a.strip()}\n\nTEXT B:\n{b.strip()}"
     )
-    completion = provider.complete(DOCUMENT_SYSTEM, user, temperature=0.0)
+    data, completion = _complete_json(provider, DOCUMENT_SYSTEM, user)
     mine = "A" if candidate_is_a else "B"
     items: dict[str, str] = {}
-    try:
-        data = _json_object(completion.text)
+    if data is not None:
         for item in JUDGE_ITEMS:
             pick = str(data.get(item, "")).strip().lower()[:3]
             if pick == "tie":
@@ -272,7 +294,7 @@ def compare_document(
                 items[item] = "loss"
         confidence = _confidence(data.get("confidence"))
         note = str(data.get("note", ""))[:300]
-    except (ValueError, json.JSONDecodeError):
+    else:
         items = dict.fromkeys(JUDGE_ITEMS, "loss")
         confidence, note = 0.5, "judge gave no JSON"
     return DocumentVerdict(

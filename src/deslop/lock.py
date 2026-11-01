@@ -188,17 +188,21 @@ def check(before: str, after: str, document: DocumentLock) -> LockResult:
     other addition is reported for the semantic lock to judge, not rejected here."""
     a = inventory(before, document.names)
     b = inventory(after, document.names)
+    after_lower, before_lower = after.lower(), before.lower()
     violations = []
     additions = []
     for cls in LOCK_CLASSES:
         before_items = a.by_class(cls)
         after_items = b.by_class(cls)
+        after_keys = Counter(k.lower() for k in after_items.elements())
+        before_keys = Counter(k.lower() for k in before_items.elements())
         if cls == "proper_nouns":
-            missing = [t for t in before_items if t not in after_items and t not in after]
-            added = [t for t in after_items if t not in before_items and t not in before]
+            missing = [t for t in before_items if t.lower() not in after_lower]
+            added = [t for t in after_items if t.lower() not in before_lower]
         else:
-            missing = sorted((before_items - after_items).elements())
-            added = sorted(set((after_items - before_items).elements()))
+            # Removals and additions are both case-insensitive: the words, not their case.
+            missing = sorted(k for k, n in before_items.items() if after_keys[k.lower()] < n)
+            added = sorted(set(k for k in after_items if before_keys[k.lower()] == 0))
         if missing:
             violations.append(LockViolation(cls, missing))
         for item in added:
