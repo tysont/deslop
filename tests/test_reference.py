@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from deslop.reference import (
     PrimaryText,
-    load_primary_texts,
     normalize,
     verify_additions,
 )
@@ -68,18 +67,6 @@ def test_stephanus_resolution_and_ranges(tmp_path):
     assert t.resolve("369a-369c") == "369a"
     assert t.resolve("369d") is None
     assert t.resolve("369b-370a") is None, "range end missing"
-
-
-def test_bundled_texts_load_and_resolve_real_references():
-    genesis, republic = load_primary_texts(["kjv-genesis", "jowett-republic"])
-    assert genesis.resolve("Gen 6:5") == "Genesis 6:5"
-    assert genesis.find_quote("the thoughts of his heart was only evil continually") == (
-        "Genesis 6:5"
-    )
-    assert republic.resolve("369b") == "369b"
-    assert republic.find_quote("no one is self-sufficing, but all of us have many wants") == (
-        "369b"
-    )
 
 
 def test_verify_additions_without_texts_lists_everything_as_unverified():

@@ -854,9 +854,9 @@ def apply(
     else the original is kept. A document-level pass then rewrites units flagged for summary
     closes, monotone runs or aphoristic endings. Edit mode rewrites only flagged sentences
     and passages under the same locks. A `Brief` is drafted section by section first, then
-    rewritten. `primary_texts` (bundled names, files, directories or loaded `PrimaryText`s)
-    default to the brief's `primary_texts` plus the voice's; without any, added quotations
-    and citations are allowed and listed as unverified. `provider_factory` maps a provider
+    rewritten. `primary_texts` (files, directories or loaded `PrimaryText`s) are supplied by
+    the caller; without any, added quotations and citations are allowed and listed as
+    unverified. `provider_factory` maps a provider
     name to a `CachingProvider` (tests replay a cache with it); `budget` is USD.
     """
     catalog = load_catalog(patterns)
@@ -864,16 +864,13 @@ def apply(
     plan = JudgePlan(pool, voice.meta.judge_calibration)
     draft_logs: list[SectionLog] | None = None
     draft_text: str | None = None
-    sources: list[str | Path | PrimaryText] = list(primary_texts or [])
     if isinstance(text_or_brief, Brief):
-        sources = sources or [*text_or_brief.primary_texts, *voice.meta.primary_texts]
         text, draft_logs = draft_sections(text_or_brief, voice, pool, progress=progress)
         draft_text = text
         mode = "rewrite"
     else:
-        sources = sources or list(voice.meta.primary_texts)
         text = text_or_brief
-    texts = _load_texts(sources)
+    texts = _load_texts(list(primary_texts or []))
     if progress:
         progress(plan.describe())
         if texts:

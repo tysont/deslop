@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -21,7 +20,6 @@ VERSE_REF_RE = re.compile(
 STEPHANUS_REF_RE = re.compile(
     r"^(?P<page>\d{2,3})(?P<section>[a-e])?(?:[-–](?P<end>\d{2,3}[a-e]?|[a-e]))?$"
 )
-BUNDLED = {"kjv-genesis": "kjv_genesis.txt", "jowett-republic": "jowett_republic.txt"}
 MIN_QUOTE_WORDS = 3  # shorter quoted spans are terms, not quotations
 
 
@@ -207,26 +205,14 @@ def citation_kind(citation: str) -> str | None:
     return None
 
 
-def bundled_path(name: str) -> Path:
-    """Path of a reference text shipped with deslop: `kjv-genesis` or `jowett-republic`."""
-    if name not in BUNDLED:
-        raise FileNotFoundError(f"no bundled reference text {name!r}; have {sorted(BUNDLED)}")
-    with resources.as_file(resources.files("deslop.reference") / BUNDLED[name]) as p:
-        return Path(p)
-
-
 def load_primary_texts(
     items: Sequence[str | Path], *, relative_to: Path | None = None
 ) -> list[PrimaryText]:
-    """Load each item: a bundled name (`kjv-genesis`), a file, or a directory of .txt/.md files.
-    Relative paths resolve against `relative_to` when given."""
+    """Load each item: a file, or a directory of .txt/.md files. Relative paths resolve
+    against `relative_to` when given."""
     out: list[PrimaryText] = []
     for item in items:
-        name = str(item)
-        if name in BUNDLED:
-            out.append(PrimaryText.load(bundled_path(name)))
-            continue
-        p = Path(name)
+        p = Path(str(item))
         if not p.is_absolute() and relative_to is not None and not p.exists():
             p = relative_to / p
         if p.is_dir():

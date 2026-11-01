@@ -35,8 +35,7 @@ score with its separation context. Unverified additions are listed at the top.
 
 ## Primary texts
 
-`--primary-text` (repeatable), a brief's `primary_texts:` list or the voice's
-`primary_texts:` in `voice.yaml` name plain-text sources for the work under discussion. Any
+`--primary-text` (repeatable) names plain-text sources for the work under discussion. Any
 quoted span of three or more words the output adds must occur verbatim (whitespace and
 punctuation normalised) in one of them, or the candidate is rejected and the span named. Any
 verse reference or Stephanus page the output adds must resolve to a marker in a text that
@@ -44,9 +43,7 @@ carries markers of that kind, or the candidate is rejected; a kind no text has m
 is listed as unverifiable. Without any primary text, added quotations and citations are
 allowed and listed as unverified additions.
 
-Two texts ship with deslop and are named by key: `kjv-genesis` (Genesis, King James
-Version, Project Gutenberg #10, verse markers) and `jowett-republic` (Jowett's Republic,
-Project Gutenberg #55201, Stephanus pages). A file of your own looks like this:
+deslop ships no reference texts. A file of your own looks like this:
 
 ```
 # title: Genesis (World English Bible)
@@ -92,7 +89,6 @@ under the new locks. A brief is drafted section by section, then rewritten.
 title: On the Binding of Isaac
 audience: readers who know the story
 words_per_section: 180
-primary_texts: [kjv-genesis]
 sections:
   - heading: The command
     claim: The chapter withholds the reason for the command.
@@ -109,7 +105,7 @@ unlisted is stripped before the rewrite loop.
 from deslop import Voice, apply, load_brief
 
 voice = Voice.load("essays.voice")
-result = apply(open("draft.md").read(), voice, n=3, primary_texts=["kjv-genesis"])
+result = apply(open("draft.md").read(), voice, n=3, primary_texts=["genesis.txt"])
 for unit in result.units:
     print(unit.index, unit.kind, unit.reason)
 print(result.growth_pct, result.unverified_additions)

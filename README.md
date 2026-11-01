@@ -102,7 +102,7 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--n` | `3` | candidates sampled per paragraph in rewrite mode |
 | `--min-confidence` | `0.7` | judge confidence a candidate needs to beat the original paragraph |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
-| `--primary-text` | brief's, then voice's | reference texts (bundled name, file or directory) added quotations and citations must verify against; repeatable |
+| `--primary-text` | none | reference text (file or directory) added quotations and citations must verify against; repeatable |
 | `--budget` | none | USD ceiling; returns the best text so far |
 | `--max-iter` | `4` | edit-mode iterations |
 | `--diff` | off | print the unified diff and the meaning diff |
@@ -129,12 +129,8 @@ with their predecessor as a section. A final document-level pass rewrites any un
 T14, T15 or an aphoristic close.
 
 Without a primary text, added quotations and citations are allowed and listed as
-"unverified additions" at the top of the report and in `--diff`. Two reference texts ship
-with deslop: `kjv-genesis` (Genesis, King James Version, Project Gutenberg #10, with verse
-markers) and `jowett-republic` (Plato's Republic in Jowett's translation, Project Gutenberg
-#55201, with Stephanus pages). A voice may name its default primary texts in `voice.yaml`
-(`deslop voice ... --primary-text kjv-genesis`), and a brief may list `primary_texts:`.
-Your own reference text is a plain-text file with `# title:`, `# book:` and `# aliases:`
+"unverified additions" at the top of the report and in `--diff`. deslop ships no reference
+texts; you supply them with `--primary-text`. A reference text is a plain-text file with `# title:`, `# book:` and `# aliases:`
 header lines and `{{Genesis 6:5}}` or `{{369b}}` markers in the text; a file without markers
 still verifies quotations.
 
@@ -389,7 +385,7 @@ voice = Voice.load("critics.voice")
 report = score(open("draft.md").read(), voice)
 print(report.verdict, report.distance, report.separation.llm_median, report.fixes)
 
-result = apply(open("draft.md").read(), voice, n=3, primary_texts=["kjv-genesis"])
+result = apply(open("draft.md").read(), voice, n=3, primary_texts=["genesis.txt"])
 print(result.report_after.verdict, result.cost.usd, result.growth_pct)
 print(result.unverified_additions, result.meaning_diff)
 

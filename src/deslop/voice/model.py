@@ -40,8 +40,7 @@ class DocumentProvenance(BaseModel):
 class VoiceMeta(BaseModel):
     """voice.yaml: identity plus provenance. `checksum` is set when the voice is packed and
     verified whenever the zip is read; `has_exemplars` is False for a voice packed with
-    `--strip-exemplars`; `primary_texts` names the reference texts `apply` verifies added
-    quotations and citations against by default; `judge_calibration` holds each provider's
+    `--strip-exemplars`; `judge_calibration` holds each provider's
     measured accuracy as the comparative judge (see `deslop lab calibrate-judge`)."""
 
     name: str
@@ -63,7 +62,6 @@ class VoiceMeta(BaseModel):
     profile_source: str = "template"
     checksum: str | None = None
     has_exemplars: bool = True
-    primary_texts: list[str] = Field(default_factory=list)  # bundled names or paths apply loads
     judge_calibration: dict[str, Any] = Field(default_factory=dict)  # provider -> JudgeCalibration
 
 

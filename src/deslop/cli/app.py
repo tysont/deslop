@@ -154,12 +154,6 @@ def voice_build(
     ),
     add: list[Path] = typer.Option([], "--add", help="Texts to add with --from"),
     patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
-    primary_text: list[str] = typer.Option(
-        [],
-        "--primary-text",
-        help="Default primary texts for apply: bundled names (kjv-genesis, jowett-republic) "
-        "or paths, stored in voice.yaml",
-    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build NAME.voice from texts, or extend an existing voice with --from/--add."""
@@ -195,15 +189,6 @@ def voice_build(
         )
     except ValueError as exc:
         fail(str(exc))
-    primary = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
-    if primary:
-        from deslop.reference import load_primary_texts
-
-        try:
-            load_primary_texts(primary)
-        except (FileNotFoundError, OSError) as exc:
-            fail(str(exc))
-        voice.meta.primary_texts = primary
     voice.save(out)
     if json_out:
         print_json(voice.meta.model_dump_json())
@@ -636,8 +621,8 @@ def apply_cmd(
     primary_text: list[str] = typer.Option(
         [],
         "--primary-text",
-        help="Primary texts (bundled name, file or directory) added quotations and citations "
-        "must verify against; default: the brief's, then the voice's",
+        help="Primary texts (file or directory) added quotations and citations must verify "
+        "against; without one, additions are listed as unverified",
     ),
     max_iter: int | None = typer.Option(None, "--max-iter", help="Edit-mode iterations (4)"),
     patterns: list[Path] = typer.Option([], "--patterns"),

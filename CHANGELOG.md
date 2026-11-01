@@ -4,6 +4,9 @@ All notable changes to deslop. Dates are release dates; versions are git tags.
 
 ## Unreleased
 
+- The bundled reference texts (KJV Genesis, Jowett's Republic) and every default primary-text
+  selection (`voice.yaml` `primary_texts`, a brief's `primary_texts`, `voice build
+  --primary-text`) are removed. `--primary-text` is user-supplied only: a file or directory.
 - `lab blind --texts DIR` now loads a crawl directory with a `manifest.jsonl` through the
   corpus collector instead of silently skipping it, so the control pool is no longer empty
   for a manifest-backed corpus.

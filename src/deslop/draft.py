@@ -36,15 +36,13 @@ class Section(BaseModel):
 
 class Brief(BaseModel):
     """What to write: a title, an optional audience, a target length per section, the
-    sections, and optionally the primary texts (bundled names or paths, relative to the brief)
-    that added quotations and citations are verified against. Load one from yaml with
+    sections. Load one from yaml with
     [`load_brief`][deslop.load_brief]."""
 
     title: str
     audience: str = ""
     words_per_section: int = 180
     sections: list[Section]
-    primary_texts: list[str] = Field(default_factory=list)  # resolved by load_brief
 
 
 def load_brief(path: Path | str) -> Brief:
@@ -57,11 +55,6 @@ def load_brief(path: Path | str) -> Brief:
             if not isinstance(section, dict) or not str(section.get(key, "")).strip():
                 raise ValueError(f"{path}: section {i} is missing its {key}")
         section["claim"] = " ".join(str(section["claim"]).split())
-    base = Path(path).resolve().parent
-    data["primary_texts"] = [
-        str(base / t) if not Path(t).is_absolute() and (base / t).exists() else str(t)
-        for t in (data.get("primary_texts") or [])
-    ]
     return Brief.model_validate(data)
 
 
