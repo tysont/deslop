@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from deslop.stats import DocSamples, MetricsProfile, MetricStat, TellStat
 from deslop.thresholds import (
     CalibrationStats,
@@ -128,3 +130,40 @@ def test_two_sided_band_flags_overshoot_in_both_directions():
     assert metric_deviation("x", 13.0, band, 10.0).flagged
     assert metric_deviation("x", 7.0, band, 10.0).flagged
     assert not metric_deviation("x", 11.0, band, 10.0).flagged
+
+
+def test_rate_bands_clip_at_zero():
+    band = band_for(1.0, 2.0, 2.0, "both", 2.0)
+    assert band.low == 0.0 and band.high == 5.0
+
+
+def test_small_corpus_shrinks_toward_the_generic_baseline():
+    from deslop.stats import MetricStat, shrink_small_corpus
+
+    corpus = {"x": MetricStat(mean=10.0, std=2.0, p10=8, p50=10, p90=12, n=4, within_std=1.0)}
+    generic = {"x": MetricStat(mean=4.0, std=4.0, p10=0, p50=4, p90=8, n=100)}
+    paragraph_var = {"x": 9.0}  # pooled within-document paragraph variance
+    shrunk, info = shrink_small_corpus(
+        corpus, generic, paragraph_var, documents=4, min_docs=10, mean_doc_words=1000
+    )
+    # weight 0.4 on the corpus, 0.6 on generic English
+    assert info.documents == 4 and info.min_docs == 10 and info.weight == pytest.approx(0.4)
+    assert info.words_needed == 6000
+    assert shrunk["x"].mean == pytest.approx(0.4 * 10 + 0.6 * 4)
+    assert shrunk["x"].within_std == pytest.approx((0.4 * 9.0 + 0.6 * 16.0) ** 0.5)
+    assert shrunk["x"].std == pytest.approx((0.4 * 4.0 + 0.6 * 16.0) ** 0.5)
+    full, info = shrink_small_corpus(
+        corpus, generic, paragraph_var, documents=12, min_docs=10, mean_doc_words=1000
+    )
+    assert info is None and full["x"].mean == 10.0
+
+
+def test_banned_tells_relax_until_the_held_out_documents_pass():
+    profile, llm = synthetic_profile()
+    held, _ = split_heldout(profile.per_document)
+    tid = next(iter(profile.tells))
+    for d in held:
+        d.tells[tid] = 1.2  # every own document carries this tell above the tightest floor
+    th = calibrate_thresholds(profile, llm, banned={tid}, heldout_target=1.0)
+    assert th.tells[tid] >= 1.2
+    assert sum(passes(d.metrics, d.tells, th) for d in held) == len(held)

@@ -1,5 +1,5 @@
 # ABOUTME: `deslop doctor` checks: spaCy model, provider reachability, pricing table age,
-# ABOUTME: cache directory writability, and that the default voice resolves and validates.
+# ABOUTME: cache directory writability, the default voice, and live spend from spend.jsonl.
 from __future__ import annotations
 
 import datetime as dt
@@ -113,6 +113,13 @@ def check_voice(cfg: Config) -> Check:
     return Check(name="voice", status="ok", detail=f"{voice_dir} validates")
 
 
+def check_spend() -> Check:
+    """Live spend today and over the last seven days, from spend.jsonl."""
+    from deslop import spend
+
+    return Check(name="spend", status="ok", detail=spend.summary().describe())
+
+
 def run(cfg: Config | None = None, *, ping: Callable[[str], str] = _ping) -> list[Check]:
     cfg = cfg or Config()
     checks = [check_spacy(), *check_providers(ping), check_pricing(), check_cache()]
@@ -126,6 +133,7 @@ __all__ = [
     "check_pricing",
     "check_providers",
     "check_spacy",
+    "check_spend",
     "check_voice",
     "run",
 ]

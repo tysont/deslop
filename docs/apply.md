@@ -92,6 +92,20 @@ deslop apply --brief brief.yaml --voice essays.voice -o piece.md
 Edit mode keeps the v1 mechanism (flagged sentences only, everything else byte-identical)
 under the new locks. A brief is drafted section by section, then rewritten.
 
+## Judge provider
+
+The supported configuration is cross-vendor: the writer's candidates are judged by a provider
+from another vendor (`--models claude,gpt`). With one vendor only, no candidate can pass and
+the original is kept. `--allow-same-provider-judge` permits a different model of the same
+vendor to judge (`--models claude,claude:claude-sonnet-5-5`); the report header then carries
+a warning, and the same model never judges its own writing. It is never the default.
+
+## Budget
+
+`--budget` (default $5) caps what one invocation may spend on live calls; past it the run
+stops with the best result so far and says so. Every live call is logged to
+`$DESLOP_HOME/spend.jsonl`; `deslop doctor` sums today and the last seven days.
+
 ## The brief
 
 ```yaml

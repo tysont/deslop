@@ -14,6 +14,7 @@ from deslop.nlp import WORD_RE, Analysis, Paragraph, analyze
 from deslop.patterns import Catalog, load_catalog
 
 DEFAULT_CHUNK_WORDS = 500
+DEFAULT_MIN_DOCS = 10  # fewer documents than this and the voice is a small corpus
 
 
 class MetricStat(BaseModel):
@@ -111,6 +112,17 @@ class Thresholds(BaseModel):
     stats: CalibrationStats | None = None
 
 
+class SmallCorpus(BaseModel):
+    """Set when a voice was measured from fewer than `min_docs` documents: its metric means
+    and spreads were shrunk toward generic English with weight `weight` (documents over
+    min_docs), and `words_needed` more words of corpus would leave small-corpus mode."""
+
+    documents: int
+    min_docs: int
+    weight: float
+    words_needed: int
+
+
 class MetricsProfile(BaseModel):
     """metrics.json: aggregate stats plus the per-author samples they came from, and the
     registers (document clusters) found at calibration."""
@@ -123,6 +135,7 @@ class MetricsProfile(BaseModel):
     per_document: list[DocSamples] = Field(default_factory=list)
     clusters: list[Cluster] = Field(default_factory=list)
     thresholds: Thresholds = Field(default_factory=Thresholds)
+    small_corpus: SmallCorpus | None = None
 
 
 @dataclass
@@ -236,6 +249,77 @@ def merge_samples(a: AuthorSamples, b: AuthorSamples) -> AuthorSamples:
     for k in set(a.tell_hits) | set(b.tell_hits):
         out.tell_hits[k] = a.tell_hits.get(k, 0) + b.tell_hits.get(k, 0)
     return out
+
+
+# ---------------------------------------------------------------- small corpora
+
+
+def paragraph_variance(texts: list[str]) -> dict[str, float]:
+    """Pooled within-document variance of each metric over paragraphs: every prose paragraph
+    is measured on its own, deviations are taken from its document's paragraph mean, and the
+    squared deviations are pooled over all documents (denominator: paragraphs minus documents).
+    This is the spread a few documents can show, where between-document spread cannot."""
+    ss: dict[str, float] = {}
+    n: dict[str, int] = {}
+    for text in texts:
+        a = analyze(text)
+        per_para = [compute_all(subset_analysis([p])) for p in a.paragraphs if p.word_count >= 20]
+        if len(per_para) < 2:
+            continue
+        for name in per_para[0]:
+            vals = [v[name] for v in per_para]
+            m = sum(vals) / len(vals)
+            ss[name] = ss.get(name, 0.0) + sum((v - m) ** 2 for v in vals)
+            n[name] = n.get(name, 0) + len(vals) - 1
+    return {name: ss[name] / n[name] for name in ss if n[name] > 0}
+
+
+def shrink_small_corpus(
+    corpus: dict[str, MetricStat],
+    generic: dict[str, MetricStat],
+    paragraph_var: dict[str, float],
+    *,
+    documents: int,
+    min_docs: int,
+    mean_doc_words: float,
+) -> tuple[dict[str, MetricStat], SmallCorpus | None]:
+    """With fewer than `min_docs` documents, pull every metric toward generic English:
+
+        w         = documents / min_docs
+        mean      = w * corpus_mean + (1 - w) * generic_mean
+        within_sd = sqrt(w * paragraph_variance + (1 - w) * generic_sd^2)
+        sd        = sqrt(w * corpus_sd^2 + (1 - w) * generic_sd^2)
+
+    where paragraph_variance is the pooled within-document variance over paragraphs (between-
+    document variance is meaningless with so few documents). Metrics generic English does not
+    measure keep the corpus estimate with the paragraph spread. Returns the stats unchanged and
+    None when the corpus is large enough."""
+    if documents >= min_docs:
+        return corpus, None
+    w = documents / min_docs
+    out: dict[str, MetricStat] = {}
+    for name, st in corpus.items():
+        g = generic.get(name)
+        pvar = paragraph_var.get(name, st.within_std**2)
+        if g is None:
+            out[name] = st.model_copy(
+                update={"within_std": math.sqrt(pvar) if pvar > 0 else st.within_std}
+            )
+            continue
+        out[name] = st.model_copy(
+            update={
+                "mean": w * st.mean + (1 - w) * g.mean,
+                "within_std": math.sqrt(w * pvar + (1 - w) * g.std**2),
+                "std": math.sqrt(w * st.std**2 + (1 - w) * g.std**2),
+            }
+        )
+    info = SmallCorpus(
+        documents=documents,
+        min_docs=min_docs,
+        weight=round(w, 4),
+        words_needed=int(round((min_docs - documents) * mean_doc_words)),
+    )
+    return out, info
 
 
 # ---------------------------------------------------------------- aggregation

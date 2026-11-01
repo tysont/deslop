@@ -38,7 +38,7 @@ class MetricDeviation:
 
 def band_for(stat_mean: float, within_std: float, std: float, side: str, k: float) -> Band:
     width = within_std if within_std > 0 else std
-    low = stat_mean - k * width if side in ("low", "both") else None
+    low = max(0.0, stat_mean - k * width) if side in ("low", "both") else None  # rates are >= 0
     high = stat_mean + k * width if side in ("high", "both") else None
     return Band(low=low, high=high, k=k)
 
@@ -155,16 +155,26 @@ def calibrate_thresholds(
     *,
     banned: set[str] | None = None,
     seed: int = 0,
+    heldout_target: float = HELDOUT_PASS_TARGET,
 ) -> Thresholds:
     """Tune bands and limits: start loose, then tighten one criterion at a time, choosing
     the step that fails the most LLM-reference documents per held-out document lost, until
-    LLM_FAIL_TARGET is met or no step keeps HELDOUT_PASS_TARGET."""
+    LLM_FAIL_TARGET is met or no step keeps `heldout_target` (HELDOUT_PASS_TARGET; a small
+    corpus asks for 1.0, every document of its own). A banned tell starts at the tightest
+    floor and is relaxed, floor by floor, until the held-out documents pass."""
     heldout, method = split_heldout(profile.per_document, seed=seed)
     th = initial_thresholds(profile)
     banned = banned or set()
     for tid in banned:
         if tid in th.tells:
             th.tells[tid] = TELL_FLOORS[-1]
+    floors = sorted(TELL_FLOORS)  # tightest first
+    for tid in sorted(banned):
+        while tid in th.tells and _rates(heldout, th) < heldout_target:
+            looser = [f for f in floors if f > th.tells[tid]]
+            if not looser:
+                break
+            th.tells[tid] = looser[0]
 
     # Candidate settings per criterion, loosest first.
     metric_steps: dict[str, list[Band]] = {}
@@ -199,7 +209,7 @@ def calibrate_thresholds(
             else:
                 trial.tells[key] = nxt  # type: ignore[assignment]
             hp, lf = rates(trial)
-            if hp < HELDOUT_PASS_TARGET:
+            if hp < heldout_target:
                 continue
             gain = lf - llm_fail
             cost = heldout_pass - hp

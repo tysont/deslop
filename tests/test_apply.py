@@ -350,3 +350,47 @@ def test_brief_is_drafted_then_rewritten(fixture_voice, fixtures_dir):
     assert result.draft is not None and len(result.draft) == len(brief.sections)
     assert result.draft_text and "Abraham" in result.draft_text
     assert result.mode == "rewrite"
+
+
+def test_same_vendor_judge_only_with_the_flag_and_a_different_model(fixture_voice, slop_text):
+    instances: dict[str, Scripted] = {}
+
+    def factory(name: str) -> CachingProvider:
+        return instances.setdefault(name, Scripted("anthropic"))
+
+    pool = ProviderPool(("claude", "claude:claude-sonnet-test"), factory)
+    opus, sonnet = pool.get("claude"), pool.get("claude:claude-sonnet-test")
+    assert opus is not None and sonnet is not None
+    assert sonnet.default_model == "claude-sonnet-test" and opus.default_model == "anthropic-model"
+    assert sonnet.key == "anthropic/claude-sonnet-test" and sonnet is not opus
+    off = JudgePlan(pool, {})
+    assert not off.enabled and "one provider only" in off.describe()
+    on = JudgePlan(pool, {}, allow_same_provider=True)
+    assert on.enabled and "WARNING" in on.describe() and "same-vendor" in on.describe()
+    assert on.judges_for(on.ident(opus))[0] is sonnet
+    assert not on.judges_for(on.ident(opus), on.ident(sonnet))
+    same_model = JudgePlan(
+        ProviderPool(("claude", "claude"), factory), {}, allow_same_provider=True
+    )
+    assert not same_model.enabled, "the same model may never judge itself"
+
+    result = apply(
+        slop_text,
+        fixture_voice,
+        n=2,
+        models=("claude", "claude:claude-sonnet-test"),
+        allow_same_provider_judge=True,
+        provider_factory=factory,
+    )
+    unit = result.units[0]
+    assert not unit.kept_original and "WARNING" in result.judge_gate
+    chosen = unit.candidates[unit.chosen]
+    assert all(v.model != chosen.model for v in chosen.verdicts), "judge model differs"
+    kept = apply(
+        slop_text,
+        fixture_voice,
+        n=1,
+        models=("claude", "claude:claude-sonnet-test"),
+        provider_factory=factory,
+    )
+    assert kept.stopped == "no_judge", "never the default"

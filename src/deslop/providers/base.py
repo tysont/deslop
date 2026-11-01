@@ -38,6 +38,11 @@ class NonRetryableError(ProviderError):
     """Auth, bad-request, and programming errors: fail fast instead of backing off."""
 
 
+class BudgetExceeded(ProviderError):
+    """The invocation's spend budget is used up; no further live call is made. A
+    ProviderError so every loop that tolerates a failed call stops cleanly."""
+
+
 class CacheMissError(Exception):
     """A cache-only provider was asked for a prompt that is not in its cache. Deliberately
     not a ProviderError so retry loops do not swallow it."""
@@ -108,6 +113,11 @@ class CachingProvider:
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
         raise NotImplementedError
 
+    @property
+    def key(self) -> str:
+        """Vendor and model, the identity a same-vendor judge is told apart by."""
+        return f"{self.name}/{self.default_model}"
+
     def _cache_key(self, system: str, user: str, model: str, temperature: float) -> Path:
         payload = json.dumps(
             {"p": self.name, "m": model, "t": temperature, "s": system, "u": user}, sort_keys=True
@@ -132,6 +142,11 @@ class CachingProvider:
                 f"{self.name}/{model}: prompt not in cache {self.cache_dir} and "
                 "cache-only mode is on (unset DESLOP_CACHE_ONLY and provide credentials)"
             )
+        from deslop import spend
+
+        over = spend.over_budget()
+        if over is not None:
+            raise BudgetExceeded(over)
         delay = 1.0
         last: Exception | None = None
         for _ in range(self.max_retries):
@@ -147,6 +162,7 @@ class CachingProvider:
         else:
             raise ProviderError(f"{self.name} failed after {self.max_retries} attempts: {last}")
         self.usage.add(result.usage)
+        spend.record(provider=self.name, model=model, usage=result.usage)
         if self.use_cache:
             key.parent.mkdir(parents=True, exist_ok=True)
             key.write_text(json.dumps({"text": result.text, "model": model}), encoding="utf-8")

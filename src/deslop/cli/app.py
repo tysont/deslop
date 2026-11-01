@@ -47,6 +47,26 @@ console = Console()
 err = Console(stderr=True)
 
 
+def arm_budget(
+    s: Settings, budget: float | None, *, command: str, voice: str = "", input_file: str = ""
+) -> float:
+    """Start the spend guard for this invocation: the context every live call is logged with
+    and the USD limit (--budget, config, else $5)."""
+    from deslop import spend
+
+    limit = float(s.get("budget", budget, spend.DEFAULT_BUDGET))
+    spend.set_context(command=command, voice=voice, input_file=input_file)
+    spend.set_budget(limit)
+    return limit
+
+
+def report_budget() -> None:
+    from deslop import spend
+
+    if spend.budget_hit():
+        err.print(f"[yellow]{spend.over_budget()}[/]")
+
+
 def print_json(payload: str) -> None:
     """Emit JSON untouched by rich wrapping or markup."""
     sys.stdout.write(payload if payload.endswith("\n") else payload + "\n")
@@ -154,6 +174,14 @@ def voice_build(
     ),
     add: list[Path] = typer.Option([], "--add", help="Texts to add with --from"),
     patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
+    min_docs: int | None = typer.Option(
+        None,
+        "--min-docs",
+        help="Below this many documents the bands shrink toward generic English (10)",
+    ),
+    profile_from: Path | None = typer.Option(
+        None, "--profile-from", help="Reuse this voice's profile.md instead of writing one"
+    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build NAME.voice from texts, or extend an existing voice with --from/--add."""
@@ -181,14 +209,19 @@ def voice_build(
             author_map=amap,
             max_share=float(s.get("max_share", max_share, 0.15)),
             exemplar_words=int(s.get("exemplar_words", exemplar_words, 2500)),
-            use_llm=not s.get("no_llm", no_llm or None, False),
+            use_llm=not s.get("no_llm", no_llm or None, False) and profile_from is None,
             llm_model=s.get("llm_model", llm_model),
             patterns=s.paths("patterns", patterns),
             base=load_voice(base) if base is not None else None,
+            min_docs=int(s.get("min_docs", min_docs, 10)),
             progress=s.progress(json_out),
         )
     except ValueError as exc:
         fail(str(exc))
+    if profile_from is not None:
+        donor = load_voice(profile_from)
+        voice.profile = donor.profile
+        voice.meta.profile_source = f"{donor.meta.profile_source} (from {profile_from.name})"
     voice.save(out)
     if json_out:
         print_json(voice.meta.model_dump_json())
@@ -237,6 +270,13 @@ def voice_show(
     )
     if m.licenses:
         console.print("licenses: " + "; ".join(m.licenses))
+    small = v.metrics.small_corpus
+    if small is not None:
+        console.print(
+            f"[yellow]small corpus: {small.documents} documents (fewer than {small.min_docs}); "
+            f"bands were shrunk toward generic English with weight {small.weight:.2f}; about "
+            f"{small.words_needed:,} more words of corpus would leave small-corpus mode[/]"
+        )
     top = ", ".join(
         f"{a.name} {100 * a.share:.0f}%" + (f" ({', '.join(a.sources)})" if a.sources else "")
         for a in m.authors[:12]
@@ -590,7 +630,8 @@ def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
         + f"; ${result.cost.usd:.3f} over {result.cost.calls} call(s){unpriced}; "
         f"stopped: {result.stopped}"
     )
-    console.print(f"[dim]{result.judge_gate}[/]")
+    style = "yellow" if "WARNING" in result.judge_gate else "dim"
+    console.print(f"[{style}]{result.judge_gate}[/]")
     if result.primary_texts:
         console.print(f"[dim]primary texts: {', '.join(result.primary_texts)}[/]")
     if not result.exemplars_used:
@@ -634,8 +675,19 @@ def apply_cmd(
     mode: str | None = typer.Option(
         None, "--mode", help="rewrite (the whole document, default) or edit (flagged sentences)"
     ),
-    models: str | None = typer.Option(None, "--models", help="Providers in rotation (claude,gpt)"),
-    budget: float | None = typer.Option(None, "--budget", help="Max USD; returns best-so-far"),
+    models: str | None = typer.Option(
+        None, "--models", help="Providers in rotation: alias or alias:model (claude,gpt)"
+    ),
+    allow_same_provider_judge: bool = typer.Option(
+        False,
+        "--allow-same-provider-judge",
+        help="Let a different model of the writer's vendor judge (cross-vendor is supported)",
+    ),
+    budget: float | None = typer.Option(
+        None,
+        "--budget",
+        help="Max USD this invocation may spend on live calls (5); returns best-so-far",
+    ),
     n: int | None = typer.Option(None, "--n", help="Candidates per document in rewrite mode (3)"),
     max_growth: float | None = typer.Option(
         None, "--max-growth", help="Reject candidates more than PCT longer than the original (15)"
@@ -657,6 +709,7 @@ def apply_cmd(
     """Write a text, or a piece from a brief, in a voice. Exit 0 on PASS, 2 on FAIL."""
     from deslop.apply import apply
     from deslop.draft import load_brief
+    from deslop.providers.base import BudgetExceeded
 
     s = Settings(ctx, "apply")
     v = load_voice(s.voice(voice))
@@ -671,7 +724,9 @@ def apply_cmd(
     mode = s.get("mode", mode, "rewrite")
     if mode not in ("edit", "rewrite"):
         fail("--mode must be rewrite or edit")
-    budget = s.get("budget", budget)
+    limit = arm_budget(
+        s, budget, command="apply", voice=v.name, input_file=str(brief or file or "stdin")
+    )
     texts = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
     try:
         result = apply(
@@ -679,10 +734,13 @@ def apply_cmd(
             v,
             mode="edit" if mode == "edit" else "rewrite",
             models=tuple(_as_list(s.get("models", models, "claude,gpt"))),
-            budget=None if budget is None else float(budget),
+            budget=limit,
             n=int(s.get("n", n, 3)),
             max_growth=float(s.get("max_growth", max_growth, 15.0)),
             chunk_words=int(s.get("chunk_words", chunk_words, 2500)),
+            allow_same_provider_judge=bool(
+                s.get("allow_same_provider_judge", allow_same_provider_judge or None, False)
+            ),
             primary_texts=list(texts) or None,
             max_iter=int(s.get("max_iter", max_iter, 4)),
             patterns=s.paths("patterns", patterns),
@@ -690,9 +748,12 @@ def apply_cmd(
         )
     except FileNotFoundError as exc:
         fail(str(exc))
+    except BudgetExceeded as exc:
+        fail(str(exc), code=2)
     out = s.path("out", out)
     if out is not None:
         out.write_text(result.text, encoding="utf-8")
+    report_budget()
     if json_out:
         print_json(result.to_json())
     else:
@@ -711,16 +772,20 @@ def apply_cmd(
 
 @lab_app.command("calibrate-thresholds")
 def lab_calibrate_thresholds(
+    ctx: typer.Context,
     voice: Path,
     out: Path | None = typer.Option(None, "--out", "-o", help="Write the retuned voice here"),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Retune the voice's per-metric bands and per-tell limits against its held-out documents
-    and the LLM-reference documents, and report the separation."""
+    and the LLM-reference documents, and report the separation. Makes no live calls."""
     from deslop.baselines import has_baseline, llm_reference
     from deslop.thresholds import calibrate_thresholds
 
+    s = Settings(ctx, "lab")
     v = load_voice(voice)
+    arm_budget(s, budget, command="lab calibrate-thresholds", voice=v.name)
     llm = llm_reference() if has_baseline("llm_reference") else None
     v.metrics.thresholds = calibrate_thresholds(
         v.metrics, llm.documents if llm else [], banned=set(v.lexicon.banned_ids())
@@ -757,6 +822,7 @@ def lab_calibrate_judge(
     models: str | None = typer.Option(None, "--models", help="Providers to measure (claude,gpt)"),
     seed: int = typer.Option(0, "--seed"),
     out: Path | None = typer.Option(None, "--out", "-o", help="Write the voice here"),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Measure each provider as the comparative judge on pairs of one LLM-reference paragraph
@@ -768,6 +834,7 @@ def lab_calibrate_judge(
 
     s = Settings(ctx, "calibrate-judge")
     v = load_voice(voice)
+    arm_budget(s, budget, command="lab calibrate-judge", voice=v.name, input_file=str(corpus))
     corpus_paras, method = lab.heldout_paragraphs(v, [corpus])
     llm_paras = lab.llm_paragraphs(llm_texts)
     if not corpus_paras or not llm_paras:
@@ -780,6 +847,7 @@ def lab_calibrate_judge(
     if not providers:
         fail("no provider available: " + "; ".join(pool.unavailable.values()))
     results = lab.calibrate_judges(v, providers, llm_paras, corpus_paras, pairs=pairs, seed=seed)
+    report_budget()
     for name, cal in results.items():
         v.meta.judge_calibration[name] = cal.model_dump()
     target = out or voice
@@ -825,13 +893,16 @@ def lab_blind(
     export: Path | None = typer.Option(
         None, "--export", help="Write the shuffled pairs and a key to this directory instead"
     ),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
     json_out: bool = typer.Option(False, "--json", help="Print the summary as JSON at the end"),
 ) -> None:
-    """Can you tell a draft from the real thing? Pairs candidate paragraphs with human ones."""
+    """Can you tell a draft from the real thing? Pairs candidate paragraphs with human ones.
+    Makes no live calls."""
     from deslop import blind
 
     s = Settings(ctx, "blind")
     v = load_voice(s.voice(voice))
+    arm_budget(s, budget, command="lab blind", voice=v.name)
     candidates = s.path("candidates", candidates)
     if candidates is None or not candidates.is_dir():
         fail("--candidates must be a directory of .md or .txt files")
@@ -912,6 +983,7 @@ def lab_export(
     no_pairs: bool = typer.Option(False, "--no-pairs", help="Skip accepted apply pairs"),
     no_chunks: bool = typer.Option(False, "--no-chunks", help="Skip summarized corpus chunks"),
     max_chunks: int | None = typer.Option(None, "--max-chunks"),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
     cost_model: str | None = typer.Option(
         None, "--cost-model", help="Model whose training price to estimate with (gpt-4.1)"
     ),
@@ -921,6 +993,7 @@ def lab_export(
     from deslop.voice.export import export, write_jsonl
 
     s = Settings(ctx, "voice_export")
+    arm_budget(s, budget, command="lab export", voice=str(voice))
     out = s.path("out", out)
     if out is None:
         fail("--out is required")
@@ -964,6 +1037,7 @@ def doctor_cmd(ctx: typer.Context, json_out: bool = typer.Option(False, "--json"
 
     s = Settings(ctx, "doctor")
     checks = doctor.run(s.cfg)
+    checks.append(doctor.check_spend())
     ok = all(c.status != "fail" for c in checks)
     if json_out:
         print_json(json.dumps({"ok": ok, "checks": [c.model_dump() for c in checks]}))

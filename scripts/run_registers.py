@@ -121,17 +121,58 @@ def run(register: str, budget: float, n: int, models: tuple[str, ...]) -> dict:
     }
 
 
+ESTIMATE_PER_DOCUMENT = 2.0  # USD at n=3, from the v2.1 pilot (about $2.75 per 1,000 words)
+
+
+def projection(registers: list[str], n: int, budget: float) -> tuple[float, str]:
+    """The cost this run may reach: per document the smaller of its budget and the estimate
+    scaled by n, summed; with a line explaining it."""
+    per_doc = min(budget, ESTIMATE_PER_DOCUMENT * n / 3)
+    total = per_doc * len(registers)
+    line = (
+        f"projection: {len(registers)} document(s) x up to ${per_doc:.2f} each "
+        f"(estimate ${ESTIMATE_PER_DOCUMENT:.2f} at n=3, scaled to n={n}, capped by the "
+        f"per-document budget ${budget:.2f}) = ${total:.2f}"
+    )
+    return total, line
+
+
 def main() -> None:
-    """usage: run_registers.py [BUDGET] [N] [--models claude,gpt] [REGISTER...]"""
+    """usage: run_registers.py [BUDGET] [N] [--models claude,gpt] [--max-cost USD] [--confirm]
+    [REGISTER...]. This fans out over several documents, so it refuses to run without
+    --confirm (Makefile: CONFIRM=1) and when the projection exceeds --max-cost."""
     args = sys.argv[1:]
     models: tuple[str, ...] = ("claude", "gpt")
     if "--models" in args:
         i = args.index("--models")
         models = tuple(args[i + 1].split(","))
         del args[i : i + 2]
+    max_cost: float | None = None
+    if "--max-cost" in args:
+        i = args.index("--max-cost")
+        max_cost = float(args[i + 1])
+        del args[i : i + 2]
+    confirm = "--confirm" in args
+    args = [a for a in args if a != "--confirm"]
     budget = float(args[0]) if args else 5.0
     n = int(args[1]) if len(args) > 1 else 3
     only = args[2:] or ["essay", "explainer", "product", "fiction"]
+    total, line = projection(only, n, budget)
+    print(line, file=sys.stderr)
+    if max_cost is None:
+        print("refusing: give --max-cost USD (Makefile: MAX_COST=...)", file=sys.stderr)
+        sys.exit(1)
+    if total > max_cost:
+        print(
+            f"refusing: projection ${total:.2f} exceeds --max-cost ${max_cost:.2f}", file=sys.stderr
+        )
+        sys.exit(1)
+    if not confirm:
+        print(
+            "refusing: this fans out over several documents; pass --confirm (CONFIRM=1)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     rows = []
     for register in only:
         print(f"== {register}", file=sys.stderr)

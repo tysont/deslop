@@ -38,3 +38,26 @@ def slop_text() -> str:
 @pytest.fixture(scope="session")
 def heldout_texts() -> list[str]:
     return [p.read_text(encoding="utf-8") for p in sorted(FIXTURES.glob("heldout_*.md"))]
+
+
+@pytest.fixture(autouse=True)
+def fresh_spend_guard(tmp_path, monkeypatch):
+    """Each test is its own invocation: no leftover budget or context, and scripted calls
+    never land in the real spend log (a test that sets DESLOP_HOME keeps its own)."""
+    import os
+
+    from deslop import spend
+
+    spend.reset()
+    default = tmp_path / "spend.jsonl"
+    monkeypatch.setattr(
+        spend,
+        "spend_path",
+        lambda: (
+            Path(os.environ["DESLOP_HOME"]) / "spend.jsonl"
+            if "DESLOP_HOME" in os.environ
+            else default
+        ),
+    )
+    yield
+    spend.reset()

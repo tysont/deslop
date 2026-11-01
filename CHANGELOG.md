@@ -2,6 +2,27 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.2.1 - 2026-11-01
+
+- Spend guard: every live provider call is appended to `$DESLOP_HOME/spend.jsonl` with its
+  command, provider, model, tokens, cost, voice and input file. `apply` and every `lab`
+  command take `--budget` (default $5 per invocation) and stop with the best result so far
+  when it is spent. `make registers` prints its cost projection and refuses without
+  `CONFIRM=1` and `MAX_COST`. `deslop doctor` prints spend today and over the last 7 days.
+- Register slop fixtures are now written from each original's proposition list alone (the
+  model never sees the original) and carry their score against the register voice and the
+  LLM-reference baseline; the v2.2.0 paraphrases moved to `registers/paraphrase/`.
+- Small-corpus calibration: with fewer than `--min-docs` (10) documents, metric means and
+  spreads shrink toward generic English weighted by document count, using within-document
+  paragraph variance; band lower bounds clip at 0; every own document must pass and banned
+  tells relax until they do; `voice show` warns and says how many words would leave
+  small-corpus mode. `voice build --profile-from OLD.voice` reuses a profile without a
+  model call. A metric generic English does not measure (`connective_opener_pct`) keeps the
+  corpus estimate with the paragraph spread.
+- `--allow-same-provider-judge` lets a different model of the writer's vendor judge
+  (`--models claude,claude:claude-sonnet-5-5`), with a warning in the report header; cross-
+  vendor remains the supported configuration and the default.
+
 ## v2.2.0 - 2026-11-01
 
 - `apply` rewrites the document as a whole by default. The writer sees the profile, the

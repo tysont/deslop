@@ -1,17 +1,66 @@
 ---
-title: explainer (model prose)
+title: explainer (model prose from propositions)
 generated_by: anthropic:claude-opus-5-5
 generated_on: 2026-11-01
-note: Generated once from original.md by scripts/build_register_slop.py; the
-  machine-written version the register's apply run starts from.
+propositions: 64
+score_vs_voice: 56.9 (FAIL)
+mean_abs_z_vs_voice: 0.74
+mean_abs_z_vs_llm_reference: 0.64
+closeness: closer to the LLM baseline
+note: Written by scripts/build_register_slop.py from the original's proposition
+  list alone; the model never saw the original.
 ---
 
-As a return for the honour you do us in coming to see our proceedings here, I propose to devote these lectures to the Chemical History of a Candle. I have taken up this subject once before, and if it were left to me alone, I would gladly repeat it almost every year. Its interest is so abundant, and the routes it opens into the various departments of philosophy are so wonderfully varied. There is not a law governing any part of this universe that does not come into play, or is not touched upon, in these phenomena. Indeed, there is no better and no more open door into the study of natural philosophy than the physical phenomena of a candle. I trust, then, that I shall not disappoint you by choosing it over some newer topic, which could not be better, even if it were as good.
+# The Candle as a Way into Natural Philosophy
 
-Before going further, let me say one more thing. Our subject is a great one, and we mean to treat it honestly, seriously, and philosophically. Even so, I intend to pass over the seniors among us and claim the privilege of speaking to the juveniles as a juvenile myself. I have done so on former occasions, and, if you please, I shall do so again. I know that the words I speak here will be given to the world, but that shall not stop me from speaking in the same familiar way to those whom I count nearest to me on this occasion.
+The speaker opens his course with a plain statement of purpose. Over these lectures he intends to present the chemical history of a candle. He offers the lectures in return for the honour the audience does him by coming to see the proceedings, treating the exchange as a courtesy owed rather than a performance given.
 
-And now, my boys and girls, I must first tell you what candles are made of. Some of them are great curiosities. Here I have some bits of timber, branches of trees that are particularly famous for their burning. And here is a piece of a very curious substance taken from certain bogs in Ireland, called _candle-wood_. It is a hard, strong, excellent wood, clearly suited to good work as a resister of force, and yet it burns so well that where it is found people make splinters and torches of it, for it burns like a candle and gives a very good light indeed. This wood offers one of the most beautiful illustrations of the general nature of a candle that I could possibly give you. The fuel provided, the means of bringing that fuel to the place of chemical action, the regular and gradual supply of air to that place, and the heat and light that result are all produced by a little piece of wood like this. It is, in fact, a natural candle.
+## Why Return to the Candle
 
-But we must speak of candles as they are sold in commerce. Here are a couple of the kind commonly called dips. They are made from lengths of cotton, which are cut off, hung up by a loop, dipped into melted tallow, taken out and cooled, and then dipped again and again until tallow has built up around the cotton. To give you an idea of how varied these candles can be, look at the ones I hold in my hand. They are very small and very curious. They are, or were, the candles used by miners in coal mines. In olden times the miner had to find his own candles, and it was thought that a small candle would be slower than a large one to set fire to the fire-damp in the mines. For that reason, and for economy's sake as well, he had candles made of this sort, at 20, 30, 40, or 60 to the pound. Since then they have been replaced by the steel-mill, and later by the Davy-lamp and other safety-lamps of various kinds. I also have here a candle said to have been taken out of the _Royal George_ by Colonel Pasley. It lay sunk in the sea for many years, exposed to the action of salt water. It shows you how well candles can be preserved, for although it is badly cracked and broken, it burns steadily when lit, and the tallow returns to its natural condition as soon as it melts.
+This is not new ground for him. He has lectured on this subject on a former occasion, and he admits that if he were left to his own will he would repeat it almost every year. His reason is that the subject of the candle holds abundant interest. It is not a narrow topic. The candle opens onto many different departments of philosophy, and the reach of the subject is wider still: every law governing any part of the universe comes into play in the phenomena of a candle.
 
-Mr. Field, of Lambeth, has generously supplied me with beautiful illustrations of the candle and its materials, and I shall now turn to them. First there is the suet, the fat of the ox. This is Russian tallow, I believe, the kind used to make these dips. Gay Lussac, or someone who entrusted him with the knowledge, converted it into the beautiful substance lying beside it, stearin. A candle today, you know, is not a greasy thing like an ordinary tallow candle but a clean one, and you can almost scrape off and pulverise the drops that fall from it without soiling anything. The process he adopted is this. The fat or tallow is first boiled with quick-lime to make a soap. The soap is then decomposed by sulphuric acid, which takes away the lime and leaves the fat rearranged as stearic acid, while a quantity of glycerin is produced at the same time. Glycerin, which is absolutely a sugar or something very like one, comes out of the tallow in this chemical change. Next the oil is pressed out. In this series of pressed cakes you can see how beautifully the oily part carries the impurities away as the pressure increases, until at last you are left with the substance that is melted and cast into candles like these. The candle in my hand is a stearin candle, made from tallow in just the way I have described. Here is a sperm candle, which comes from the purified oil of the spermaceti whale. Here, too, are yellow bees-wax and refined bees-wax, both used for candles, along with that curious substance called paraffin and some candles made from paraffin obtained from the bogs of Ireland. Finally, I have a substance from Japan, a place we have only lately forced our way into. It is a sort of wax, sent to me by a kind friend, and it gives us a new material for the making of candles.
+From this he draws a methodological conclusion. Studying the physical phenomena of a candle is the best and most open way into the study of natural philosophy. A beginner needs no specialised apparatus to start, only attention to something burning in front of him. The speaker therefore does not apologise for an old topic. In his judgment no newer topic would be better than the candle, and probably none would be as good.
+
+## Tone and Audience
+
+He sets out the terms on which he will proceed. He intends to treat the subject honestly, seriously, and philosophically. He also declares his chosen audience: he means to address the young people rather than the adults in the room. He claims the privilege of speaking to young people as a young person himself, and he notes that he has addressed young audiences in this way on former occasions. He is aware that his words will be published to the world, but that knowledge will not stop him from speaking familiarly to the young listeners in front of him.
+
+## Natural Candles: Candle-Wood
+
+Before turning to manufactured candles, the speaker remarks that some candles are great curiosities, and that some kinds of trees are particularly famous for burning well. His chief example is a substance called candle-wood, taken from some bogs in Ireland.
+
+Candle-wood is a hard, strong, excellent wood, well suited to resisting force, and it also burns well. Where it is found, people make splinters and torches from it. It burns like a candle and gives a very good light. For these reasons the speaker regards it as one of the best illustrations of the general nature of a candle.
+
+Its value as an illustration comes from the functions it performs. Candle-wood provides fuel. It provides a means of bringing that fuel to the place of chemical action. It provides a regular and gradual supply of air to the same place. And it produces heat and light. Because it combines all of these functions in one material, candle-wood is in effect a natural candle, and it serves as a reference model for the manufactured candles that follow.
+
+## Dips
+
+The first manufactured type is the candle commonly called a dip. Dips are made by hanging lengths of cotton by a loop and dipping them in melted tallow. Each length is then cooled and re-dipped, over and over, until tallow builds up around the cotton.
+
+## Miners' Candles
+
+Very small candles were used by miners in coal mines. In former times miners had to supply their own candles. It was believed that a small candle would ignite fire-damp in the mines less readily than a large one, so miners used small candles partly for safety and partly for economy. These candles were made at 20, 30, 40, or 60 to the pound. In time they were replaced by the steel-mill, and the steel-mill was later replaced by the Davy lamp and other safety lamps.
+
+## A Candle from the Royal George
+
+The speaker's next specimen concerns durability. Colonel Pasley reportedly took a candle from the wreck of the Royal George. It had been sunk in the sea and exposed to salt water for many years. The example demonstrates that candles can be preserved well over long periods. Although this candle is cracked and broken, it burns regularly when lit, and its tallow returns to its natural condition once melted.
+
+## Materials and the Stearin Process
+
+The speaker credits Mr. Field of Lambeth with supplying him with many illustrations of candles and their materials. He then turns to those materials.
+
+The first is suet, which is the fat of the ox. The speaker believes Russian tallow is used to make dips. A significant advance came when Gay-Lussac, or someone who shared the knowledge with him, converted tallow into stearin. The practical difference is visible in use. Modern candles are clean rather than greasy like ordinary tallow candles. The drips from a modern candle can be scraped off and powdered without soiling anything.
+
+The conversion proceeds in stages:
+
+1. **Saponification.** Tallow is first boiled with quicklime to make a soap.
+2. **Acid decomposition.** The soap is then decomposed with sulphuric acid, which removes the lime. This decomposition leaves the fat rearranged as stearic acid.
+3. **By-product.** Glycerin is produced at the same time as the stearic acid. Glycerin is a sugar, or a substance similar to sugar, and it comes out of the tallow during this chemical change.
+4. **Pressing.** The oil is then pressed out of the stearic acid. As the pressure increases, the oily part carries the impurities out with it.
+5. **Casting.** The substance left after pressing is melted and cast into candles.
+
+The products of this process are stearin candles, made from stearin derived from tallow.
+
+## Other Candle Materials
+
+The speaker closes this survey with the remaining materials. Sperm candles come from the purified oil of the spermaceti whale. Candles are also made from yellow beeswax and from refined beeswax. Paraffin is a curious substance from which candles are made, and it can be obtained from the bogs of Ireland. Finally, a kind of wax brought from Japan is a new material for making candles; it became available only after Japan was forced open to outside access.

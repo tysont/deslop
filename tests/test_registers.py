@@ -42,3 +42,21 @@ def test_register_voice_loads_and_scores_both_versions(name):
     for file in ("original.md", "slop.md"):
         report = score(body_of(folder / file), voice)
         assert 0 <= report.distance <= 100 and report.verdict in ("PASS", "FAIL")
+
+
+def test_register_runner_refuses_to_fan_out_without_confirmation_and_a_cost_cap():
+    import subprocess
+    import sys
+
+    script = Path(__file__).parent.parent / "scripts" / "run_registers.py"
+    r = subprocess.run([sys.executable, str(script), "5", "3"], capture_output=True, text=True)
+    assert r.returncode == 1 and "projection: 4 document(s)" in r.stderr
+    assert "--max-cost" in r.stderr
+    r = subprocess.run(
+        [sys.executable, str(script), "5", "3", "--max-cost", "1"], capture_output=True, text=True
+    )
+    assert r.returncode == 1 and "exceeds --max-cost" in r.stderr
+    r = subprocess.run(
+        [sys.executable, str(script), "5", "3", "--max-cost", "50"], capture_output=True, text=True
+    )
+    assert r.returncode == 1 and "--confirm" in r.stderr

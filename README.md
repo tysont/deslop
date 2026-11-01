@@ -98,12 +98,13 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `-o, --out` | stdout | where to write the result |
 | `--brief BRIEF.yaml` | none | draft from a brief instead of rewriting a file |
 | `--mode` | `rewrite` | `rewrite` the document as a whole, or `edit` only flagged sentences |
-| `--models` | `claude,gpt` | providers in rotation; the writer of a candidate never judges it |
+| `--models` | `claude,gpt` | providers in rotation, as `alias` or `alias:model`; the writer of a candidate never judges it |
+| `--allow-same-provider-judge` | off | let a different model of the writer's vendor judge; prints a warning; cross-vendor is the supported configuration |
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
 | `--primary-text` | none | reference text (file or directory) added quotations and citations must verify against; repeatable |
-| `--budget` | none | USD ceiling; returns the best text so far |
+| `--budget` | `5` | USD this invocation may spend on live calls; past it the run stops with the best text so far |
 | `--max-iter` | `4` | edit-mode iterations |
 | `--diff` | off | print the unified diff and the meaning diff |
 | `--patterns` | none | extra pattern catalog yaml |
@@ -217,7 +218,17 @@ and cost estimate. Never launches a job.
 ### `deslop doctor [--json]` and `deslop providers test [--json]`
 
 `doctor` checks the spaCy model, each configured provider, pricing age, cache writability and
-the default voice; exit 1 on any failure. `providers test` pings each configured provider.
+the default voice, and prints live spend today and over the last seven days; exit 1 on any
+failure. `providers test` pings each configured provider.
+
+### The spend guard
+
+Every live provider call is appended to `$DESLOP_HOME/spend.jsonl` (timestamp, command,
+provider, model, tokens in and out, cost, voice, input file); cached replays are not spend.
+`apply` and every `lab` command take `--budget` (default $5 per invocation) and stop with the
+best result so far and a clear message when it is spent. A Makefile target that fans out over
+several documents (`make registers`) prints its cost projection first and refuses to run
+without `CONFIRM=1` and a `MAX_COST` it stays under.
 
 ## Default voice
 

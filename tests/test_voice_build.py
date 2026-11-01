@@ -135,3 +135,24 @@ def test_extend_folds_new_texts_and_keeps_prose(fixture_voice, fixtures_dir):
     )
     assert extended.metrics.thresholds.stats is not None
     assert len(extended.metrics.per_document) == len(fixture_voice.metrics.per_document) + 1
+
+
+def test_small_corpus_voice_passes_its_own_documents_and_says_so(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from deslop.cli.app import app
+
+    voice = Voice.from_texts([FIXTURES], name="small", use_llm=False, min_docs=10)
+    info = voice.metrics.small_corpus
+    assert info is not None and info.documents == 4 and info.min_docs == 10
+    assert info.weight == pytest.approx(0.4) and info.words_needed > 0
+    assert voice.metrics.thresholds.stats is not None
+    assert voice.metrics.thresholds.stats.heldout_pass_rate == 1.0
+    assert all(b.low is None or b.low >= 0 for b in voice.metrics.thresholds.metrics.values())
+    path = voice.save(tmp_path / "small.voice")
+    r = CliRunner().invoke(app, ["voice", "show", str(path)])
+    flat = " ".join(r.output.split())
+    assert r.exit_code == 0 and "small corpus" in flat and "4 documents" in flat
+    assert "more words" in flat
+    big = Voice.from_texts([FIXTURES], name="big", use_llm=False, min_docs=2)
+    assert big.metrics.small_corpus is None

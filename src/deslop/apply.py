@@ -2,6 +2,7 @@
 # ABOUTME: n candidates must pass the locks, coherence checks and a four-item judge, else it stays.
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import difflib
 import json
@@ -704,6 +705,9 @@ ProviderFactory = Callable[[str], CachingProvider]
 
 
 class ProviderPool:
+    """The providers named on the command line, built once each. A name is an alias
+    (`claude`, `gpt`) or `alias:model` for a specific model of that vendor."""
+
     def __init__(self, names: tuple[str, ...], factory: ProviderFactory | None = None):
         self.names = names
         self.factory = factory or (lambda n: get_provider(n))
@@ -714,11 +718,17 @@ class ProviderPool:
         if name in self.unavailable:
             return None
         if name not in self._cache:
+            alias, _, model = name.partition(":")
             try:
-                self._cache[name] = self.factory(name)
+                provider = self.factory(alias)
             except ProviderError as exc:
                 self.unavailable[name] = str(exc)
                 return None
+            if model:
+                provider = copy.copy(provider)
+                provider.default_model = model
+                provider.usage = Usage()
+            self._cache[name] = provider
         return self._cache[name]
 
     def for_iteration(self, i: int) -> CachingProvider:
@@ -752,12 +762,19 @@ class JudgePlan:
     provider with no calibration is trusted. Writers are the providers some judge is clear
     of. When no judge qualifies the gate is off and candidates are ranked by the linter."""
 
-    def __init__(self, pool: ProviderPool, calibration: dict[str, Any]):
+    def __init__(
+        self,
+        pool: ProviderPool,
+        calibration: dict[str, Any],
+        *,
+        allow_same_provider: bool = False,
+    ):
         self.pool = pool
+        self.allow_same_provider = allow_same_provider
         self.available: list[tuple[str, CachingProvider]] = []
         for alias in pool.names:
             p = pool.get(alias)
-            if p is not None and all(q.name != p.name for _, q in self.available):
+            if p is not None and all(self.ident(q) != self.ident(p) for _, q in self.available):
                 self.available.append((alias, p))
         self.calibration: dict[str, JudgeCalibration] = {}
         for name, data in calibration.items():
@@ -767,21 +784,37 @@ class JudgePlan:
                 continue
         self.judges = [p for _, p in self.available if self._qualified(p)]
         self.writers = [
-            alias for alias, p in self.available if any(j.name != p.name for j in self.judges)
+            alias
+            for alias, p in self.available
+            if any(self.ident(j) != self.ident(p) for j in self.judges)
         ]
         if not self.writers:
             self.writers = [alias for alias, _ in self.available]
             self.judges = []
         self.enabled = bool(self.judges)
 
+    def ident(self, p: CachingProvider) -> str:
+        """What tells one provider from another for judging: the vendor, or with
+        `allow_same_provider` the vendor and model."""
+        return p.key if self.allow_same_provider else p.name
+
     def _qualified(self, p: CachingProvider) -> bool:
         cal = self.calibration.get(p.name)
         return cal is None or cal.usable
 
-    def judges_for(self, *writer_names: str) -> list[CachingProvider]:
-        """Judges clear of every writer named; empty when none is (the pair is skipped)."""
-        clear = [j for j in self.judges if j.name not in writer_names]
+    def judges_for(self, *writer_idents: str) -> list[CachingProvider]:
+        """Judges clear of every writer named (by `ident`); empty when none is."""
+        clear = [j for j in self.judges if self.ident(j) not in writer_idents]
         return clear[:1]
+
+    def same_vendor_pairs(self) -> list[str]:
+        """Judge and writer pairs that share a vendor (only possible with the flag)."""
+        out = []
+        for j in self.judges:
+            for _, w in self.available:
+                if j.name == w.name and self.ident(j) != self.ident(w):
+                    out.append(f"{j.key} judges {w.key}")
+        return out
 
     def writer(self, i: int) -> CachingProvider:
         for k in range(len(self.writers)):
@@ -801,11 +834,19 @@ class JudgePlan:
             parts.append(f"{p.name}: {role} ({acc})")
         if self.enabled:
             state = "on"
-        elif len(self.available) < 2:
+        elif len({p.name for _, p in self.available}) < 2:
             state = "OFF (one provider only; a provider never judges its own writing)"
         else:
             state = "OFF (no provider reached 80% as judge)"
-        return f"judge gate {state}; " + "; ".join(parts)
+        line = f"judge gate {state}; " + "; ".join(parts)
+        pairs = self.same_vendor_pairs()
+        if pairs:
+            line += (
+                "; WARNING: same-vendor judge allowed (--allow-same-provider-judge): "
+                + ", ".join(pairs)
+                + "; a judge from another vendor is the supported configuration"
+            )
+        return line
 
 
 # ---------------------------------------------------------------- the loops
@@ -970,6 +1011,7 @@ def apply(
     max_growth: float = DEFAULT_MAX_GROWTH,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
     primary_texts: list[str | Path | PrimaryText] | None = None,
+    allow_same_provider_judge: bool = False,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -998,11 +1040,16 @@ def apply(
     then rewritten. `primary_texts` (files, directories or loaded `PrimaryText`s) are
     supplied by the caller; without any, added quotations and citations are allowed and
     listed as unverified. `provider_factory` maps a provider name to a `CachingProvider`
-    (tests replay a cache with it); `budget` is USD.
+    (tests replay a cache with it); `budget` is USD. `models` names aliases (`claude`,
+    `gpt`) or `alias:model`; a judge from another vendor than the writer is the supported
+    configuration, and `allow_same_provider_judge` permits a different model of the same
+    vendor to judge, with a warning in `judge_gate`.
     """
     catalog = load_catalog(patterns)
     pool = ProviderPool(models, provider_factory)
-    plan = JudgePlan(pool, voice.meta.judge_calibration)
+    plan = JudgePlan(
+        pool, voice.meta.judge_calibration, allow_same_provider=allow_same_provider_judge
+    )
     draft_logs: list[SectionLog] | None = None
     draft_text: str | None = None
     if isinstance(text_or_brief, Brief):
@@ -1165,7 +1212,23 @@ def _rewrite_loop(
         ]
         return text, untouched, [], "no_judge"
     writer0 = opts.plan.writer(0)
-    by_paragraph = [extract_propositions(p.text, writer0) for p in a.paragraphs]
+    try:
+        by_paragraph = [extract_propositions(p.text, writer0) for p in a.paragraphs]
+    except ProviderError as exc:
+        kept = [
+            UnitLog(
+                index=sec.index,
+                kind=sec.kind,
+                start=sec.start,
+                end=sec.end,
+                original=text[sec.start : sec.end],
+                final=text[sec.start : sec.end],
+                kept_original=True,
+                reason=f"propositions could not be extracted: {exc}"[:200],
+            )
+            for sec in sections
+        ]
+        return text, kept, [], "budget" if "budget" in str(exc) else "provider_error"
     if progress and len(sections) > 1:
         progress(f"{len(sections)} sections of up to {opts.chunk_words} words")
     logs: list[UnitLog] = []
@@ -1409,7 +1472,7 @@ def _rewrite_section(
             log.candidates.append(cand)
             notes = _verify_section(section_text, candidate, cand, document, voice, opts)
             if not notes:
-                checkers = plan.judges_for(writer.name) or [pool.other_than(writer)]
+                checkers = plan.judges_for(plan.ident(writer)) or [pool.other_than(writer)]
                 try:
                     cand.semantic = _check_meaning_by_paragraph(
                         section_text, candidate, props, checkers[0]
@@ -1440,7 +1503,7 @@ def _rewrite_section(
                 cand.reader_notes = notes + linter
                 continue
             cand.reader_notes = linter
-            judges = plan.judges_for(writer.name)
+            judges = plan.judges_for(plan.ident(writer))
             if not judges:
                 cand.reason = "no judge is clear of the writer"
                 cand.reader_notes = linter
@@ -1469,7 +1532,7 @@ def _rewrite_section(
                 ]
                 continue
             eligible.append(cand)
-            writers[id(cand)] = writer.name
+            writers[id(cand)] = plan.ident(writer)
 
         for i, x in enumerate(eligible):
             for y in eligible[i + 1 :]:

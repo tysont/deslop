@@ -13,6 +13,7 @@ from deslop.patterns import load_catalog
 from deslop.providers.base import CachingProvider
 from deslop.stats import (
     DEFAULT_CHUNK_WORDS,
+    DEFAULT_MIN_DOCS,
     AuthorSamples,
     DocSamples,
     MetricsProfile,
@@ -20,9 +21,11 @@ from deslop.stats import (
     aggregate,
     doc_samples,
     merge_samples,
+    paragraph_variance,
     sample_text,
+    shrink_small_corpus,
 )
-from deslop.thresholds import calibrate_thresholds
+from deslop.thresholds import HELDOUT_PASS_TARGET, calibrate_thresholds
 from deslop.voice.clusters import DocumentVector, cluster_documents, with_voice_means
 from deslop.voice.exemplars import build_exemplars
 from deslop.voice.lexicon import build_lexicon
@@ -43,6 +46,7 @@ def calibrate(
     patterns: tuple[str, ...] = (),
     ban_ratio: float = 10.0,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
+    min_docs: int = DEFAULT_MIN_DOCS,
     progress: Callable[[str], None] | None = None,
 ) -> Voice:
     catalog = load_catalog(patterns)
@@ -79,6 +83,18 @@ def calibrate(
     profile = aggregate(
         per_author, max_share=max_share, chunk_words=chunk_words, per_document=per_doc
     )
+    if len(per_doc) < min_docs:
+        if progress:
+            progress(f"small corpus: {len(per_doc)} documents, shrinking toward generic English")
+        mean_words = sum(d.words for d in per_doc) / max(len(per_doc), 1)
+        profile.metrics, profile.small_corpus = shrink_small_corpus(
+            profile.metrics,
+            generic.metrics,
+            paragraph_variance([d.text for d in docs]),
+            documents=len(per_doc),
+            min_docs=min_docs,
+            mean_doc_words=mean_words,
+        )
     if progress:
         progress("clustering documents into registers")
     metric_names = [n for n in sorted(profile.metrics) if profile.metrics[n].std > 0]
@@ -98,7 +114,10 @@ def calibrate(
     if progress:
         progress("calibrating thresholds against held-out and LLM-reference documents")
     profile.thresholds = calibrate_thresholds(
-        profile, llm.documents if llm else [], banned=set(lexicon.banned_ids())
+        profile,
+        llm.documents if llm else [],
+        banned=set(lexicon.banned_ids()),
+        heldout_target=1.0 if profile.small_corpus is not None else HELDOUT_PASS_TARGET,
     )
     rules = build_rules(profile, generic, lexicon)
     if progress:

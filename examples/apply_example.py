@@ -36,11 +36,15 @@ def main() -> int:
 
     # 1. A voice from the four shipped essays on Shakespeare (Johnson, Hazlitt, Bradley, Arnold).
     # The name matches the test suite's voice so the prompts, and so the cache keys, are the same.
+    # Four essays would normally be a small corpus (bands shrunk toward generic English);
+    # min_docs=4 keeps the example on the full calibration path its replay cache was
+    # recorded with.
     voice = Voice.from_texts(
         [ROOT / "tests" / "fixtures" / "corpus_small"],
         name="fixture",
         author_map=AUTHORS,
         use_llm=False,
+        min_docs=4,
     )
     voice.save(BUILD / "fixture.voice")
     console.print(f"voice [bold]{voice.name}[/]: {voice.meta.total_words} words of corpus")

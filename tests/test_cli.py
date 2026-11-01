@@ -403,3 +403,56 @@ def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path)
     assert r.exit_code == 1 and "cannot read" in r.output and "Traceback" not in r.output
     r = runner.invoke(app, ["voice", str(tmp_path / "nothing"), "-o", str(tmp_path / "x.voice")])
     assert r.exit_code == 1 and "Traceback" not in r.output
+
+
+def test_apply_budget_aborts_with_best_so_far_and_logs_spend(
+    fixture_voice, slop_text, tmp_path, monkeypatch
+):
+    from deslop import spend
+
+    monkeypatch.setenv("DESLOP_HOME", str(tmp_path / "home"))
+    spend.reset()
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    sample = tmp_path / "sample.md"
+    sample.write_text(slop_text)
+    scripted_factory(monkeypatch)  # every scripted call costs $0.01 and counts as live
+    r = runner.invoke(
+        app, ["apply", str(sample), "--voice", str(voice), "--n", "1", "--budget", "0.03"]
+    )
+    assert r.exit_code in (0, 2), r.output
+    assert "budget of $0.03 spent" in flat(r) and "best result so far" in flat(r)
+    rows = (tmp_path / "home" / "spend.jsonl").read_text().splitlines()
+    assert rows and json.loads(rows[0])["command"] == "apply"
+    assert json.loads(rows[0])["voice"] == "fixture" and "sample.md" in json.loads(rows[0])["input"]
+    spend.reset()
+    r = runner.invoke(app, ["lab", "calibrate-thresholds", str(voice), "--budget", "1"])
+    assert r.exit_code == 0, r.output
+    r = runner.invoke(app, ["lab", "blind", "--help"])
+    assert "--budget" in flat(r)
+
+
+def test_apply_same_provider_judge_flag_warns(fixture_voice, slop_text, tmp_path, monkeypatch):
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    sample = tmp_path / "sample.md"
+    sample.write_text(slop_text)
+    instances = {}
+    monkeypatch.setattr(
+        sys.modules["deslop.apply"],
+        "get_provider",
+        lambda name, **_: instances.setdefault(name, Scripted("anthropic")),
+    )
+    args = [
+        "apply",
+        str(sample),
+        "--voice",
+        str(voice),
+        "--n",
+        "1",
+        "--models",
+        "claude,claude:sonnet-x",
+    ]
+    r = runner.invoke(app, args)
+    assert r.exit_code in (0, 2) and "one provider only" in flat(r)
+    r = runner.invoke(app, [*args, "--allow-same-provider-judge"])
+    assert r.exit_code in (0, 2), r.output
+    assert "WARNING: same-vendor judge allowed" in flat(r) and "Plainly," in flat(r)

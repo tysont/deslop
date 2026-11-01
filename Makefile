@@ -45,5 +45,6 @@ register-fixtures:
 	uv run python scripts/build_registers.py $(GUTENBERG_DIR)
 	uv run python scripts/build_register_slop.py
 
+# Fans out over four documents: needs CONFIRM=1 and MAX_COST (USD); the projection prints first.
 registers:
-	uv run python scripts/run_registers.py $(BUDGET) $(N) $(ONLY)
+	uv run python scripts/run_registers.py $(or $(BUDGET),5) $(or $(N),3) --max-cost $(or $(MAX_COST),0) $(if $(filter 1,$(CONFIRM)),--confirm,) $(ONLY)

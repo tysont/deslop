@@ -49,4 +49,24 @@ fit (the width shrinks with the square root of the corpus size).
 
 See the README's Thresholds section for the calibration method: within-author spread, the
 held-out split by author, the greedy tightening against the LLM-reference documents, and the
-rescaled distance. `voice validate` reports the separation the voice achieves.
+rescaled distance. `voice validate` reports the separation the voice achieves. Band lower
+bounds clip at 0: every metric is a rate or a count.
+
+## Small corpora
+
+With fewer than `--min-docs` documents (default 10) a voice cannot estimate between-document
+spread, so each metric is shrunk toward generic English with weight `w = documents /
+min_docs`:
+
+```
+mean      = w * corpus_mean      + (1 - w) * generic_mean
+within_sd = sqrt(w * paragraph_variance + (1 - w) * generic_sd^2)
+sd        = sqrt(w * corpus_sd^2 + (1 - w) * generic_sd^2)
+```
+
+where `paragraph_variance` is the pooled within-document variance of the metric over
+paragraphs; a metric generic English does not measure keeps the corpus mean with the
+paragraph spread. The threshold search then requires every one of the voice's own documents to
+pass (not 90%), and a tell the lexicon banned is relaxed floor by floor until they do.
+`voice show` prints a small-corpus warning with the document count and roughly how many more
+words of corpus would leave small-corpus mode.

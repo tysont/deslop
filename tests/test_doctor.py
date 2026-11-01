@@ -91,3 +91,14 @@ def test_doctor_command(fixture_voice, tmp_path, monkeypatch):
     monkeypatch.setenv("DESLOP_VOICE", str(tmp_path / "missing.voice"))
     r = runner.invoke(app, ["doctor"])
     assert r.exit_code == 1
+
+
+def test_spend_check_sums_the_log(tmp_path, monkeypatch):
+    from deslop import spend
+    from deslop.providers.base import Usage
+
+    monkeypatch.setenv("DESLOP_HOME", str(tmp_path / "home"))
+    assert "no live calls" in doctor.check_spend().detail
+    spend.record(provider="anthropic", model="m", usage=Usage(cost_usd=0.5))
+    c = doctor.check_spend()
+    assert c.status == "ok" and "today $0.50" in c.detail and "7 days $0.50" in c.detail
