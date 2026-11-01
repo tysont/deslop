@@ -47,10 +47,12 @@ def main() -> int:
 
     # 2. Apply the voice to the machine-written sample, rewriting only the flagged sentences.
     text = (ROOT / "examples" / "slop_sample.md").read_text(encoding="utf-8")
+    # Edit mode needs no judge, so one provider suffices and the replay cache stays small.
     result = apply(
         text,
         voice,
         mode="edit",
+        models=("claude",),
         provider_factory=provider,
         pairs_path=BUILD / "pairs.jsonl",
         progress=lambda msg: console.print(f"[dim]{msg}[/]"),
