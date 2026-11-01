@@ -1,10 +1,12 @@
-# ABOUTME: Tests for the document-level apply loop with scripted providers: candidate sampling
-# ABOUTME: in rotation, the locks, growth, primary texts, coherence, the four-item judge, fallback.
+# ABOUTME: Tests for the document-level apply loop with scripted providers: the writer and
+# ABOUTME: judge models, the locks, growth, primary texts, coherence, the four-item judge, fallback.
 from __future__ import annotations
 
 import json
 
-from deslop.apply import DEFAULT_MODELS, JudgePlan, ProviderPool, apply, sections_of
+import pytest
+
+from deslop.apply import Models, apply, build_models, sections_of
 from deslop.nlp import analyze
 from deslop.providers.base import CachingProvider, Completion, Usage
 from deslop.reference import PrimaryText
@@ -98,34 +100,35 @@ class Scripted(CachingProvider):
         return Completion(text=text, model=model, provider=self.name, usage=usage)
 
 
-def factory_for(providers: dict[str, Scripted]):
-    aliases = {"claude": "anthropic", "gpt": "openai"}
+def factory_for(provider: Scripted):
+    """Every provider name maps to the one scripted provider; apply copies it into a writer
+    (claude-opus-5-5) and a judge (claude-sonnet-5-5)."""
 
     def factory(name: str) -> CachingProvider:
-        return providers[aliases.get(name, name)]
+        return provider
 
     return factory
 
 
 def pair(**kw) -> tuple[Scripted, Scripted, object]:
-    a, b = Scripted("anthropic", **kw), Scripted("openai", **kw)
-    return a, b, factory_for({"anthropic": a, "openai": b})
+    a = Scripted("anthropic", **kw)
+    return a, a, factory_for(a)
 
 
 def test_rewrites_the_document_as_a_whole_and_judges_with_the_other_provider(
     fixture_voice, slop_text
 ):
     a, b, factory = pair()
-    result = apply(slop_text, fixture_voice, n=3, models=DEFAULT_MODELS, provider_factory=factory)
+    result = apply(slop_text, fixture_voice, n=3, provider_factory=factory)
     assert result.mode == "rewrite" and len(result.units) == 1
     unit = result.units[0]
     assert unit.kind == "document" and not unit.kept_original
     assert len(unit.propositions_by_paragraph) == len(analyze(slop_text).paragraphs)
-    writers = [c.provider for c in unit.candidates if c.text]
-    assert "anthropic" in writers and "openai" in writers, "candidates rotate across providers"
+    assert all(c.model == "claude-opus-5-5" for c in unit.candidates), "one writer model"
     chosen = unit.candidates[unit.chosen]
     assert chosen.accepted and chosen.judge_ok and chosen.win_rate is not None
-    assert all(v.provider != chosen.provider for v in chosen.verdicts), "judge never the writer"
+    assert all(v.model == "claude-sonnet-5-5" for v in chosen.verdicts), "judge never the writer"
+    assert chosen.semantic is not None and chosen.semantic.model == "claude-sonnet-5-5"
     assert chosen.vs_original is not None and chosen.vs_original.no_loss
     assert any(v.against.startswith("candidate") for c in unit.candidates for v in c.verdicts), (
         "round-robin between candidates a judge is clear of"
@@ -141,7 +144,10 @@ def test_rewrites_the_document_as_a_whole_and_judges_with_the_other_provider(
     }
     assert result.metric_table and any(r.band_high is not None for r in result.metric_table)
     assert result.text.count("Plainly,") == len(analyze(slop_text).paragraphs)
-    assert "judge gate on" in result.judge_gate and result.stopped == "done"
+    assert (
+        "writer anthropic/claude-opus-5-5; judge anthropic/claude-sonnet-5-5" in result.judge_gate
+    )
+    assert result.stopped == "done"
     assert result.growth_pct > 0 and not result.unverified_additions
     assert "✓ ¶1 The chapter withholds its answer." in result.meaning_diff
     assert result.exemplars_used and result.cost.calls > 0
@@ -238,66 +244,54 @@ def test_primary_text_rejects_fabricated_quotation_and_lists_unverified(
         "son Isaac, whom thou lovest.\n",
         encoding="utf-8",
     )
-    a = Scripted("anthropic", add_quote="Take now thy son, thine only son Isaac")
-    b = Scripted("openai", add_quote="Take now thy daughter")
-    providers = factory_for({"anthropic": a, "openai": b})
+    fabricated = factory_for(Scripted("anthropic", add_quote="Take now thy daughter"))
     result = apply(
-        slop_text, fixture_voice, n=2, primary_texts=[str(marked)], provider_factory=providers
+        slop_text, fixture_voice, n=1, primary_texts=[str(marked)], provider_factory=fabricated
     )
     unit = result.units[0]
-    assert not unit.kept_original and result.primary_texts == ["Genesis"]
-    assert unit.candidates[unit.chosen].provider == "anthropic", "the fabricated quote lost"
+    assert unit.kept_original and result.primary_texts == ["Genesis"]
     rejected = [c for c in unit.candidates if "not in the primary text" in c.reason]
     assert rejected and "Take now thy daughter" in rejected[0].reason
-    assert not result.unverified_additions
+    verbatim = factory_for(
+        Scripted("anthropic", add_quote="Take now thy son, thine only son Isaac")
+    )
+    result = apply(
+        slop_text, fixture_voice, n=1, primary_texts=[str(marked)], provider_factory=verbatim
+    )
+    assert not result.units[0].kept_original and not result.unverified_additions
     # Without primary texts the same additions pass and are listed.
-    loose = apply(slop_text, fixture_voice, n=1, provider_factory=providers)
+    loose = apply(slop_text, fixture_voice, n=1, provider_factory=verbatim)
     assert loose.unverified_additions and "Gen 22:2" in "".join(loose.unverified_additions)
     assert "unverified additions" in loose.meaning_diff
     assert PrimaryText.load(marked).resolve("Gen 22:2") == "Genesis 22:2"
 
 
-def test_judge_plan_drops_uncalibrated_judges_and_turns_the_gate_off():
-    a, b = Scripted("anthropic"), Scripted("openai")
-    pool = ProviderPool(DEFAULT_MODELS, factory_for({"anthropic": a, "openai": b}))
-    good = {
-        "provider": "x",
-        "model": "m",
-        "pairs": 10,
-        "accuracy": 0.9,
-        "model_prose_accuracy": 0.9,
+def test_models_pair_a_writer_with_a_different_judge_on_one_provider():
+    a = Scripted("anthropic")
+    models = build_models("opus", "sonnet", provider="anthropic", factory=factory_for(a))
+    assert isinstance(models, Models)
+    assert models.writer.default_model == "claude-opus-5-5"
+    assert models.judge.default_model == "claude-sonnet-5-5"
+    assert models.writer is not models.judge and models.writer.name == models.judge.name
+    assert "uncalibrated" in models.describe()
+    with pytest.raises(ValueError, match="never judges its own output"):
+        build_models("sonnet", "claude-sonnet-5-5", provider="anthropic", factory=factory_for(a))
+    cal = {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5-5",
+        "pairs": 100,
+        "accuracy": 0.7,
+        "model_prose_accuracy": 0.7,
         "mean_confidence": 0.8,
     }
-    bad = dict(good, accuracy=0.6)
-    plan = JudgePlan(pool, {"anthropic": bad, "openai": good})
-    assert plan.enabled and [j.name for j in plan.judges] == ["openai"]
-    assert plan.writers == ["claude"], "only the provider the judge is clear of may write"
-    assert plan.judges_for("anthropic")[0].name == "openai" and not plan.judges_for("openai")
-    off = JudgePlan(pool, {"anthropic": bad, "openai": bad})
-    assert not off.enabled and off.writers == ["claude", "gpt"] and "OFF" in off.describe()
-    trusted = JudgePlan(pool, {})
-    assert trusted.enabled and len(trusted.judges) == 2 and "uncalibrated" in trusted.describe()
-
-
-def test_without_a_qualified_judge_the_original_is_kept(fixture_voice, slop_text):
-    a, b, factory = pair()
-    bad = {
-        "provider": "x",
-        "model": "m",
-        "pairs": 10,
-        "accuracy": 0.5,
-        "model_prose_accuracy": 0.5,
-        "mean_confidence": 0.6,
-    }
-    fixture_voice.meta.judge_calibration = {"anthropic": bad, "openai": bad}
-    try:
-        result = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
-    finally:
-        fixture_voice.meta.judge_calibration = {}
-    assert "OFF" in result.judge_gate and result.text == slop_text
-    assert result.stopped == "no_judge" and result.cost.calls == 0
-    assert all(u.kept_original and not u.candidates for u in result.units)
-    assert "no provider qualifies as judge" in result.units[0].reason
+    low = build_models(
+        "opus",
+        "sonnet",
+        provider="anthropic",
+        factory=factory_for(a),
+        calibration={"claude-sonnet-5-5": cal},
+    )
+    assert "70% on 100 pairs" in low.describe() and "unreliable" in low.describe()
 
 
 def test_judge_provider_failure_keeps_the_original_without_crashing(fixture_voice, slop_text):
@@ -309,10 +303,7 @@ def test_judge_provider_failure_keeps_the_original_without_crashing(fixture_voic
                 raise ProviderError("credit_balance_exhausted")
             return super()._raw_complete(system, user, model, temperature)
 
-    a, b = Broken("anthropic"), Broken("openai")
-    result = apply(
-        slop_text, fixture_voice, n=1, provider_factory=factory_for({"anthropic": a, "openai": b})
-    )
+    result = apply(slop_text, fixture_voice, n=1, provider_factory=factory_for(Broken("anthropic")))
     assert result.text == slop_text and result.stopped == "no_candidate_passed"
     reasons = [c.reason for u in result.units for c in u.candidates if c.text]
     assert reasons and all("unavailable" in r for r in reasons)
@@ -342,55 +333,8 @@ def test_brief_is_drafted_then_rewritten(fixture_voice, fixtures_dir):
                 )
             return super()._raw_complete(system, user, model, temperature)
 
-    a, b = Drafting("anthropic"), Drafting("openai")
     brief = load_brief(fixtures_dir / "brief_sample.yaml")
-    result = apply(
-        brief, fixture_voice, n=1, provider_factory=factory_for({"anthropic": a, "openai": b})
-    )
+    result = apply(brief, fixture_voice, n=1, provider_factory=factory_for(Drafting("anthropic")))
     assert result.draft is not None and len(result.draft) == len(brief.sections)
     assert result.draft_text and "Abraham" in result.draft_text
     assert result.mode == "rewrite"
-
-
-def test_same_vendor_judge_only_with_the_flag_and_a_different_model(fixture_voice, slop_text):
-    instances: dict[str, Scripted] = {}
-
-    def factory(name: str) -> CachingProvider:
-        return instances.setdefault(name, Scripted("anthropic"))
-
-    pool = ProviderPool(("claude", "claude:claude-sonnet-test"), factory)
-    opus, sonnet = pool.get("claude"), pool.get("claude:claude-sonnet-test")
-    assert opus is not None and sonnet is not None
-    assert sonnet.default_model == "claude-sonnet-test" and opus.default_model == "anthropic-model"
-    assert sonnet.key == "anthropic/claude-sonnet-test" and sonnet is not opus
-    off = JudgePlan(pool, {})
-    assert not off.enabled and "one provider only" in off.describe()
-    on = JudgePlan(pool, {}, allow_same_provider=True)
-    assert on.enabled and "WARNING" in on.describe() and "same-vendor" in on.describe()
-    assert on.judges_for(on.ident(opus))[0] is sonnet
-    assert not on.judges_for(on.ident(opus), on.ident(sonnet))
-    same_model = JudgePlan(
-        ProviderPool(("claude", "claude"), factory), {}, allow_same_provider=True
-    )
-    assert not same_model.enabled, "the same model may never judge itself"
-
-    result = apply(
-        slop_text,
-        fixture_voice,
-        n=2,
-        models=("claude", "claude:claude-sonnet-test"),
-        allow_same_provider_judge=True,
-        provider_factory=factory,
-    )
-    unit = result.units[0]
-    assert not unit.kept_original and "WARNING" in result.judge_gate
-    chosen = unit.candidates[unit.chosen]
-    assert all(v.model != chosen.model for v in chosen.verdicts), "judge model differs"
-    kept = apply(
-        slop_text,
-        fixture_voice,
-        n=1,
-        models=("claude", "claude:claude-sonnet-test"),
-        provider_factory=factory,
-    )
-    assert kept.stopped == "no_judge", "never the default"

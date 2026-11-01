@@ -27,7 +27,15 @@ from deslop.lock import DocumentLock, check, inventory
 from deslop.metrics import compute_all, detect_tells
 from deslop.nlp import WORD_RE, Analysis, Paragraph, Sentence, analyze
 from deslop.patterns import Catalog, load_catalog
-from deslop.providers.base import CachingProvider, ProviderError, Usage, get_provider
+from deslop.providers.base import (
+    DEFAULT_JUDGE,
+    DEFAULT_WRITER,
+    CachingProvider,
+    ProviderError,
+    Usage,
+    get_provider,
+    resolve_model,
+)
 from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, verify_additions
 from deslop.report import MetricResult, Report, TellHitResult
 from deslop.score import score
@@ -36,7 +44,6 @@ from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
 
 Mode = Literal["rewrite", "edit"]
-DEFAULT_MODELS = ("claude", "gpt")
 DEFAULT_CHUNK_WORDS = 2500  # longer documents are rewritten section by section
 
 
@@ -704,149 +711,69 @@ def clean_response(raw: str) -> str:
 ProviderFactory = Callable[[str], CachingProvider]
 
 
-class ProviderPool:
-    """The providers named on the command line, built once each. A name is an alias
-    (`claude`, `gpt`) or `alias:model` for a specific model of that vendor."""
+@dataclass
+class Models:
+    """The writer and the judge: two different Anthropic models served by one provider. The
+    judge also runs the semantic lock. A model never judges its own output."""
 
-    def __init__(self, names: tuple[str, ...], factory: ProviderFactory | None = None):
-        self.names = names
-        self.factory = factory or (lambda n: get_provider(n))
-        self._cache: dict[str, CachingProvider] = {}
-        self.unavailable: dict[str, str] = {}
+    writer: CachingProvider
+    judge: CachingProvider
+    calibration: JudgeCalibration | None = None
 
-    def get(self, name: str) -> CachingProvider | None:
-        if name in self.unavailable:
-            return None
-        if name not in self._cache:
-            alias, _, model = name.partition(":")
-            try:
-                provider = self.factory(alias)
-            except ProviderError as exc:
-                self.unavailable[name] = str(exc)
-                return None
-            if model:
-                provider = copy.copy(provider)
-                provider.default_model = model
-                provider.usage = Usage()
-            self._cache[name] = provider
-        return self._cache[name]
-
-    def for_iteration(self, i: int) -> CachingProvider:
-        order = [self.names[(i + k) % len(self.names)] for k in range(len(self.names))]
-        for name in order:
-            p = self.get(name)
-            if p is not None:
-                return p
-        raise ProviderError("no provider available: " + "; ".join(self.unavailable.values()))
-
-    def other_than(self, provider: CachingProvider) -> CachingProvider:
-        for name in self.names:
-            p = self.get(name)
-            if p is not None and p.name != provider.name:
-                return p
-        return provider
-
+    @property
     def usage(self) -> Usage:
         total = Usage()
-        seen: set[int] = set()
-        for p in self._cache.values():
-            if id(p) not in seen:
-                seen.add(id(p))
-                total.add(p.usage)
+        total.add(self.writer.usage)
+        if self.judge is not self.writer:
+            total.add(self.judge.usage)
         return total
 
-
-class JudgePlan:
-    """Who may judge whom. A provider judges only candidates it did not write, and only if
-    its measured calibration (voice.yaml `judge_calibration`) reached 80% accuracy; a
-    provider with no calibration is trusted. Writers are the providers some judge is clear
-    of. When no judge qualifies the gate is off and candidates are ranked by the linter."""
-
-    def __init__(
-        self,
-        pool: ProviderPool,
-        calibration: dict[str, Any],
-        *,
-        allow_same_provider: bool = False,
-    ):
-        self.pool = pool
-        self.allow_same_provider = allow_same_provider
-        self.available: list[tuple[str, CachingProvider]] = []
-        for alias in pool.names:
-            p = pool.get(alias)
-            if p is not None and all(self.ident(q) != self.ident(p) for _, q in self.available):
-                self.available.append((alias, p))
-        self.calibration: dict[str, JudgeCalibration] = {}
-        for name, data in calibration.items():
-            try:
-                self.calibration[name] = JudgeCalibration.model_validate(data)
-            except ValueError:
-                continue
-        self.judges = [p for _, p in self.available if self._qualified(p)]
-        self.writers = [
-            alias
-            for alias, p in self.available
-            if any(self.ident(j) != self.ident(p) for j in self.judges)
-        ]
-        if not self.writers:
-            self.writers = [alias for alias, _ in self.available]
-            self.judges = []
-        self.enabled = bool(self.judges)
-
-    def ident(self, p: CachingProvider) -> str:
-        """What tells one provider from another for judging: the vendor, or with
-        `allow_same_provider` the vendor and model."""
-        return p.key if self.allow_same_provider else p.name
-
-    def _qualified(self, p: CachingProvider) -> bool:
-        cal = self.calibration.get(p.name)
-        return cal is None or cal.usable
-
-    def judges_for(self, *writer_idents: str) -> list[CachingProvider]:
-        """Judges clear of every writer named (by `ident`); empty when none is."""
-        clear = [j for j in self.judges if self.ident(j) not in writer_idents]
-        return clear[:1]
-
-    def same_vendor_pairs(self) -> list[str]:
-        """Judge and writer pairs that share a vendor (only possible with the flag)."""
-        out = []
-        for j in self.judges:
-            for _, w in self.available:
-                if j.name == w.name and self.ident(j) != self.ident(w):
-                    out.append(f"{j.key} judges {w.key}")
-        return out
-
-    def writer(self, i: int) -> CachingProvider:
-        for k in range(len(self.writers)):
-            p = self.pool.get(self.writers[(i + k) % len(self.writers)])
-            if p is not None:
-                return p
-        return self.pool.for_iteration(i)
-
     def describe(self) -> str:
-        if not self.available:
-            return "no provider available"
-        parts = []
-        for _, p in self.available:
-            cal = self.calibration.get(p.name)
-            role = "judge" if p in self.judges else "writer only"
-            acc = f"{100 * cal.accuracy:.0f}% on {cal.pairs} pairs" if cal else "uncalibrated"
-            parts.append(f"{p.name}: {role} ({acc})")
-        if self.enabled:
-            state = "on"
-        elif len({p.name for _, p in self.available}) < 2:
-            state = "OFF (one provider only; a provider never judges its own writing)"
+        cal = self.calibration
+        if cal is None:
+            measured = "uncalibrated"
         else:
-            state = "OFF (no provider reached 80% as judge)"
-        line = f"judge gate {state}; " + "; ".join(parts)
-        pairs = self.same_vendor_pairs()
-        if pairs:
-            line += (
-                "; WARNING: same-vendor judge allowed (--allow-same-provider-judge): "
-                + ", ".join(pairs)
-                + "; a judge from another vendor is the supported configuration"
-            )
-        return line
+            measured = f"{100 * cal.accuracy:.0f}% on {cal.pairs} pairs"
+            if not cal.usable:
+                measured += "; below 80%, its verdicts are unreliable"
+        return (
+            f"writer {self.writer.key}; judge {self.judge.key} ({measured}); "
+            f"provider {self.writer.name}"
+        )
+
+
+def build_models(
+    writer: str = DEFAULT_WRITER,
+    judge: str = DEFAULT_JUDGE,
+    *,
+    provider: str | None = None,
+    factory: ProviderFactory | None = None,
+    calibration: dict[str, Any] | None = None,
+) -> Models:
+    """Resolve the writer and judge model names (aliases allowed) on the configured provider.
+    `factory` maps a provider name to a `CachingProvider` (tests replay a cache with it)."""
+    from deslop.providers.base import default_provider_name
+
+    writer_model, judge_model = resolve_model(writer), resolve_model(judge)
+    if writer_model == judge_model:
+        raise ValueError(
+            f"the judge must be a different model from the writer ({writer_model}): "
+            "a model never judges its own output"
+        )
+    name = provider or default_provider_name()
+    make = factory or (lambda n: get_provider(n))
+    base = make(name)
+    writer_p, judge_p = copy.copy(base), copy.copy(base)
+    writer_p.default_model, writer_p.usage = writer_model, Usage()
+    judge_p.default_model, judge_p.usage = judge_model, Usage()
+    cal = None
+    for key, data in (calibration or {}).items():
+        if key in (judge_model, judge_p.key):
+            try:
+                cal = JudgeCalibration.model_validate(data)
+            except ValueError:
+                cal = None
+    return Models(writer=writer_p, judge=judge_p, calibration=cal)
 
 
 # ---------------------------------------------------------------- the loops
@@ -1005,13 +932,14 @@ def apply(
     voice: Voice,
     *,
     mode: Mode = "rewrite",
-    models: tuple[str, ...] = DEFAULT_MODELS,
+    writer: str = DEFAULT_WRITER,
+    judge: str = DEFAULT_JUDGE,
+    provider: str | None = None,
     budget: float | None = None,
     n: int = 3,
     max_growth: float = DEFAULT_MAX_GROWTH,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
     primary_texts: list[str | Path | PrimaryText] | None = None,
-    allow_same_provider_judge: bool = False,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -1021,53 +949,55 @@ def apply(
 ) -> Result:
     """Write `text_or_brief` in `voice` and return a [`Result`][deslop.Result].
 
-    Rewrite mode (default) writes the document as a whole: every paragraph's propositions
-    are extracted (cached), then `n` candidates are sampled across the configured providers
-    in rotation from the profile, the rules, the exemplars nearest the piece, the full
-    original and the propositions by paragraph. Each candidate must pass the content lock
-    (nothing locked removed), the length limit (`max_growth` percent), the primary-text
-    check, the semantic lock paragraph by paragraph (every proposition kept, none added,
-    judged by a different provider) and the coherence checks (same paragraphing, same tense
-    per paragraph, every sentence-initial pronoun with an antecedent, connective openers in
-    the voice's band and near the original's share), then is judged against the original by
-    a provider that wrote neither on four items (voice, coherence, tense and person, order
-    and emphasis) and must win or tie on every one. Survivors are judged round-robin; the
-    best win rate wins. If no candidate passes, one retry carries what a reader noticed; if
-    that fails too the result is the original with the report. A document longer than
-    `chunk_words` is rewritten section by section, each with the already-rewritten section
-    before it in context and the original section after it visible. Edit mode rewrites only
-    flagged sentences under the same locks. A `Brief` is drafted section by section first,
-    then rewritten. `primary_texts` (files, directories or loaded `PrimaryText`s) are
-    supplied by the caller; without any, added quotations and citations are allowed and
-    listed as unverified. `provider_factory` maps a provider name to a `CachingProvider`
-    (tests replay a cache with it); `budget` is USD. `models` names aliases (`claude`,
-    `gpt`) or `alias:model`; a judge from another vendor than the writer is the supported
-    configuration, and `allow_same_provider_judge` permits a different model of the same
-    vendor to judge, with a warning in `judge_gate`.
+    Rewrite mode (default) writes the document as a whole: every paragraph's propositions are
+    extracted (cached), then `n` candidates are sampled from the `writer` model with the
+    profile, the rules, the exemplars nearest the piece, the full original and the propositions
+    by paragraph. Each candidate must pass the content lock (nothing locked removed), the length
+    limit (`max_growth` percent), the primary-text check, the semantic lock paragraph by
+    paragraph (every proposition kept, none added, checked by the `judge` model) and the
+    coherence checks (same paragraphing, same tense per paragraph, every sentence-initial
+    pronoun with an antecedent, connective openers in the voice's band and near the original's
+    share), then is judged against the original by the `judge` model (a different Anthropic
+    model from the writer) on four items (voice, coherence, tense and person, order and
+    emphasis) and must win or tie on every one. Survivors are judged round-robin; the best win
+    rate wins. If no candidate passes, one retry carries what a reader noticed; if that fails
+    too the result is the original with the report. A document longer than `chunk_words` is
+    rewritten section by section, each with the already-rewritten section before it in context
+    and the original section after it visible. Edit mode rewrites only flagged sentences under
+    the same locks. A `Brief` is drafted section by section first, then rewritten.
+    `primary_texts` (files, directories or loaded `PrimaryText`s) are supplied by the caller;
+    without any, added quotations and citations are allowed and listed as unverified.
+    `provider_factory` maps a provider name to a `CachingProvider` (tests replay a cache with
+    it); `budget` is USD. `writer` and `judge` are model names or aliases (`opus`, `sonnet`,
+    `haiku`) and must differ; `provider` is `anthropic` (the API) or `claude-cli`, default from
+    DESLOP_PROVIDER.
     """
     catalog = load_catalog(patterns)
-    pool = ProviderPool(models, provider_factory)
-    plan = JudgePlan(
-        pool, voice.meta.judge_calibration, allow_same_provider=allow_same_provider_judge
+    models = build_models(
+        writer,
+        judge,
+        provider=provider,
+        factory=provider_factory,
+        calibration=voice.meta.judge_calibration,
     )
     draft_logs: list[SectionLog] | None = None
     draft_text: str | None = None
     if isinstance(text_or_brief, Brief):
-        text, draft_logs = draft_sections(text_or_brief, voice, pool, progress=progress)
+        text, draft_logs = draft_sections(text_or_brief, voice, models.writer, progress=progress)
         draft_text = text
         mode = "rewrite"
     else:
         text = text_or_brief
     texts = _load_texts(list(primary_texts or []))
     if progress:
-        progress(plan.describe())
+        progress(models.describe())
         if texts:
             progress("primary texts: " + ", ".join(t.name for t in texts))
     report_before = score(text, voice, patterns=patterns)
     exemplars = ExemplarIndex(voice)
     document = DocumentLock.build(text)
     opts = Options(
-        plan=plan,
+        models=models,
         texts=texts,
         max_growth=max_growth,
         chunk_words=chunk_words,
@@ -1081,7 +1011,6 @@ def apply(
             text,
             voice,
             report_before,
-            pool,
             exemplars,
             document,
             catalog,
@@ -1095,7 +1024,6 @@ def apply(
             text,
             voice,
             report_before,
-            pool,
             exemplars,
             document,
             catalog,
@@ -1126,7 +1054,7 @@ def apply(
         meaning_diff=_meaning_diff(units),
         units=units,
         iterations=iterations,
-        cost=_cost(pool.usage()),
+        cost=_cost(models.usage),
         stopped=stopped,
         exemplars_used=exemplars.available,
         max_growth=max_growth,
@@ -1137,7 +1065,7 @@ def apply(
         metric_table=metric_table(report_before, report_after),
         unverified_additions=_unverified(units),
         primary_texts=[t.name for t in texts],
-        judge_gate=plan.describe(),
+        judge_gate=models.describe(),
         draft=draft_logs,
         draft_text=draft_text,
     )
@@ -1145,9 +1073,9 @@ def apply(
 
 @dataclass
 class Options:
-    """Everything the unit loops share: the judge plan, the primary texts, the gates."""
+    """Everything the unit loops share: the models, the primary texts, the gates."""
 
-    plan: JudgePlan
+    models: Models
     texts: list[PrimaryText]
     max_growth: float
     chunk_words: int
@@ -1179,7 +1107,6 @@ def _rewrite_loop(
     text: str,
     voice: Voice,
     report_before: Report,
-    pool: ProviderPool,
     exemplars: ExemplarIndex,
     document: DocumentLock,
     catalog: Catalog,
@@ -1195,23 +1122,7 @@ def _rewrite_loop(
     sections = sections_of(a, opts.chunk_words)
     if not sections:
         return text, [], [], "nothing_to_rewrite"
-    if not opts.plan.enabled:
-        # No provider may judge, so no candidate could pass: generate nothing.
-        untouched = [
-            UnitLog(
-                index=sec.index,
-                kind=sec.kind,
-                start=sec.start,
-                end=sec.end,
-                original=text[sec.start : sec.end],
-                final=text[sec.start : sec.end],
-                kept_original=True,
-                reason="no provider qualifies as judge; nothing was generated",
-            )
-            for sec in sections
-        ]
-        return text, untouched, [], "no_judge"
-    writer0 = opts.plan.writer(0)
+    writer0 = opts.models.writer
     try:
         by_paragraph = [extract_propositions(p.text, writer0) for p in a.paragraphs]
     except ProviderError as exc:
@@ -1235,7 +1146,7 @@ def _rewrite_loop(
     pieces: list[str] = []  # rewritten section texts, in order
     pos = 0
     for section in sections:
-        if budget is not None and pool.usage().cost_usd > budget:
+        if budget is not None and opts.models.usage.cost_usd > budget:
             return (
                 _revert(text, a, sections, by_paragraph, logs, "budget exhausted"),
                 logs,
@@ -1257,7 +1168,6 @@ def _rewrite_loop(
             section_text,
             props,
             voice,
-            pool,
             exemplars,
             document,
             catalog,
@@ -1405,7 +1315,6 @@ def _rewrite_section(
     section_text: str,
     props: list[list[str]],
     voice: Voice,
-    pool: ProviderPool,
     exemplars: ExemplarIndex,
     document: DocumentLock,
     catalog: Catalog,
@@ -1415,7 +1324,8 @@ def _rewrite_section(
     following: str,
     report_before: Report,
 ) -> UnitLog:
-    plan, n, progress = opts.plan, opts.n, opts.progress
+    models, n, progress = opts.models, opts.n, opts.progress
+    writer, judge = models.writer, models.judge
     log = UnitLog(
         index=section.index,
         kind=section.kind,
@@ -1430,10 +1340,8 @@ def _rewrite_section(
     noticed: list[str] = []
     for round_index in range(ROUNDS):
         eligible: list[CandidateLog] = []
-        writers: dict[int, str] = {}
         for k in range(n):
             attempt = round_index * n + k + 1
-            writer = plan.writer(round_index * n + k)
             system, user = document_prompt(
                 section,
                 text,
@@ -1472,10 +1380,9 @@ def _rewrite_section(
             log.candidates.append(cand)
             notes = _verify_section(section_text, candidate, cand, document, voice, opts)
             if not notes:
-                checkers = plan.judges_for(plan.ident(writer)) or [pool.other_than(writer)]
                 try:
                     cand.semantic = _check_meaning_by_paragraph(
-                        section_text, candidate, props, checkers[0]
+                        section_text, candidate, props, judge
                     )
                 except ProviderError as exc:
                     cand.reason = f"meaning check unavailable: {exc}"[:200]
@@ -1503,15 +1410,10 @@ def _rewrite_section(
                 cand.reader_notes = notes + linter
                 continue
             cand.reader_notes = linter
-            judges = plan.judges_for(plan.ident(writer))
-            if not judges:
-                cand.reason = "no judge is clear of the writer"
-                cand.reader_notes = linter
-                continue
             try:
                 cand.verdicts.append(
                     compare_document(
-                        candidate, section_text, section_text, voice, judges[0], exemplars=near
+                        candidate, section_text, section_text, voice, judge, exemplars=near
                     )
                 )
             except ProviderError as exc:
@@ -1532,20 +1434,16 @@ def _rewrite_section(
                 ]
                 continue
             eligible.append(cand)
-            writers[id(cand)] = plan.ident(writer)
 
         for i, x in enumerate(eligible):
             for y in eligible[i + 1 :]:
-                judges = plan.judges_for(writers[id(x)], writers[id(y)])
-                if not judges:
-                    continue  # no provider is clear of both writers
                 try:
                     v = compare_document(
                         x.text,
                         y.text,
                         section_text,
                         voice,
-                        judges[0],
+                        judge,
                         exemplars=near,
                         against=f"candidate {y.attempt}",
                     )
@@ -1597,7 +1495,6 @@ def _edit_loop(
     text: str,
     voice: Voice,
     report_before: Report,
-    pool: ProviderPool,
     exemplars: ExemplarIndex,
     document: DocumentLock,
     catalog: Catalog,
@@ -1608,6 +1505,7 @@ def _edit_loop(
     preserve_length: float,
 ) -> tuple[str, list[UnitLog], list[IterationLog], str]:
     patterns, progress = opts.patterns, opts.progress
+    writer, judge = opts.models.writer, opts.models.judge
     iterations: list[IterationLog] = []
     logs: list[UnitLog] = []
     rejected_for: dict[str, list[tuple[str, str]]] = {}
@@ -1623,12 +1521,12 @@ def _edit_loop(
         if not units:
             stopped = "nothing_flagged"
             break
-        provider = pool.for_iteration(i)
+        provider = writer
         if progress:
-            progress(f"iteration {i + 1}: {len(units)} edit unit(s) via {provider.name}")
+            progress(f"iteration {i + 1}: {len(units)} edit unit(s) via {provider.key}")
         replacements: dict[int, str] = {}
         for unit in units:
-            if budget is not None and pool.usage().cost_usd > budget:
+            if budget is not None and opts.models.usage.cost_usd > budget:
                 stopped = "budget"
                 break
             para = a.paragraphs[unit.para_index]
@@ -1668,7 +1566,6 @@ def _edit_loop(
                             reason=f"provider error: {exc}"[:200],
                         )
                     )
-                    attempt_provider = pool.other_than(attempt_provider)
                     continue
                 candidate = clean_response(completion.text)
                 cand = CandidateLog(
@@ -1693,10 +1590,9 @@ def _edit_loop(
                             str(x) for x in cand.primary.rejected[:3]
                         )
                     elif lock.additions:
-                        checker = pool.other_than(attempt_provider)
                         props = extract_propositions(unit.text, attempt_provider)
                         log.propositions = props
-                        cand.semantic = check_meaning(unit.text, candidate, props, checker)
+                        cand.semantic = check_meaning(unit.text, candidate, props, judge)
                         if not cand.semantic.ok:
                             reason = "meaning: " + "; ".join(cand.semantic.failing[:3])
                 cand.accepted = reason is None
@@ -1709,8 +1605,6 @@ def _edit_loop(
                     log.reason = f"accepted on attempt {attempt + 1}"
                     break
                 rejected_for.setdefault(unit.text, []).append((candidate, reason))
-                if attempt == 0:
-                    attempt_provider = pool.other_than(provider)
             if log.chosen is None:
                 log.kept_original = True
                 log.reason = log.candidates[-1].reason if log.candidates else "no attempt"

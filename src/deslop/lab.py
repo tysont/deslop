@@ -78,12 +78,12 @@ def calibrate_judges(
     pairs: int = 100,
     seed: int = 0,
 ) -> dict[str, JudgeCalibration]:
-    """Run the comparative judge calibration with each provider; keyed by provider name."""
+    """Run the comparative judge calibration with each judge; keyed by the judge's model."""
     exemplars = parse_exemplars(voice.exemplars)[:2]
     out: dict[str, JudgeCalibration] = {}
     for p in providers:
         try:
-            out[p.name] = calibrate_judge(
+            out[p.default_model] = calibrate_judge(
                 voice, p, llm, corpus, exemplars=exemplars, pairs=pairs, seed=seed
             )
         except ProviderError:

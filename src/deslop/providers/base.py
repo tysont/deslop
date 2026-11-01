@@ -25,9 +25,31 @@ def default_cache_dir() -> Path:
 
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-5-5",
+    "claude-cli": "claude-opus-5-5",
     "openai": "gpt-5.5",
     "compatible": os.environ.get("DESLOP_COMPATIBLE_MODEL", "default"),
 }
+DEFAULT_WRITER = "claude-opus-5-5"
+DEFAULT_JUDGE = "claude-sonnet-5-5"
+MODEL_ALIASES = {
+    "opus": "claude-opus-5-5",
+    "sonnet": "claude-sonnet-5-5",
+    "haiku": "claude-haiku-5-5",
+}
+ANTHROPIC_PROVIDERS = ("anthropic", "claude-cli")  # the default set; OpenAI only when named
+
+
+def resolve_model(name: str) -> str:
+    """`opus`, `sonnet` and `haiku` resolve to the current model of that family, the same
+    for every provider; any other name is taken as a model id."""
+    return MODEL_ALIASES.get(name.strip().lower(), name.strip())
+
+
+def default_provider_name() -> str:
+    """Which Anthropic provider serves calls when none is named: DESLOP_PROVIDER, else the
+    API (`anthropic`). The config file's `provider:` key is applied by the CLI."""
+    name = os.environ.get("DESLOP_PROVIDER", "").strip().lower()
+    return name if name in ANTHROPIC_PROVIDERS else "anthropic"
 
 
 class ProviderError(Exception):
@@ -89,10 +111,15 @@ class Provider(Protocol):
 
 
 class CachingProvider:
-    """Wraps a raw provider call with a disk cache keyed on the full prompt."""
+    """Wraps a raw provider call with a disk cache keyed on the full prompt. `cache_namespace`
+    is the vendor the key is filed under, so two providers serving the same models (the
+    Anthropic API and the Claude Code CLI) replay each other's responses; `billing` says
+    whether a live call costs dollars (`api`) or a subscription call (`subscription`)."""
 
     name: str = "base"
     default_model: str = ""
+    cache_namespace: str = ""
+    billing: str = "api"
 
     def __init__(
         self,
@@ -120,7 +147,14 @@ class CachingProvider:
 
     def _cache_key(self, system: str, user: str, model: str, temperature: float) -> Path:
         payload = json.dumps(
-            {"p": self.name, "m": model, "t": temperature, "s": system, "u": user}, sort_keys=True
+            {
+                "p": self.cache_namespace or self.name,
+                "m": model,
+                "t": temperature,
+                "s": system,
+                "u": user,
+            },
+            sort_keys=True,
         )
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         return self.cache_dir / digest[:2] / f"{digest}.json"
@@ -128,7 +162,7 @@ class CachingProvider:
     def complete(
         self, system: str, user: str, *, model: str | None = None, temperature: float = 0.7
     ) -> Completion:
-        model = model or self.default_model
+        model = resolve_model(model or self.default_model)
         key = self._cache_key(system, user, model, temperature)
         if self.use_cache and key.exists():
             data = json.loads(key.read_text(encoding="utf-8"))
@@ -162,7 +196,7 @@ class CachingProvider:
         else:
             raise ProviderError(f"{self.name} failed after {self.max_retries} attempts: {last}")
         self.usage.add(result.usage)
-        spend.record(provider=self.name, model=model, usage=result.usage)
+        spend.record(provider=self.name, model=model, usage=result.usage, billing=self.billing)
         if self.use_cache:
             key.parent.mkdir(parents=True, exist_ok=True)
             key.write_text(json.dumps({"text": result.text, "model": model}), encoding="utf-8")
@@ -170,9 +204,13 @@ class CachingProvider:
 
 
 def list_providers() -> dict[str, bool]:
-    """Provider name -> whether credentials are configured."""
+    """Provider name -> whether it is configured (a key, or the CLI on PATH). OpenAI and the
+    compatible endpoint are listed but never selected unless named."""
+    import shutil
+
     return {
         "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "claude-cli": shutil.which("claude") is not None,
         "openai": bool(os.environ.get("OPENAI_API_KEY")),
         "compatible": bool(os.environ.get("DESLOP_COMPATIBLE_BASE_URL")),
     }
@@ -180,12 +218,15 @@ def list_providers() -> dict[str, bool]:
 
 def get_provider(name: str, **kwargs: Any) -> CachingProvider:
     from deslop.providers.anthropic import AnthropicProvider
+    from deslop.providers.claude_cli import ClaudeCliProvider
     from deslop.providers.openai import CompatibleProvider, OpenAIProvider
 
-    aliases = {"claude": "anthropic", "gpt": "openai"}
+    aliases = {"claude": "anthropic", "gpt": "openai", "cli": "claude-cli"}
     name = aliases.get(name, name)
     if name == "anthropic":
         return AnthropicProvider(**kwargs)
+    if name == "claude-cli":
+        return ClaudeCliProvider(**kwargs)
     if name == "openai":
         return OpenAIProvider(**kwargs)
     if name == "compatible":
@@ -193,8 +234,6 @@ def get_provider(name: str, **kwargs: Any) -> CachingProvider:
     raise ProviderError(f"unknown provider: {name}")
 
 
-def first_available() -> CachingProvider | None:
-    for name, ok in list_providers().items():
-        if ok:
-            return get_provider(name)
-    return None
+def default_provider(**kwargs: Any) -> CachingProvider:
+    """The configured Anthropic provider (see `default_provider_name`). Never OpenAI."""
+    return get_provider(default_provider_name(), **kwargs)

@@ -2,6 +2,23 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.3.0 - 2026-11-01
+
+- Claude only by default. The writer is claude-opus-5-5 and the judge claude-sonnet-5-5
+  (`--writer`, `--judge`; aliases opus/sonnet/haiku), both on one provider; the judge also
+  runs the semantic lock. The rule that a model never judges its own output stays; the
+  cross-vendor requirement, `--allow-same-provider-judge`, provider alternation across
+  candidates and the "no provider qualifies as judge" stop are gone. OpenAI stays in the
+  provider layer but is never selected unless named (no fallback). `lab calibrate-judge`
+  takes `--judges` and stores calibration by model.
+- Provider `claude-cli`: the Claude Code CLI in headless mode (`claude -p`, JSON output,
+  `--model`) with the local login; one subprocess per call, 120 s timeout, stderr in the
+  error, the API's cache and retries, and a cache key shared with the API provider. Calls
+  log to spend.jsonl with cost null and a subscription marker; `deslop doctor` reports API
+  dollars and subscription calls separately and checks the CLI is installed and logged in.
+  `--max-calls` (200) caps live calls per invocation. `provider:` in the config file and
+  `DESLOP_PROVIDER` select it; the default stays `anthropic`.
+
 ## v2.2.1 - 2026-11-01
 
 - Spend guard: every live provider call is appended to `$DESLOP_HOME/spend.jsonl` with its

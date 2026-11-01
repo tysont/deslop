@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import yaml
 from pydantic import BaseModel, Field
@@ -13,12 +12,9 @@ from pydantic import BaseModel, Field
 from deslop.lock import ANY_QUOTE_RE
 from deslop.metrics.anchors import CITATION_PATTERNS
 from deslop.nlp import analyze
-from deslop.providers.base import ProviderError
+from deslop.providers.base import CachingProvider, ProviderError
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
-
-if TYPE_CHECKING:
-    from deslop.apply import ProviderPool
 
 # ---------------------------------------------------------------- brief
 
@@ -233,19 +229,18 @@ def assemble(brief: Brief, sections: list[SectionLog]) -> str:
 def draft_sections(
     brief: Brief,
     voice: Voice,
-    pool: ProviderPool,
+    provider: CachingProvider,
     *,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[str, list[SectionLog]]:
     """Write each section of `brief` in `voice` (two attempts when a listed reference or
     quotation is missing), strip unlisted quotations and citations, and assemble the piece.
-    The result is what `apply` then rewrites paragraph by paragraph."""
-    provider = pool.for_iteration(0)
+    The result is what `apply` then rewrites as a whole."""
     logs: list[SectionLog] = []
     previous = ""
     for section in brief.sections:
         if progress:
-            progress(f"drafting: {section.heading} via {provider.name}")
+            progress(f"drafting: {section.heading} via {provider.key}")
         best: SectionLog | None = None
         missing: list[str] = []
         attempt_provider = provider
@@ -255,8 +250,7 @@ def draft_sections(
                 completion = attempt_provider.complete(system, user, temperature=0.7)
             except ProviderError as exc:
                 if progress:
-                    progress(f"  {attempt_provider.name} failed: {exc}")
-                attempt_provider = pool.other_than(attempt_provider)
+                    progress(f"  {attempt_provider.key} failed: {exc}")
                 continue
             text, stripped = strip_unlisted(
                 clean_section(completion.text), refs=section.refs, quotes=section.quotes
@@ -276,7 +270,7 @@ def draft_sections(
             if log.complete:
                 break
         if best is None:
-            raise ProviderError("no provider could draft section " + section.heading)
+            raise ProviderError("the writer could not draft section " + section.heading)
         if progress and not best.complete:
             progress(f"  incomplete after {best.attempts} attempts; missing: {best.missing}")
         logs.append(best)

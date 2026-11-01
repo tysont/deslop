@@ -30,13 +30,19 @@ def test_pricing_age_warns_after_ninety_days(monkeypatch):
     assert old.status == "warn" and "91 days" in old.detail
 
 
-def test_provider_checks_use_the_ping(monkeypatch):
+def test_provider_checks_use_the_ping_and_the_cli_status(monkeypatch):
+    from deslop.providers import claude_cli
+
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("DESLOP_COMPATIBLE_BASE_URL", raising=False)
+    monkeypatch.delenv("DESLOP_PROVIDER", raising=False)
+    monkeypatch.setattr(doctor, "_ping", lambda name: "claude-x")
+    monkeypatch.setattr(claude_cli, "cli_status", lambda: claude_cli.CliStatus(True, True, "9.9.9"))
     checks = doctor.check_providers(ping=lambda name: "claude-x")
-    assert [c.status for c in checks] == ["ok"]
-    assert "claude-x" in checks[0].detail
+    details = [c.detail for c in checks]
+    assert [c.status for c in checks] == ["ok", "ok", "ok"]
+    assert "anthropic: claude-x" in details[0] and "claude-cli: 9.9.9, logged in" in details[1]
+    assert "default provider: anthropic" in details[2]
 
     def boom(name):
         raise RuntimeError("401 bad key")
@@ -44,8 +50,18 @@ def test_provider_checks_use_the_ping(monkeypatch):
     checks = doctor.check_providers(ping=boom)
     assert checks[0].status == "fail" and "401" in checks[0].detail
     monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.setattr(
+        claude_cli, "cli_status", lambda: claude_cli.CliStatus(True, False, "9.9.9", "no login")
+    )
     checks = doctor.check_providers(ping=lambda name: "x")
-    assert len(checks) == 1 and checks[0].status == "warn"
+    assert [c.status for c in checks] == ["warn", "warn", "warn"]
+    assert "not logged in" in checks[1].detail and "not usable" in checks[2].detail
+    monkeypatch.setenv("DESLOP_PROVIDER", "claude-cli")
+    monkeypatch.setattr(claude_cli, "cli_status", lambda: claude_cli.CliStatus(True, True, "9.9.9"))
+    checks = doctor.check_providers(ping=lambda name: "x")
+    assert checks[-1].status == "ok" and "default provider: claude-cli" in checks[-1].detail
+    monkeypatch.setenv("OPENAI_API_KEY", "sk")
+    assert "unused unless named" in doctor.check_providers(ping=lambda n: "x")[-1].detail
 
 
 def test_voice_check_resolves_and_validates(fixture_voice, tmp_path, monkeypatch):

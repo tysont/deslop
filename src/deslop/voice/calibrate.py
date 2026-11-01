@@ -132,9 +132,14 @@ def calibrate(
     voice_name = name or corpus.name
     profile_source = "template"
     if use_llm and provider is None:
-        from deslop.providers.base import first_available
+        from deslop.providers.base import ProviderError, default_provider
 
-        provider = first_available()
+        try:
+            provider = default_provider()
+        except ProviderError as exc:
+            if progress:
+                progress(f"no provider for the profile ({exc}); using the template")
+            provider = None
     if use_llm and provider is not None:
         if progress:
             progress(f"writing profile with {provider.name}")

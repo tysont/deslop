@@ -37,26 +37,56 @@ def _ping(name: str) -> str:
 
 
 def check_providers(ping: Callable[[str], str] = _ping) -> list[Check]:
-    from deslop.providers.base import list_providers
+    """The Anthropic API (pinged when a key is set), the Claude Code CLI (installed and
+    logged in, no model call), and the configured default; OpenAI is only noted."""
+    from deslop.providers.base import default_provider_name, list_providers
+    from deslop.providers.claude_cli import cli_status
 
-    configured = [name for name, ok in list_providers().items() if ok]
-    if not configured:
-        return [
+    configured = list_providers()
+    checks = []
+    if configured.get("anthropic"):
+        try:
+            model = ping("anthropic")
+        except Exception as exc:  # noqa: BLE001 - any failure is the finding
+            checks.append(Check(name="providers", status="fail", detail=f"anthropic: {exc}"[:200]))
+        else:
+            checks.append(Check(name="providers", status="ok", detail=f"anthropic: {model}"))
+    else:
+        checks.append(
+            Check(name="providers", status="warn", detail="anthropic: ANTHROPIC_API_KEY not set")
+        )
+    st = cli_status()
+    if not st.installed:
+        checks.append(Check(name="providers", status="warn", detail=f"claude-cli: {st.detail}"))
+    elif st.logged_in:
+        checks.append(
+            Check(name="providers", status="ok", detail=f"claude-cli: {st.version}, logged in")
+        )
+    else:
+        checks.append(
             Check(
                 name="providers",
                 status="warn",
-                detail="no credentials found (ANTHROPIC_API_KEY, OPENAI_API_KEY or "
-                "DESLOP_COMPATIBLE_BASE_URL); convert, draft and calibrate need one",
+                detail=f"claude-cli: {st.version}, not logged in "
+                f"({st.detail or 'run claude auth login'})",
             )
-        ]
-    checks = []
-    for name in configured:
-        try:
-            model = ping(name)
-        except Exception as exc:  # noqa: BLE001 - any failure is the finding
-            checks.append(Check(name="providers", status="fail", detail=f"{name}: {exc}"[:200]))
-        else:
-            checks.append(Check(name="providers", status="ok", detail=f"{name}: {model}"))
+        )
+    default = default_provider_name()
+    ok_default = (default == "anthropic" and configured.get("anthropic")) or (
+        default == "claude-cli" and st.installed and st.logged_in
+    )
+    checks.append(
+        Check(
+            name="providers",
+            status="ok" if ok_default else "warn",
+            detail=f"default provider: {default}"
+            + ("" if ok_default else " (not usable; apply, draft and calibrate need it)"),
+        )
+    )
+    if configured.get("openai"):
+        checks.append(
+            Check(name="providers", status="ok", detail="openai: key set; unused unless named")
+        )
     return checks
 
 

@@ -86,3 +86,18 @@ def test_totals_for_today_and_the_last_seven_days(home):
 def test_summary_without_a_log_is_zero(home):
     s = spend.summary()
     assert s.today == 0.0 and s.week == 0.0 and "no live calls" in s.describe()
+
+
+def test_subscription_calls_log_without_dollars_and_count_against_max_calls(home):
+    spend.set_context(command="apply")
+    spend.set_max_calls(2)
+    row = spend.record(
+        provider="claude-cli", model="m", usage=Usage(calls=1), billing="subscription"
+    )
+    assert row["cost"] is None and row["billing"] == "subscription"
+    spend.record(provider="anthropic", model="m", usage=Usage(calls=1, cost_usd=0.2))
+    assert spend.calls() == 2 and spend.over_budget() is not None
+    assert "max-calls" in (spend.over_budget() or "")
+    s = spend.summary()
+    assert s.today == pytest.approx(0.2) and s.subscription_calls_today == 1
+    assert "1 subscription call" in s.describe() and "$0.20" in s.describe()

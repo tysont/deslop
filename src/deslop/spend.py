@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from deslop.providers.base import Usage
 
 DEFAULT_BUDGET = 5.0  # USD per invocation of apply or any lab command
+DEFAULT_MAX_CALLS = 200  # live calls per invocation, so subscription runs have a cap too
 
 
 def spend_path() -> Path:
@@ -25,7 +26,9 @@ class _State:
     voice: str = ""
     input_file: str = ""
     budget: float | None = None
+    max_calls: int | None = None
     spent: float = 0.0
+    calls: int = 0
     hit: bool = False
     extra: dict[str, str] = field(default_factory=dict)
 
@@ -53,8 +56,19 @@ def set_budget(limit: float | None) -> None:
     _state.hit = False
 
 
+def set_max_calls(limit: int | None) -> None:
+    """Live calls this invocation may make (API or subscription); None removes the limit."""
+    _state.max_calls = limit
+    _state.calls = 0
+
+
 def budget() -> float | None:
     return _state.budget
+
+
+def calls() -> int:
+    """Live calls made since the limits were set."""
+    return _state.calls
 
 
 def spent() -> float:
@@ -74,14 +88,27 @@ def over_budget() -> str | None:
             f"budget of ${_state.budget:.2f} spent (${_state.spent:.2f} on live calls this "
             "invocation); stopping with the best result so far. Raise --budget to continue."
         )
+    if _state.max_calls is not None and _state.calls >= _state.max_calls:
+        _state.hit = True
+        return (
+            f"--max-calls {_state.max_calls} reached ({_state.calls} live calls this "
+            "invocation); stopping with the best result so far. Raise --max-calls to continue."
+        )
     return None
 
 
 def record(
-    *, provider: str, model: str, usage: Usage, when: dt.datetime | None = None
+    *,
+    provider: str,
+    model: str,
+    usage: Usage,
+    when: dt.datetime | None = None,
+    billing: str = "api",
 ) -> dict[str, object]:
-    """Append one live call to spend.jsonl and add it to the running total."""
+    """Append one live call to spend.jsonl and add it to the running totals. A
+    `subscription` call (the Claude Code CLI) is logged with cost null."""
     when = when or dt.datetime.now(dt.UTC)
+    subscription = billing == "subscription"
     row: dict[str, object] = {
         "timestamp": when.isoformat(timespec="seconds"),
         "command": _state.command,
@@ -89,11 +116,13 @@ def record(
         "model": model,
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
-        "cost": round(usage.cost_usd, 6),
+        "cost": None if subscription else round(usage.cost_usd, 6),
+        "billing": billing,
         "voice": _state.voice,
         "input": _state.input_file,
     }
-    _state.spent += usage.cost_usd
+    _state.spent += 0.0 if subscription else usage.cost_usd
+    _state.calls += max(usage.calls, 1)
     path = spend_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,10 +135,14 @@ def record(
 
 @dataclass
 class Summary:
+    """API dollars and subscription calls, today and over the last seven days."""
+
     today: float = 0.0
     week: float = 0.0
-    calls_today: int = 0
+    calls_today: int = 0  # API calls
     calls_week: int = 0
+    subscription_calls_today: int = 0
+    subscription_calls_week: int = 0
     path: Path = field(default_factory=spend_path)
     exists: bool = False
 
@@ -117,8 +150,10 @@ class Summary:
         if not self.exists:
             return f"no live calls logged ({self.path})"
         return (
-            f"today ${self.today:.2f} over {self.calls_today} call(s); "
-            f"last 7 days ${self.week:.2f} over {self.calls_week} call(s) ({self.path})"
+            f"today ${self.today:.2f} over {self.calls_today} API call(s) and "
+            f"{self.subscription_calls_today} subscription call(s); last 7 days "
+            f"${self.week:.2f} over {self.calls_week} API call(s) and "
+            f"{self.subscription_calls_week} subscription call(s) ({self.path})"
         )
 
 
@@ -135,15 +170,22 @@ def summary(now: dt.datetime | None = None) -> Summary:
         try:
             row = json.loads(line)
             when = dt.datetime.fromisoformat(str(row["timestamp"]))
-            cost = float(row.get("cost", 0.0))
+            subscription = row.get("billing") == "subscription" or row.get("cost") is None
+            cost = 0.0 if subscription else float(row.get("cost", 0.0))
         except (ValueError, KeyError, TypeError):
             continue
         if when.tzinfo is None:
             when = when.replace(tzinfo=dt.UTC)
         if when >= week_start:
             out.week += cost
-            out.calls_week += 1
+            if subscription:
+                out.subscription_calls_week += 1
+            else:
+                out.calls_week += 1
         if when >= day_start:
             out.today += cost
-            out.calls_today += 1
+            if subscription:
+                out.subscription_calls_today += 1
+            else:
+                out.calls_today += 1
     return out

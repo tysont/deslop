@@ -19,6 +19,7 @@ from deslop.providers.base import (
 class AnthropicProvider(CachingProvider):
     name = "anthropic"
     default_model = DEFAULT_MODELS["anthropic"]
+    cache_namespace = "anthropic"
 
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)

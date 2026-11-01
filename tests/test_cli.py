@@ -22,17 +22,14 @@ def flat(r) -> str:
 
 
 def scripted_factory(monkeypatch, providers=None, **kw):
-    providers = providers or {
-        "anthropic": Scripted("anthropic", **kw),
-        "openai": Scripted("openai", **kw),
-    }
-    aliases = {"claude": "anthropic", "gpt": "openai"}
+    providers = providers or {"anthropic": Scripted("anthropic", **kw)}
     # `deslop.apply` names the function in the package namespace; patch the module itself.
-    monkeypatch.setattr(
-        sys.modules["deslop.apply"],
-        "get_provider",
-        lambda name, **_: providers[aliases.get(name, name)],
-    )
+    for module in ("deslop.apply", "deslop.providers.base"):
+        monkeypatch.setattr(
+            sys.modules[module],
+            "get_provider",
+            lambda name, **_: providers.get(name, providers["anthropic"]),
+        )
     return providers
 
 
@@ -184,7 +181,7 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
     assert r.exit_code in (0, 2), r.output
     assert out.exists() and "Plainly," in out.read_text()
     assert "Meaning" in flat(r) and "unit 1" in flat(r) and "candidate(s)" in flat(r)
-    assert "judge gate on" in flat(r) and "growth" in flat(r)
+    assert "writer anthropic/claude-opus-5-5" in flat(r) and "growth" in flat(r)
     assert "coherence: ok" in flat(r) and "judge vs original" in flat(r)
     assert "against the voice's band" in flat(r)
     marked = tmp_path / "gen.txt"
@@ -255,9 +252,7 @@ def test_apply_brief(fixture_voice, fixtures_dir, tmp_path, monkeypatch):
                 )
             return super()._raw_complete(system, user, model, temperature)
 
-    scripted_factory(
-        monkeypatch, {"anthropic": Drafting("anthropic"), "openai": Drafting("openai")}
-    )
+    scripted_factory(monkeypatch, {"anthropic": Drafting("anthropic")})
     voice = fixture_voice.save(tmp_path / "f.voice")
     r = runner.invoke(
         app,
@@ -346,9 +341,15 @@ def test_lab_calibrate_judge_stores_accuracy_in_the_voice(
     from deslop.providers.base import Completion, Usage
 
     class Judge:
-        name = "openai"
+        name = "anthropic"
         default_model = "m"
-        usage = Usage()
+
+        def __init__(self):
+            self.usage = Usage()
+
+        @property
+        def key(self):
+            return f"{self.name}/{self.default_model}"
 
         def complete(self, system, user, *, model=None, temperature=0.7):
             self.usage.calls += 1
@@ -362,13 +363,11 @@ def test_lab_calibrate_judge_stores_accuracy_in_the_voice(
                         "confidence": 0.9,
                     }
                 ),
-                model="m",
-                provider="openai",
+                model=self.default_model,
+                provider="anthropic",
             )
 
-    import sys
-
-    monkeypatch.setattr(sys.modules["deslop.apply"], "get_provider", lambda n: Judge())
+    monkeypatch.setattr("deslop.providers.base.get_provider", lambda n, **_: Judge())
     voice = fixture_voice.save(tmp_path / "f.voice")
     llm = tmp_path / "llm"
     llm.mkdir()
@@ -385,16 +384,16 @@ def test_lab_calibrate_judge_stores_accuracy_in_the_voice(
             str(llm),
             "--pairs",
             "3",
-            "--models",
-            "gpt",
+            "--judges",
+            "sonnet",
         ],
     )
     assert r.exit_code == 0, r.output
     assert "100% picked the corpus paragraph" in flat(r) and "usable" in flat(r)
     from deslop import Voice
 
-    cal = Voice.load(voice).meta.judge_calibration["openai"]
-    assert cal["accuracy"] == 1.0 and cal["pairs"] == 3
+    cal = Voice.load(voice).meta.judge_calibration["claude-sonnet-5-5"]
+    assert cal["accuracy"] == 1.0 and cal["pairs"] == 3 and cal["model"] == "claude-sonnet-5-5"
 
 
 def test_missing_input_file_is_an_error_not_a_traceback(fixture_voice, tmp_path):
@@ -435,28 +434,30 @@ def test_apply_budget_aborts_with_best_so_far_and_logs_spend(
         assert "budget" in inspect.signature(command).parameters
 
 
-def test_apply_same_provider_judge_flag_warns(fixture_voice, slop_text, tmp_path, monkeypatch):
+def test_apply_writer_and_judge_flags(fixture_voice, slop_text, tmp_path, monkeypatch):
     voice = fixture_voice.save(tmp_path / "f.voice")
     sample = tmp_path / "sample.md"
     sample.write_text(slop_text)
-    instances = {}
+    seen = []
     monkeypatch.setattr(
         sys.modules["deslop.apply"],
         "get_provider",
-        lambda name, **_: instances.setdefault(name, Scripted("anthropic")),
+        lambda name, **_: seen.append(name) or Scripted("anthropic"),
     )
-    args = [
-        "apply",
-        str(sample),
-        "--voice",
-        str(voice),
-        "--n",
-        "1",
-        "--models",
-        "claude,claude:sonnet-x",
-    ]
-    r = runner.invoke(app, args)
-    assert r.exit_code in (0, 2) and "one provider only" in flat(r)
-    r = runner.invoke(app, [*args, "--allow-same-provider-judge"])
+    base = ["apply", str(sample), "--voice", str(voice), "--n", "1"]
+    r = runner.invoke(app, [*base, "--writer", "sonnet", "--judge", "opus"])
     assert r.exit_code in (0, 2), r.output
-    assert "WARNING: same-vendor judge allowed" in flat(r) and "Plainly," in flat(r)
+    assert "writer anthropic/claude-sonnet-5-5; judge anthropic/claude-opus-5-5" in flat(r)
+    assert seen == ["anthropic"], "the default provider is the API, once"
+    r = runner.invoke(app, [*base, "--writer", "opus", "--judge", "claude-opus-5-5"])
+    assert r.exit_code == 1 and "never judges its own output" in " ".join(r.output.split())
+    r = runner.invoke(app, [*base, "--provider", "bogus"])
+    assert r.exit_code == 1 and "unknown provider" in " ".join(r.output.split())
+    r = runner.invoke(app, [*base, "--provider", "claude-cli", "--max-calls", "3"])
+    assert r.exit_code in (0, 2), r.output
+    assert seen[-1] == "claude-cli"
+    (tmp_path / "deslop.yaml").write_text("provider: claude-cli\n")
+    monkeypatch.chdir(tmp_path)
+    r = runner.invoke(app, base)
+    assert r.exit_code in (0, 2), r.output
+    assert seen[-1] == "claude-cli", "the config file's provider is honoured"

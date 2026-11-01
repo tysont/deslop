@@ -148,11 +148,9 @@ def export(
             )
         files = [p for p in gather_files([corpus]) if p.is_file()]
         if provider is None:
-            from deslop.providers.base import first_available
+            from deslop.providers.base import default_provider
 
-            provider = first_available()
-        if provider is None:
-            raise RuntimeError("corpus chunks need a provider to write summaries")
+            provider = default_provider()
         chunks = [
             (path.name, chunk)
             for path in files

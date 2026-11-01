@@ -15,6 +15,7 @@ from typer.core import TyperGroup
 
 from deslop import __version__
 from deslop.cli.config import Config, ConfigError, load_config, resolve_voice
+from deslop.providers.base import Usage
 
 
 class VoiceGroup(TyperGroup):
@@ -48,16 +49,34 @@ err = Console(stderr=True)
 
 
 def arm_budget(
-    s: Settings, budget: float | None, *, command: str, voice: str = "", input_file: str = ""
+    s: Settings,
+    budget: float | None,
+    *,
+    command: str,
+    voice: str = "",
+    input_file: str = "",
+    max_calls: int | None = None,
 ) -> float:
-    """Start the spend guard for this invocation: the context every live call is logged with
-    and the USD limit (--budget, config, else $5)."""
+    """Start the spend guard for this invocation: the context every live call is logged with,
+    the USD limit (--budget, config, else $5) and the live-call limit (--max-calls, 200)."""
     from deslop import spend
 
     limit = float(s.get("budget", budget, spend.DEFAULT_BUDGET))
     spend.set_context(command=command, voice=voice, input_file=input_file)
     spend.set_budget(limit)
+    spend.set_max_calls(int(s.get("max_calls", max_calls, spend.DEFAULT_MAX_CALLS)))
     return limit
+
+
+def provider_name(s: Settings, explicit: str | None) -> str:
+    """Which Anthropic provider serves this invocation: --provider, else the config file's
+    `provider:` (anthropic | claude-cli), else DESLOP_PROVIDER, else the API."""
+    from deslop.providers.base import ANTHROPIC_PROVIDERS, default_provider_name
+
+    name = str(s.get("provider", explicit, default_provider_name())).strip().lower()
+    if name not in (*ANTHROPIC_PROVIDERS, "openai", "compatible"):
+        fail(f"unknown provider {name!r}; use anthropic or claude-cli")
+    return name
 
 
 def report_budget() -> None:
@@ -535,7 +554,10 @@ def score_cmd(
         None, "--annotate", help="Write the input with inline [Tn] markers here"
     ),
     judge: bool = typer.Option(False, "--judge", help="Also ask an LLM judge (costs a call)"),
-    models: str | None = typer.Option(None, "--models", help="Provider for --judge (claude,gpt)"),
+    judge_model: str | None = typer.Option(
+        None, "--judge-model", help="Model for --judge (claude-sonnet-5-5; opus/sonnet/haiku)"
+    ),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or claude-cli"),
     json_out: bool = typer.Option(False, "--json"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Print only the verdict line"),
 ) -> None:
@@ -547,17 +569,19 @@ def score_cmd(
     v = load_voice(s.voice(voice))
     report = score(text, v, patterns=s.paths("patterns", patterns))
     if s.get("judge", judge or None, False):
-        from deslop.apply import ExemplarIndex, ProviderPool
+        from deslop.apply import ExemplarIndex
         from deslop.judge import judge_paragraph
-        from deslop.providers.base import ProviderError
+        from deslop.providers.base import DEFAULT_JUDGE, ProviderError, get_provider, resolve_model
 
-        pool = ProviderPool(tuple(_as_list(s.get("models", models, "claude,gpt"))))
+        arm_budget(s, None, command="score --judge", voice=v.name, input_file=str(file or ""))
         try:
-            provider = pool.for_iteration(0)
+            judge_provider = get_provider(provider_name(s, provider))
         except ProviderError as exc:
             fail(str(exc))
+        model = resolve_model(str(s.get("judge_model", judge_model, DEFAULT_JUDGE)))
+        judge_provider.default_model = model
         report.judge = judge_paragraph(
-            text, v, provider, exemplars=ExemplarIndex(v).closest(text, 2)
+            text, v, judge_provider, exemplars=ExemplarIndex(v).closest(text, 2)
         )
     annotate = s.path("annotate", annotate)
     if annotate is not None:
@@ -630,7 +654,7 @@ def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
         + f"; ${result.cost.usd:.3f} over {result.cost.calls} call(s){unpriced}; "
         f"stopped: {result.stopped}"
     )
-    style = "yellow" if "WARNING" in result.judge_gate else "dim"
+    style = "yellow" if "unreliable" in result.judge_gate else "dim"
     console.print(f"[{style}]{result.judge_gate}[/]")
     if result.primary_texts:
         console.print(f"[dim]primary texts: {', '.join(result.primary_texts)}[/]")
@@ -675,13 +699,17 @@ def apply_cmd(
     mode: str | None = typer.Option(
         None, "--mode", help="rewrite (the whole document, default) or edit (flagged sentences)"
     ),
-    models: str | None = typer.Option(
-        None, "--models", help="Providers in rotation: alias or alias:model (claude,gpt)"
+    writer: str | None = typer.Option(
+        None, "--writer", help="Writer model (claude-opus-5-5; opus/sonnet/haiku)"
     ),
-    allow_same_provider_judge: bool = typer.Option(
-        False,
-        "--allow-same-provider-judge",
-        help="Let a different model of the writer's vendor judge (cross-vendor is supported)",
+    judge: str | None = typer.Option(
+        None, "--judge", help="Judge model, must differ from the writer (claude-sonnet-5-5)"
+    ),
+    provider: str | None = typer.Option(
+        None, "--provider", help="anthropic (API, default) or claude-cli (local login)"
+    ),
+    max_calls: int | None = typer.Option(
+        None, "--max-calls", help="Max live calls this invocation may make (200)"
     ),
     budget: float | None = typer.Option(
         None,
@@ -709,7 +737,7 @@ def apply_cmd(
     """Write a text, or a piece from a brief, in a voice. Exit 0 on PASS, 2 on FAIL."""
     from deslop.apply import apply
     from deslop.draft import load_brief
-    from deslop.providers.base import BudgetExceeded
+    from deslop.providers.base import DEFAULT_JUDGE, DEFAULT_WRITER, BudgetExceeded
 
     s = Settings(ctx, "apply")
     v = load_voice(s.voice(voice))
@@ -725,7 +753,12 @@ def apply_cmd(
     if mode not in ("edit", "rewrite"):
         fail("--mode must be rewrite or edit")
     limit = arm_budget(
-        s, budget, command="apply", voice=v.name, input_file=str(brief or file or "stdin")
+        s,
+        budget,
+        command="apply",
+        voice=v.name,
+        input_file=str(brief or file or "stdin"),
+        max_calls=max_calls,
     )
     texts = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
     try:
@@ -733,20 +766,19 @@ def apply_cmd(
             source,
             v,
             mode="edit" if mode == "edit" else "rewrite",
-            models=tuple(_as_list(s.get("models", models, "claude,gpt"))),
+            writer=str(s.get("writer", writer, DEFAULT_WRITER)),
+            judge=str(s.get("judge", judge, DEFAULT_JUDGE)),
+            provider=provider_name(s, provider),
             budget=limit,
             n=int(s.get("n", n, 3)),
             max_growth=float(s.get("max_growth", max_growth, 15.0)),
             chunk_words=int(s.get("chunk_words", chunk_words, 2500)),
-            allow_same_provider_judge=bool(
-                s.get("allow_same_provider_judge", allow_same_provider_judge or None, False)
-            ),
             primary_texts=list(texts) or None,
             max_iter=int(s.get("max_iter", max_iter, 4)),
             patterns=s.paths("patterns", patterns),
             progress=s.progress(json_out),
         )
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         fail(str(exc))
     except BudgetExceeded as exc:
         fail(str(exc), code=2)
@@ -818,23 +850,34 @@ def lab_calibrate_judge(
         "--llm-texts",
         help="LLM-reference essays: a directory of .json (text key), .md or .txt",
     ),
-    pairs: int = typer.Option(100, "--pairs", help="Pairs per provider (100)"),
-    models: str | None = typer.Option(None, "--models", help="Providers to measure (claude,gpt)"),
+    pairs: int = typer.Option(100, "--pairs", help="Pairs per judge (100)"),
+    judges: str | None = typer.Option(
+        None, "--judges", help="Judge models to measure (sonnet,opus; aliases allowed)"
+    ),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or claude-cli"),
+    max_calls: int | None = typer.Option(None, "--max-calls", help="Max live calls (200)"),
     seed: int = typer.Option(0, "--seed"),
     out: Path | None = typer.Option(None, "--out", "-o", help="Write the voice here"),
     budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Measure each provider as the comparative judge on pairs of one LLM-reference paragraph
-    and one held-out corpus paragraph, and store the accuracy in the voice. A provider below
-    80% is not used as a judge by apply."""
+    """Measure each judge model as the comparative judge on pairs of one LLM-reference
+    paragraph and one held-out corpus paragraph, and store the accuracy in the voice, keyed
+    by model. A judge below 80% is reported as unreliable."""
     from deslop import lab
-    from deslop.apply import ProviderPool
     from deslop.judge import CALIBRATION_MIN_ACCURACY
+    from deslop.providers.base import ProviderError, get_provider, resolve_model
 
     s = Settings(ctx, "calibrate-judge")
     v = load_voice(voice)
-    arm_budget(s, budget, command="lab calibrate-judge", voice=v.name, input_file=str(corpus))
+    arm_budget(
+        s,
+        budget,
+        command="lab calibrate-judge",
+        voice=v.name,
+        input_file=str(corpus),
+        max_calls=max_calls,
+    )
     corpus_paras, method = lab.heldout_paragraphs(v, [corpus])
     llm_paras = lab.llm_paragraphs(llm_texts)
     if not corpus_paras or not llm_paras:
@@ -842,11 +885,19 @@ def lab_calibrate_judge(
             f"need paragraphs of both kinds; got {len(corpus_paras)} held-out and "
             f"{len(llm_paras)} LLM-reference"
         )
-    pool = ProviderPool(tuple(_as_list(s.get("models", models, "claude,gpt"))))
-    providers = [p for p in (pool.get(name) for name in pool.names) if p is not None]
-    if not providers:
-        fail("no provider available: " + "; ".join(pool.unavailable.values()))
+    name = provider_name(s, provider)
+    providers = []
+    for model in _as_list(s.get("judges", judges, "sonnet,opus")):
+        try:
+            judge_provider = get_provider(name)
+        except ProviderError as exc:
+            fail(str(exc))
+        judge_provider.default_model = resolve_model(str(model))
+        providers.append(judge_provider)
     results = lab.calibrate_judges(v, providers, llm_paras, corpus_paras, pairs=pairs, seed=seed)
+    usage = Usage()
+    for jp in providers:
+        usage.add(jp.usage)
     report_budget()
     for name, cal in results.items():
         v.meta.judge_calibration[name] = cal.model_dump()
@@ -858,13 +909,13 @@ def lab_calibrate_judge(
         return
     console.print(
         f"{len(corpus_paras)} held-out paragraphs ({method}), {len(llm_paras)} LLM-reference "
-        f"paragraphs; ${pool.usage().cost_usd:.3f} over {pool.usage().calls} call(s)"
+        f"paragraphs; ${usage.cost_usd:.3f} over {usage.calls} call(s) via {name}"
     )
     for name, cal in results.items():
         verdict = (
             "usable"
             if cal.usable
-            else f"below {100 * CALIBRATION_MIN_ACCURACY:.0f}%: not used as judge"
+            else f"below {100 * CALIBRATION_MIN_ACCURACY:.0f}%: unreliable as judge"
         )
         console.print(
             f"  {name} ({cal.model}): {100 * cal.accuracy:.0f}% picked the corpus paragraph as the "
@@ -1050,12 +1101,19 @@ def doctor_cmd(ctx: typer.Context, json_out: bool = typer.Option(False, "--json"
 
 @providers_app.command("test")
 def providers_test(json_out: bool = typer.Option(False, "--json")) -> None:
-    from deslop.providers.base import get_provider, list_providers
+    from deslop.providers.base import ANTHROPIC_PROVIDERS, get_provider, list_providers
 
     results = {}
     for name, configured in list_providers().items():
         if not configured:
-            results[name] = {"configured": False, "ok": False, "detail": "no credentials"}
+            results[name] = {"configured": False, "ok": False, "detail": "not configured"}
+            continue
+        if name not in ANTHROPIC_PROVIDERS:
+            results[name] = {
+                "configured": True,
+                "ok": False,
+                "detail": "configured but unused unless named",
+            }
             continue
         try:
             provider = get_provider(name, use_cache=False)

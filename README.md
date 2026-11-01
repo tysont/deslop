@@ -25,10 +25,13 @@ uv run deslop doctor
 ```
 
 The spaCy model is a GitHub release wheel, which package metadata cannot reference, so it is
-a second step; `deslop doctor` points at it when it is missing. `apply` needs at least one
-provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`); two providers are better, because the
-writer, the semantic lock and the judge are rotated so no model checks its own work.
-`voice` needs a key only to write `profile.md`; `--no-llm` keeps it offline.
+a second step; `deslop doctor` points at it when it is missing. `apply` needs an Anthropic
+provider: the API (`ANTHROPIC_API_KEY`, the default) or the Claude Code CLI (`claude`, logged
+in; select it with `provider: claude-cli` in the config file or `DESLOP_PROVIDER=claude-cli`).
+The writer and the judge are two different Claude models (claude-opus-5-5 writes,
+claude-sonnet-5-5 judges and runs the semantic lock), so no model checks its own work.
+OpenAI stays in the provider layer but is never selected unless named. `voice` needs a
+provider only to write `profile.md`; `--no-llm` keeps it offline.
 
 ## Quickstart
 
@@ -98,8 +101,10 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `-o, --out` | stdout | where to write the result |
 | `--brief BRIEF.yaml` | none | draft from a brief instead of rewriting a file |
 | `--mode` | `rewrite` | `rewrite` the document as a whole, or `edit` only flagged sentences |
-| `--models` | `claude,gpt` | providers in rotation, as `alias` or `alias:model`; the writer of a candidate never judges it |
-| `--allow-same-provider-judge` | off | let a different model of the writer's vendor judge; prints a warning; cross-vendor is the supported configuration |
+| `--writer` | `claude-opus-5-5` | the model that writes candidates; `opus`, `sonnet`, `haiku` are aliases |
+| `--judge` | `claude-sonnet-5-5` | the model that judges and runs the semantic lock; must differ from the writer |
+| `--provider` | config, else `anthropic` | `anthropic` (API) or `claude-cli` (Claude Code CLI, local login) |
+| `--max-calls` | `200` | live calls this invocation may make, so subscription runs have a cap too |
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
@@ -155,7 +160,8 @@ rewrite mode.
 | `-v, --voice` | resolved | the voice |
 | `--annotate PATH` | none | write the input with inline `[Tn]` markers |
 | `--judge` | off | also ask the absolute rubric judge (one call) and print its three scores, a trend figure, not a gate |
-| `--models` | `claude,gpt` | provider for `--judge` |
+| `--judge-model` | `claude-sonnet-5-5` | model for `--judge` |
+| `--provider` | config, else `anthropic` | `anthropic` or `claude-cli` |
 | `-q, --quiet` | off | print only the verdict line |
 
 Exit 0 on PASS, 2 on FAIL.
@@ -194,9 +200,9 @@ Unpack to a temporary directory, open `profile.md`, `rules.md` and `exemplars.md
 Retune the bands and limits (see Thresholds) and print the separation. `voice` runs this
 itself; the command exists to rerun it after editing a voice.
 
-### `deslop lab calibrate-judge VOICE --corpus DIR --llm-texts DIR [--pairs 100] [--models claude,gpt] [-o OUT.voice]`
+### `deslop lab calibrate-judge VOICE --corpus DIR --llm-texts DIR [--pairs 100] [--judges sonnet,opus] [--provider P] [-o OUT.voice]`
 
-Measure each provider as the comparative judge on pairs of one LLM-reference paragraph and
+Measure each judge model as the comparative judge on pairs of one LLM-reference paragraph and
 one paragraph from the voice's held-out authors (the same author split threshold calibration
 uses), report the accuracy, and store it in the voice. `--llm-texts` is a directory of
 `.md`/`.txt` essays or of `.json` files with a `text` key, as `scripts/build_llm_reference.py`
@@ -249,8 +255,10 @@ over both. Keys may use hyphens or underscores; lists may be yaml lists or comma
 
 ```yaml
 default_voice: voices/critics.voice
+provider: anthropic        # or claude-cli
 apply:
-  models: [claude, gpt]
+  writer: claude-opus-5-5
+  judge: claude-sonnet-5-5
   n: 3
   chunk-words: 2500
   max-growth: 15
@@ -269,7 +277,9 @@ blind:
 | `DESLOP_VOICE` | default voice directory |
 | `DESLOP_CACHE_DIR` | response cache directory (default `$DESLOP_HOME/cache`) |
 | `DESLOP_CACHE_ONLY` | `1` makes providers answer from the cache only and fail on a miss; no credentials needed |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | provider credentials |
+| `ANTHROPIC_API_KEY` | the Anthropic API key (provider `anthropic`) |
+| `DESLOP_PROVIDER` | `anthropic` (default) or `claude-cli`; the config file's `provider:` key does the same |
+| `OPENAI_API_KEY` | OpenAI credentials; the provider is never selected unless named |
 | `DESLOP_COMPATIBLE_BASE_URL`, `DESLOP_COMPATIBLE_API_KEY`, `DESLOP_COMPATIBLE_MODEL` | an OpenAI-compatible endpoint, selected as provider `compatible` |
 
 A `.env` file in the working directory is loaded and overrides the shell.

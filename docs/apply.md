@@ -92,13 +92,22 @@ deslop apply --brief brief.yaml --voice essays.voice -o piece.md
 Edit mode keeps the v1 mechanism (flagged sentences only, everything else byte-identical)
 under the new locks. A brief is drafted section by section, then rewritten.
 
-## Judge provider
+## Writer, judge and provider
 
-The supported configuration is cross-vendor: the writer's candidates are judged by a provider
-from another vendor (`--models claude,gpt`). With one vendor only, no candidate can pass and
-the original is kept. `--allow-same-provider-judge` permits a different model of the same
-vendor to judge (`--models claude,claude:claude-sonnet-5-5`); the report header then carries
-a warning, and the same model never judges its own writing. It is never the default.
+The writer and the judge are two different Claude models: by default claude-opus-5-5 writes
+and claude-sonnet-5-5 judges and runs the semantic lock. `--writer` and `--judge` swap them
+(`opus`, `sonnet` and `haiku` are aliases); naming the same model for both is an error,
+because a model never judges its own output. The judge's calibration (`lab calibrate-judge`,
+stored in `voice.yaml` by model) is printed in the report header; below 80% it is marked
+unreliable.
+
+Both models are served by one provider: `anthropic`, the Messages API with
+`ANTHROPIC_API_KEY`, or `claude-cli`, the Claude Code CLI in headless mode using the local
+login (one subprocess per call, 120 s timeout, same cache and retries as the API, so a
+response cached by one provider replays through the other). Choose with `--provider`, the
+config file's `provider:` key or `DESLOP_PROVIDER`. CLI calls are logged to `spend.jsonl` as
+subscription calls with cost null; `--budget` counts dollars only, so `--max-calls` (200)
+caps those runs. OpenAI remains in the provider layer and is used only when named.
 
 ## Budget
 
