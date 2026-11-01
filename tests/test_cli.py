@@ -427,8 +427,12 @@ def test_apply_budget_aborts_with_best_so_far_and_logs_spend(
     spend.reset()
     r = runner.invoke(app, ["lab", "calibrate-thresholds", str(voice), "--budget", "1"])
     assert r.exit_code == 0, r.output
-    r = runner.invoke(app, ["lab", "blind", "--help"])
-    assert "--budget" in flat(r)
+    import inspect
+
+    from deslop.cli.app import lab_blind, lab_calibrate_judge, lab_export
+
+    for command in (lab_blind, lab_calibrate_judge, lab_export):
+        assert "budget" in inspect.signature(command).parameters
 
 
 def test_apply_same_provider_judge_flag_warns(fixture_voice, slop_text, tmp_path, monkeypatch):
