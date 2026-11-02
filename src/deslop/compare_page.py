@@ -104,6 +104,10 @@ def _find_paragraph(needle: str, paragraphs: list[str]) -> int | None:
     return None
 
 
+def _votes(item: dict[str, Any]) -> str:
+    return f" (vote {item['votes']})" if item.get("votes") else ""
+
+
 def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[str, Any]]:
     """Every check result pinned to a paragraph of the candidate (-1 = whole document)."""
     notes: list[dict[str, Any]] = []
@@ -125,7 +129,7 @@ def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[st
             {
                 "kind": "added",
                 "paragraph": -1 if found is None else found,
-                "text": f"added ({a.get('category') or 'claim'}): {a.get('text')}",
+                "text": f"added ({a.get('category') or 'claim'}): {a.get('text')}" + _votes(a),
             }
         )
     for a in sem.get("cleared", []):
@@ -134,8 +138,8 @@ def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[st
             {
                 "kind": "cleared",
                 "paragraph": -1 if found is None else found,
-                "text": f"cleared on review ({a.get('category')}): {a.get('text')} "
-                f"— {a.get('note', '')}",
+                "text": f"cleared on review ({a.get('category')}): {a.get('text')}"
+                f"{_votes(a)} — {a.get('note', '')}",
             }
         )
     coh = cand.get("coherence") or {}

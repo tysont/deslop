@@ -22,6 +22,10 @@ def author_of(path: Path) -> str:
     return "original"
 
 
+def votes(item: dict) -> str:
+    return f", vote {item['votes']}" if item.get("votes") else ""
+
+
 def recitation_lines(c: dict) -> list[str]:
     rec = c.get("recitation")
     if not rec:
@@ -206,7 +210,7 @@ def main(register: str, result_path: Path, out: Path) -> None:
             if sem:
                 dropped = [x["proposition"] for x in sem["checks"] if not x["kept"]]
                 claims = [
-                    f"{x['text']} ({x['category'] or 'claim'})"
+                    f"{x['text']} ({x['category'] or 'claim'}{votes(x)})"
                     for x in sem["added"]
                     if x["kind"] == "claim"
                 ]
@@ -226,7 +230,8 @@ def main(register: str, result_path: Path, out: Path) -> None:
                     lines.append(f"- permitted: {x}")
                 for x in sem.get("cleared", []):
                     lines.append(
-                        f"- cleared on review ({x['category']}): {x['text']} — {x['note']}"
+                        f"- cleared on review ({x['category']}{votes(x)}): {x['text']} — "
+                        f"{x['note']}"
                     )
             cc = c.get("coherence")
             if cc:

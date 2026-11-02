@@ -180,3 +180,37 @@ def test_default_provider_never_falls_back_to_openai(tmp_path, monkeypatch):
         ).name
         == "anthropic"
     )
+
+
+def test_sample_caches_the_set_and_counts_every_live_call(tmp_path, monkeypatch):
+    monkeypatch.delenv("DESLOP_CACHE_ONLY", raising=False)
+
+    class Counting(Echo):
+        calls = 0
+
+        def _raw_complete(self, system, user, model, temperature):
+            Counting.calls += 1
+            return base.Completion(
+                text=f"{user}#{Counting.calls}",
+                model=model,
+                provider=self.name,
+                usage=base.Usage(calls=1),
+            )
+
+    live = Counting(cache_dir=tmp_path)
+    got = live.sample("s", "hi", n=3, temperature=0.3)
+    assert [c.text for c in got] == ["hi#1", "hi#2", "hi#3"] and live.usage.calls == 3
+    again = live.sample("s", "hi", n=3, temperature=0.3)
+    assert [c.text for c in again] == ["hi#1", "hi#2", "hi#3"], "the set replays as one entry"
+    assert all(c.from_cache for c in again) and live.usage.cached == 1 and Counting.calls == 3
+    assert live.complete("s", "hi", temperature=0.3).text == "hi#4", (
+        "a single completion is a different cache entry from a set"
+    )
+    replay = Counting(cache_dir=tmp_path, cache_only=True)
+    assert [c.text for c in replay.sample("s", "hi", n=3, temperature=0.3)] == [
+        "hi#1",
+        "hi#2",
+        "hi#3",
+    ]
+    with pytest.raises(base.CacheMissError):
+        replay.sample("s", "hi", n=2, temperature=0.3)

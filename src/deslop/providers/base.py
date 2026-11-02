@@ -145,18 +145,19 @@ class CachingProvider:
         """Vendor and model, the identity a same-vendor judge is told apart by."""
         return f"{self.name}/{self.default_model}"
 
-    def _cache_key(self, system: str, user: str, model: str, temperature: float) -> Path:
-        payload = json.dumps(
-            {
-                "p": self.cache_namespace or self.name,
-                "m": model,
-                "t": temperature,
-                "s": system,
-                "u": user,
-            },
-            sort_keys=True,
-        )
-        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    def _cache_key(
+        self, system: str, user: str, model: str, temperature: float, n: int = 1
+    ) -> Path:
+        payload: dict[str, Any] = {
+            "p": self.cache_namespace or self.name,
+            "m": model,
+            "t": temperature,
+            "s": system,
+            "u": user,
+        }
+        if n > 1:
+            payload["n"] = n  # a sampled set is its own entry; single completions are unchanged
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
         return self.cache_dir / digest[:2] / f"{digest}.json"
 
     def complete(
@@ -166,16 +167,56 @@ class CachingProvider:
         key = self._cache_key(system, user, model, temperature)
         if self.use_cache and key.exists():
             data = json.loads(key.read_text(encoding="utf-8"))
-            usage = Usage(cached=1)
-            self.usage.add(usage)
-            return Completion(
-                text=data["text"], model=model, provider=self.name, usage=usage, from_cache=True
+            self.usage.add(Usage(cached=1))
+            return self._replay(data["text"], model)
+        self._check_live(model)
+        result = self._live(system, user, model, temperature)
+        if self.use_cache:
+            key.parent.mkdir(parents=True, exist_ok=True)
+            key.write_text(json.dumps({"text": result.text, "model": model}), encoding="utf-8")
+        return result
+
+    def sample(
+        self,
+        system: str,
+        user: str,
+        *,
+        n: int,
+        model: str | None = None,
+        temperature: float = 0.7,
+    ) -> list[Completion]:
+        """`n` completions of one prompt, cached together as a set: a replay returns the same
+        `n` texts in order (one cached call), a live run makes `n` live calls. The set's cache
+        entry is separate from the single completion's."""
+        model = resolve_model(model or self.default_model)
+        key = self._cache_key(system, user, model, temperature, n)
+        if self.use_cache and key.exists():
+            data = json.loads(key.read_text(encoding="utf-8"))
+            self.usage.add(Usage(cached=1))  # one cache read, however many texts
+            return [self._replay(text, model) for text in data["texts"]]
+        self._check_live(model)
+        results = [self._live(system, user, model, temperature) for _ in range(n)]
+        if self.use_cache:
+            key.parent.mkdir(parents=True, exist_ok=True)
+            key.write_text(
+                json.dumps({"texts": [r.text for r in results], "model": model}), encoding="utf-8"
             )
+        return results
+
+    def _replay(self, text: str, model: str) -> Completion:
+        return Completion(
+            text=text, model=model, provider=self.name, usage=Usage(cached=1), from_cache=True
+        )
+
+    def _check_live(self, model: str) -> None:
         if self.cache_only:
             raise CacheMissError(
                 f"{self.name}/{model}: prompt not in cache {self.cache_dir} and "
                 "cache-only mode is on (unset DESLOP_CACHE_ONLY and provide credentials)"
             )
+
+    def _live(self, system: str, user: str, model: str, temperature: float) -> Completion:
+        """One live call with the retry policy, charged to the spend log and this usage."""
         from deslop import spend
 
         over = spend.over_budget()
@@ -197,9 +238,6 @@ class CachingProvider:
             raise ProviderError(f"{self.name} failed after {self.max_retries} attempts: {last}")
         self.usage.add(result.usage)
         spend.record(provider=self.name, model=model, usage=result.usage, billing=self.billing)
-        if self.use_cache:
-            key.parent.mkdir(parents=True, exist_ok=True)
-            key.write_text(json.dumps({"text": result.text, "model": model}), encoding="utf-8")
         return result
 
 

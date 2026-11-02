@@ -105,7 +105,7 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--judge` | `claude-sonnet-5-5` | the model that judges and runs the semantic lock; must differ from the writer |
 | `--provider` | config, else `anthropic` | `anthropic` (API) or `claude-cli` (Claude Code CLI, local login) |
 | `--max-calls` | `200` | live calls this invocation may make, so subscription runs have a cap too |
-| `--fidelity` | `content` | `content` protects facts, entities, numbers, quotations, causal and attributed evaluative claims and permits changes of person, discourse words, emphasis, figurative restatement, hedging and reordering; `strict` fails any new claim |
+| `--fidelity` | `content` | `content` protects facts, entities, numbers, quotations, causal and attributed evaluative claims and permits changes of person, discourse words, emphasis, figurative restatement, hedging, reordering and inferences that follow necessarily from stated facts; each flag is decided by a three-sample majority vote and reported with its split; `strict` fails any new claim |
 | `--report-all` | off | judge and report every candidate in full, pass or fail |
 | `--compare PATH` | none | write a self-contained HTML comparison page (reference, input, candidate; sentence-aligned diff; checks pinned to paragraphs) |
 | `--reference FILE` | none | the human text the input was made from: every candidate is checked for recitation of it (it is never shown to a model), and it fills the comparison page's first column |
@@ -133,7 +133,8 @@ paragraph inside the exemplars' range; the dominant tense unchanged; every sente
 pronoun with an antecedent in the two sentences before it; connective openers in the voice's
 band and near the original's share) and the semantic lock paragraph by paragraph (every
 proposition kept, nothing material added: no new entity, number, event, unstated cause, or
-scene, object or action the original does not present; judged by a different provider). Then a
+scene the stated facts do not entail, while an inference from them is permitted; judged by a
+different provider, each flag by a three-sample majority vote). Then a
 provider that wrote neither text judges it against the original on four items, each
 answered separately: reads as the voice, coherent, consistent tense and person, preserves
 the argument's order and emphasis. A candidate must win or tie on every item; survivors are

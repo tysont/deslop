@@ -67,12 +67,18 @@ statements about the subject with framing dropped and no author as grammatical s
 Under `--fidelity content` (the default) the semantic lock keeps the proposition list for
 the dropped check and runs the added check against the original paragraph itself, sentence
 by sentence: an addition is reported only if it introduces a new named entity, a new number
-or quantity, a new event, or a causal or conditional claim whose cause or condition is not
-stated or implied in the original; restatement, elaboration of a stated claim in other
-words, and making an implicit causal link explicit are not additions. Everything the first
-pass flags is re-asked in a second pass with the original shown ("would a careful reader of
-the original learn anything new from this sentence?"); only a yes survives, and the rest are
-listed as cleared on review. Each rejection names its category. `--fidelity strict` fails
+or quantity, a new event, a cause or condition the original neither states nor implies, or
+a scene, object or image that the stated facts do not entail. A statement that follows
+necessarily from stated facts is an inference, not an addition, and is permitted: cattle
+have nothing to graze where the fields are now sea; a cliff is made of gravel and clay when
+its gravel and clay are drawn into the sea. A distant shore, when the original names no
+shore, is an addition. Restatement, elaboration of a stated claim in other words, and
+making an implicit causal link explicit are not additions. Everything the first pass flags
+is re-asked in a second pass with the original shown ("would a careful reader of the
+original learn anything new from this sentence?"), as a majority vote of three samples at
+temperature 0.3, cached as a set; only a majority yes survives, the rest are listed as
+cleared on review, and every decision carries its vote split (`3-0`, `2-1`) so the
+borderline cases can be seen. Each rejection names its category. `--fidelity strict` fails
 any new claim, for originals already in the target voice. `--report-all` judges and reports
 every candidate, pass or fail. The lexical lock compares words case-insensitively in both
 directions. The coherence checks exempt first and second person from the antecedent rule

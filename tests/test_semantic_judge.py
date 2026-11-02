@@ -230,25 +230,39 @@ def test_compare_document_without_json_is_a_loss_everywhere(fixture_voice):
     assert v.losses == 4 and v.note == "judge gave no JSON"
 
 
-def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
-    from deslop.semantic import MATERIALITY, REVIEW_QUESTION, check_meaning
+def test_content_fidelity_votes_on_each_flag_and_reports_cleared_items():
+    from deslop.semantic import (
+        MATERIALITY,
+        REVIEW_QUESTION,
+        REVIEW_SAMPLES,
+        REVIEW_TEMPERATURE,
+        check_meaning,
+    )
 
     class TwoPass(CachingProvider):
+        """The first reader flags a date, a restatement, a citation, the cattle sentence
+        and a distant shore; the reviewers vote on each flag: the cattle sentence is cleared
+        two to one, the shore and the date stand three to nothing."""
+
         def __init__(self):
             super().__init__(use_cache=False, cache_only=False)
             self.name, self.default_model, self.systems, self.prompts = "anthropic", "m", [], []
+            self.temperatures: list[float] = []
 
         def _raw_complete(self, system, user, model, temperature):
             self.systems.append(system)
             self.prompts.append(user)
+            self.temperatures.append(temperature)
             if "first reader flagged" in system:
-                new = "1834" in user or "cattle" in user
-                text = json.dumps(
-                    {
-                        "new": new,
-                        "why": "a date the original lacks" if new else "restates the sinking",
-                    }
-                )
+                if "cattle" in user:
+                    nth = sum("cattle" in p for p in self.prompts)
+                    new, why = nth == 2, "the fields are sea, so nothing grows there"
+                elif "shore" in user:
+                    new, why = True, "no shore is named"
+                else:
+                    new = "1834" in user
+                    why = "a date the original lacks" if new else "restates the sinking"
+                text = json.dumps({"new": new, "why": why})
             else:
                 text = json.dumps(
                     {
@@ -270,6 +284,11 @@ def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
                                 "text": "cattle finding nothing to graze",
                                 "category": "scene",
                             },
+                            {
+                                "sentence": "Across the water lay a distant shore.",
+                                "text": "a distant shore",
+                                "category": "scene",
+                            },
                         ],
                     }
                 )
@@ -277,20 +296,34 @@ def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
 
     p = TwoPass()
     result = check_meaning(
-        "The ship sank in 1830.", "cand", ["The ship sank."], p, fidelity="content"
+        "The fields are now sea at high tide.",
+        "cand",
+        ["The fields are sea."],
+        p,
+        fidelity="content",
     )
     assert MATERIALITY in p.systems[0] and "sentence by sentence" in p.systems[0]
-    assert "a scene, object or action the original does not present" in MATERIALITY
-    assert len(p.systems) == 4, (
-        "pass one, then one review per flagged claim (the citation is exempt)"
+    rule = " ".join(MATERIALITY.split())
+    assert "cattle have nothing to graze where the fields are now sea" in rule
+    assert "a distant shore, when the original names no shore" in rule
+    assert "is an inference, not an addition, and is permitted" in rule
+    assert REVIEW_SAMPLES == 3 and REVIEW_TEMPERATURE == 0.3
+    assert len(p.systems) == 1 + 4 * REVIEW_SAMPLES, (
+        "pass one, then a sampled vote per flagged claim (the citation is exempt)"
     )
+    assert p.temperatures[0] == 0.0 and set(p.temperatures[1:]) == {REVIEW_TEMPERATURE}
     assert REVIEW_QUESTION in p.systems[1] and "ORIGINAL PARAGRAPH:" in p.prompts[1]
-    assert "scene, object or action" in REVIEW_QUESTION
-    assert result.failing == [
-        "added (number): 1834",
-        "added (scene): cattle finding nothing to graze",
+    assert MATERIALITY in p.systems[1], "the reviewers see the same rule as the first reader"
+    assert result.failing == ["added (number): 1834", "added (scene): a distant shore"]
+    assert [(a.text, a.votes) for a in result.added if a.kind == "claim"] == [
+        ("1834", "3-0"),
+        ("a distant shore", "3-0"),
     ]
-    assert [c.text for c in result.cleared] == ["went down with the ship"]
+    assert [(c.text, c.votes) for c in result.cleared] == [
+        ("went down with the ship", "0-3"),
+        ("cattle finding nothing to graze", "1-2"),
+    ]
+    assert result.cleared[1].note == "the fields are sea, so nothing grows there"
     assert result.cleared[0].note == "restates the sinking" and result.cleared[0].sentence
     assert [a.kind for a in result.added] == ["claim", "citation", "claim"]
 

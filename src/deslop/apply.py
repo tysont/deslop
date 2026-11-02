@@ -41,6 +41,7 @@ from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, veri
 from deslop.report import MetricResult, Report, TellHitResult
 from deslop.score import score
 from deslop.semantic import (
+    AddedClaim,
     Fidelity,
     PropositionCheck,
     SemanticResult,
@@ -883,13 +884,19 @@ def _meaning_diff(units: list[UnitLog]) -> str:
             mark = "✓" if c.kept else "✗"
             lines.append(f"  {mark} {c.proposition}" + (f" ({c.note})" if c.note else ""))
         for added in chosen.semantic.added:
-            lines.append(f"  + [{added.kind}] {added.text}")
+            lines.append(f"  + [{added.kind}] {added.text}{_votes(added)}")
         for item in chosen.semantic.cleared:
-            lines.append(f"  ~ cleared on review [{item.category}] {item.text}: {item.note}")
+            lines.append(
+                f"  ~ cleared on review [{item.category}] {item.text}{_votes(item)}: {item.note}"
+            )
         for add in chosen.primary.additions if chosen.primary else []:
             mark = "✓" if add.verified else "?"
             lines.append(f"  {mark} [{add.kind}] {add}")
     return "\n".join(lines)
+
+
+def _votes(item: AddedClaim) -> str:
+    return f" (vote {item.votes})" if item.votes else ""
 
 
 def coherence_report(result: Result) -> str:

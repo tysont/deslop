@@ -42,16 +42,22 @@ PROTECTED = ("fact", "entity", "number", "quotation", "causal", "evaluative", "e
 PERMITTED = ("person", "discourse", "emphasis", "figurative", "hedging", "reordering")
 
 MATERIALITY = """An addition is reported only if it introduces a new named entity, a new number or
-quantity, a new event, a causal or conditional claim whose cause or condition is not stated
-or implied in the original, or a scene, object or action the original does not present (a
-sentence that depicts cattle finding nothing to graze, when the original says only that the
-fields are now sea at high tide, is an addition). Restatement of a stated fact in other words,
-elaboration of a stated claim, and making an implicit causal link explicit are not
-additions."""
+quantity, a new event, a cause or condition the original neither states nor implies, or a
+scene, object or image that the stated facts do not entail. A statement that follows
+necessarily from stated facts is an inference, not an addition, and is permitted: cattle
+have nothing to graze where the fields are now sea; a cliff is made of gravel and clay when
+its gravel and clay are drawn into the sea. A statement that introduces something the stated
+facts do not entail is an addition: a distant shore, when the original names no shore.
+Restatement of a stated fact in other words, elaboration of a stated claim, and making an
+implicit causal link explicit are not additions."""
+
+REVIEW_SAMPLES = 3  # the materiality review is a majority vote of this many samples
+REVIEW_TEMPERATURE = 0.3
 
 REVIEW_QUESTION = (
     "Would a careful reader of the original learn anything new from this sentence, or be "
-    "shown a scene, object or action the original does not present?"
+    "shown a scene, object or image that the original's stated facts do not entail? What "
+    "follows necessarily from the stated facts is not new."
 )
 
 CONTEXT_NOTE = """
@@ -70,6 +76,7 @@ AFTER:
 
 REVIEW_SYSTEM = f"""You are shown a paragraph of an original text and one sentence of a rewrite
 that a first reader flagged as adding information. Decide the flag. {REVIEW_QUESTION}
+{MATERIALITY}
 Answer yes or no, then one line why. Answer in JSON only:
 {{"new": true or false, "why": "one line"}}"""
 
@@ -123,6 +130,7 @@ class AddedClaim(BaseModel):
     category: str = ""  # entity | number | event | causal | scene (strict mode: free)
     sentence: str = ""  # the rewrite sentence it sits in (content mode)
     note: str = ""  # the reviewer's one line, for cleared items
+    votes: str = ""  # the review vote, new-not new, such as "2-1" (content mode)
 
 
 class SemanticResult(BaseModel):
@@ -202,12 +210,14 @@ def check_meaning(
     `original` (the dropped check, against the proposition list) and whether any of its
     sentences adds information a reader could not have learned from `original` itself (the
     added check, against the passage). Under `content` fidelity only material additions
-    count (a new entity, number, event, or unstated cause), and each flagged sentence is
-    re-asked in a second pass with the original shown; only a "yes" survives, the rest are
-    listed as `cleared`. `strict` is the older rule: any new claim fails. `context` is the
-    original's (previous, next) paragraph when `original` is one paragraph of a document:
-    both passes see them, and what they state is not new. Both passes are deterministic, so
-    the cache answers repeats."""
+    count (a new entity, number, event, unstated cause, or a scene the stated facts do not
+    entail; an inference from them is permitted), and each flagged sentence is re-asked in a
+    second pass with the original shown, a majority vote of sampled reviews; only a "yes"
+    survives, the rest are listed as `cleared`, each with its vote split. `strict` is the
+    older rule: any new claim fails. `context` is the original's (previous, next) paragraph
+    when `original` is one paragraph of a document: both passes see them, and what they
+    state is not new. The first pass is deterministic and the review's samples are cached
+    as a set, so the cache answers repeats."""
     numbered = "\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1))
     user = (
         f"ORIGINAL:\n{original.strip()}\n\nORIGINAL PROPOSITIONS:\n{numbered}\n\n"
@@ -269,9 +279,9 @@ def check_meaning(
             if item.kind != "claim":
                 kept_items.append(item)
                 continue
-            new, why = review_addition(original, item, provider, context=context)
-            item.note = why
-            (kept_items if new else cleared).append(item)
+            vote = review_addition(original, item, provider, context=context)
+            item.note, item.votes = vote.why, vote.votes
+            (kept_items if vote.new else cleared).append(item)
         added = kept_items
     return SemanticResult(
         checks=checks,
@@ -289,28 +299,46 @@ def _context_block(context: tuple[str, str]) -> str:
     return CONTEXT_BLOCK.format(before=before.strip() or "(none)", after=after.strip() or "(none)")
 
 
+class ReviewVote(BaseModel):
+    """The materiality review of one flagged sentence: `new` is the majority of
+    `REVIEW_SAMPLES` samples, `votes` the split as new-not new ("2-1"), `why` one line from
+    the majority side."""
+
+    new: bool
+    why: str = ""
+    votes: str = ""
+
+
 def review_addition(
     original: str,
     item: AddedClaim,
     provider: CachingProvider,
     *,
     context: tuple[str, str] = ("", ""),
-) -> tuple[bool, str]:
+) -> ReviewVote:
     """Second pass on one flagged sentence: with the original paragraph (and its neighbours,
-    when given) shown, would a careful reader learn anything new from it? Returns (yes, one
-    line why). A reply with no JSON is read as yes, so a flag is never cleared by accident."""
+    when given) shown, would a careful reader learn anything new from it? Asked of
+    `REVIEW_SAMPLES` samples at `REVIEW_TEMPERATURE`, cached as a set; the majority decides.
+    A sample with no JSON counts as yes, so a flag is never cleared by accident."""
     user = (
         f"ORIGINAL PARAGRAPH:\n{original.strip()}\n\nFLAGGED SENTENCE:\n"
         f"{item.sentence or item.text}\n\nWHAT THE FIRST READER THOUGHT WAS NEW:\n{item.text}"
         + _context_block(context)
     )
     system = REVIEW_SYSTEM + (CONTEXT_NOTE if any(context) else "")
-    completion = provider.complete(system, user, temperature=0.0)
-    try:
-        data = _json_block(completion.text)
-    except (ValueError, json.JSONDecodeError):
-        return True, "reviewer gave no JSON"
-    new = data.get("new")
-    if isinstance(new, str):
-        new = new.strip().lower().startswith("y") or new.strip().lower() == "true"
-    return bool(new), str(data.get("why", ""))[:200]
+    samples = provider.sample(system, user, n=REVIEW_SAMPLES, temperature=REVIEW_TEMPERATURE)
+    answers: list[tuple[bool, str]] = []
+    for completion in samples:
+        try:
+            data = _json_block(completion.text)
+        except (ValueError, json.JSONDecodeError):
+            answers.append((True, "reviewer gave no JSON"))
+            continue
+        new = data.get("new")
+        if isinstance(new, str):
+            new = new.strip().lower().startswith("y") or new.strip().lower() == "true"
+        answers.append((bool(new), str(data.get("why", ""))[:200]))
+    yes = sum(1 for new, _ in answers if new)
+    majority = yes * 2 > len(answers)
+    why = next((w for new, w in answers if new == majority), "")
+    return ReviewVote(new=majority, why=why, votes=f"{yes}-{len(answers) - yes}")
