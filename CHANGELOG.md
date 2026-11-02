@@ -2,6 +2,30 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.4.0 - 2026-11-01
+
+- Semantic lock: a statement that follows necessarily from stated facts is an inference,
+  not an addition, and is permitted (cattle have nothing to graze where the fields are now
+  sea; a cliff is made of gravel and clay when its gravel and clay are drawn into the sea);
+  a new entity, number, event, cause, or a scene or image the stated facts do not entail is
+  an addition (a distant shore, when the original names no shore). Both examples are in the
+  prompt and in a test.
+- Materiality review: each flagged sentence is decided by a majority vote of three samples
+  at temperature 0.3, cached as one set (`CachingProvider.sample`); the vote split is kept
+  on every decision and shown in the report, the comparison page and the register report.
+- Register fixtures: the essay original is Charles S. Brooks, "The Chimney-Pots" (Chimney-Pot
+  Papers, 1919), and the fiction original is Grace Elizabeth King, "A Drama of Three"
+  (Balcony Stories, 1893), each the lowest of three `fixture-check` candidates (0.0% novel
+  recitation). Stevenson and Saki are retired under `tests/fixtures/registers/contaminated/`
+  with the numbers that retired them. The voices are unchanged: their corpora never held
+  any of these originals.
+- README states what `apply` does and does not do, and where its ceiling lies.
+- Leave-good-prose-alone runs (`apply` on a human original against its own voice, `--n 3
+  --report-all`) are under `reports/registers/leave-alone/`: Grew and Brooks both kept the
+  original, with the judge preferring the original in every full comparison but one; the
+  King story was not run, since extracting its 22 paragraphs alone exceeded the calls left
+  under the run's cap.
+
 ## v2.3.4 - 2026-11-01
 
 - Recitation counts novel words: the limit (`--max-recitation`, the fixture rule) applies to
