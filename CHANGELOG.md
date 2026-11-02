@@ -2,6 +2,23 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## Unreleased
+
+- Primary texts have a neutral format defined by deslop: a plain-text or markdown file, an
+  optional `NAME.locs.json` sidecar of labelled spans (`{"ref", "start", "end"}` character
+  offsets), and a citation scheme per text (`{"name", "pattern", "bare_pattern"}`) declared
+  in `voice.yaml` under `primary_texts` or with `--citation-scheme`. Resolution is regex
+  match, sidecar lookup, span; nothing else. The inline `{{marker}}` format and the built-in
+  verse and page recognisers are gone, and `docs/primary-texts.md` documents the format.
+- Lock policy: a resolved citation, a sentence naming a declared text, and a claim covered by
+  a verbatim quotation are permitted (listed as cleared with the reason); a quotation that is
+  not verbatim is rejected with the nearest run shown; a citation a scheme recognises but no
+  label answers is rejected; facts from a primary text remain additions unless
+  `--allow-primary-facts`. Verified additions are reported with their locations.
+- Paragraph band: advisory for inputs under ten paragraphs (reported, told to the writer on
+  retry, never a rejection); the judge's voice item is told paragraph length is governed by
+  the exemplars.
+
 ## v2.4.1 - 2026-11-01
 
 - Triad tell (T4): fires only on three or more parallel clauses or predicates, or three
@@ -181,8 +198,8 @@ All notable changes to deslop. Dates are release dates; versions are git tags.
 - The report adds the coherence results, the judge's item-by-item verdict, and a table of
   every metric before and after against the voice's band.
 - A fixture set of four registers (essay, explainer, product, fiction) under
-  `tests/fixtures/registers/` replaces the Paideia lesson as the test case.
-- The bundled reference texts (KJV Genesis, Jowett's Republic) and every default primary-text
+  `tests/fixtures/registers/` replaces the earlier consumer lesson as the test case.
+- The bundled reference texts and every default primary-text
   selection (`voice.yaml` `primary_texts`, a brief's `primary_texts`, `voice build
   --primary-text`) are removed. `--primary-text` is user-supplied only: a file or directory.
 - `lab blind --texts DIR` now loads a crawl directory with a `manifest.jsonl` through the
@@ -196,8 +213,8 @@ All notable changes to deslop. Dates are release dates; versions are git tags.
   Every added quotation must occur verbatim in one, every added verse or Stephanus citation
   must resolve to a marker, else the candidate is rejected and the span named. Without a
   primary text, additions pass and are listed as "unverified additions" at the top of the
-  report and in `--diff`. `deslop.reference` ships KJV Genesis (Gutenberg #10) and Jowett's
-  Republic with Stephanus pages (Gutenberg #55201) as `kjv-genesis` and `jowett-republic`.
+  report and in `--diff`. `deslop.reference` shipped two public-domain reference texts (since
+  removed).
 - Comparative judge: the absolute rubric gate is replaced by pairwise judging. A provider
   that wrote neither text sees two paragraphs and two exemplars and says which reads more
   like the writer and which more like model prose, with a confidence. Each candidate is

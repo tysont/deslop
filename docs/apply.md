@@ -105,28 +105,35 @@ novel share under 1% of the draft to qualify; the raw share is reported alongsid
 
 ## Primary texts
 
-`--primary-text` (repeatable) names plain-text sources for the work under discussion. Any
-quoted span of three or more words the output adds must occur verbatim (whitespace and
-punctuation normalised) in one of them, or the candidate is rejected and the span named. Any
-verse reference or Stephanus page the output adds must resolve to a marker in a text that
-carries markers of that kind, or the candidate is rejected; a kind no text has markers for
-is listed as unverifiable. Without any primary text, added quotations and citations are
-allowed and listed as unverified additions.
+`--primary-text` names a source that added quotations and citations must verify against,
+or a voice declares its own in `voice.yaml`. The format is deslop's: a plain text, an
+optional `<name>.locs.json` sidecar of labelled spans, and a citation scheme (a regex) per
+text, documented in [primary-texts.md](primary-texts.md). A verbatim quotation and a
+resolving citation are permitted and listed as verified additions with their locations; a
+quotation that is not verbatim is rejected with the nearest run of the text shown; a
+citation a scheme recognises but no label answers is rejected; one no scheme recognises is
+listed as unverifiable. Facts drawn from a primary text that the input does not state stay
+material additions unless `--allow-primary-facts` is on. Without a primary text everything
+added is listed as unverified and nothing is rejected.
 
-deslop ships no reference texts. A file of your own looks like this:
+## Editions and the lock policy
 
-```
-# title: Genesis (World English Bible)
-# book: Genesis
-# aliases: Gen, Ge
+A primary text may also be a Paideia-style edition directory: `_meta.yaml` names the work
+and `full/NNN.md` holds one chapter each, with `{{v:N}}` verse markers (scripture; "Gen 6:5"
+and a bare "6:18" both resolve) or `{{p:N}}` paragraph markers (a dialogue). A dialogue
+edition without Stephanus markers declares the Stephanus kind as unresolvable, so an added
+Stephanus citation against it is a rejection while its quotations still verify. A voice
+declares its texts in `voice.yaml` under `primary_texts` (paths relative to the voice file)
+and `apply` uses them when `--primary-text` is not given.
 
-{{Genesis 6:5}} Yahweh saw that the wickedness of man was great in the earth...
-{{Genesis 6:6}} Yahweh was sorry that he had made man on the earth...
-```
-
-Markers are `{{Book chapter:verse}}` or `{{369b}}`; `Gen 6:5`, `Genesis 6:5-7`, `6:5`,
-`369b`, `369b-c` and `Republic II, 369b` all resolve. A file without markers still verifies
-quotations.
+The policy on what the semantic lock reports: a citation that resolves in a declared text,
+a sentence that merely names one ("the Republic, Book II"), and a claim covered by a
+quotation verified verbatim are permitted and listed under cleared with the reason. A
+quotation that is not verbatim is rejected with the nearest run of the text shown, so
+another translation's wording of the same verse fails. A fact the input lacks (the ark's
+dimensions) stays a material addition unless `--allow-primary-facts` is on, which permits a
+claim whose sentence cites a resolved location and whose numbers and names all occur there.
+Verified additions are listed at the top of the report with their resolved locations.
 
 ## The comparative judge
 

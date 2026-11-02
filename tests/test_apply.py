@@ -223,18 +223,125 @@ def test_growth_limit_keeps_the_original(fixture_voice, slop_text):
     assert all(c.growth_pct and c.growth_pct > 15 for c in unit.candidates if c.text)
 
 
-def test_paragraphing_outside_the_voices_range_keeps_the_original(fixture_voice, slop_text):
+def test_paragraphing_outside_the_voices_range_is_advisory_for_short_inputs(
+    fixture_voice, slop_text
+):
+    from deslop.nlp import split_paragraphs
+
+    assert len(split_paragraphs(slop_text)) < 10
     a, b, factory = pair(one_paragraph=True)
     result = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
+    unit = result.units[0]
+    cand = next(c for c in unit.candidates if c.text)
+    paras = cand.coherence.paragraphs
+    assert paras.after == 1 and paras.band_high and paras.sentences_per_paragraph > paras.band_high
+    assert not paras.ok and paras.advisory and cand.coherence.ok, "advised, not rejected"
+    assert cand.advisories == [paras.note] and "split paragraphs" in paras.note
+    assert "this writer's paragraphs run from" not in cand.reason
+    assert paras.note in cand.reader_notes, "the writer hears it as a reader's note"
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    assert "merge or split the input's paragraphs freely" in user
+
+
+def test_paragraphing_outside_the_voices_range_rejects_long_inputs(fixture_voice, slop_text):
+    long_text = "\n\n".join([slop_text] * 3)
+    a, b, factory = pair(one_paragraph=True)
+    result = apply(long_text, fixture_voice, n=1, provider_factory=factory)
     unit = result.units[0]
     assert unit.kept_original
     cand = next(c for c in unit.candidates if c.text)
     assert cand.coherence is not None and not cand.coherence.ok
-    paras = cand.coherence.paragraphs
-    assert paras.after == 1 and paras.band_high and paras.sentences_per_paragraph > paras.band_high
+    assert not cand.coherence.paragraphs.advisory and not cand.advisories
     assert "this writer's paragraphs run from" in cand.reason and "split paragraphs" in cand.reason
-    system, user = next(c for c in a.calls if "write prose" in c[0])
-    assert "merge or split the input's paragraphs freely" in user
+
+
+def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts(tmp_path):
+    from deslop.apply import CandidateLog, permit_primary
+    from deslop.reference import Addition, PrimaryCheck, PrimaryText
+    from deslop.semantic import AddedClaim, SemanticResult
+
+    raw = (
+        "The length of the vessel will be 300 cubits, its width 50 cubits, and its height "
+        "30 cubits. But I will establish my covenant with you."
+    )
+    gen = PrimaryText.from_text(
+        raw,
+        name="Scripture",
+        locations=[
+            {"ref": "6:15", "start": 0, "end": raw.index("But")},
+            {"ref": "6:18", "start": raw.index("But"), "end": len(raw)},
+        ],
+    )
+
+    def candidate() -> CandidateLog:
+        cand = CandidateLog(attempt=1, text="", provider="p", model="m", lexical_ok=True)
+        cand.primary = PrimaryCheck(
+            checked=True,
+            additions=[
+                Addition(kind="citation", text="6:15", verified=True, where="Scripture 6:15"),
+                Addition(kind="citation", text="6:18", verified=True, where="Scripture 6:18"),
+                Addition(
+                    kind="quote",
+                    text="I will establish my covenant with you",
+                    verified=True,
+                    where="Scripture 6:18",
+                ),
+            ],
+        )
+        cand.semantic = SemanticResult(
+            added=[
+                AddedClaim(
+                    text="6:15", kind="claim", category="entity", sentence="The ark (6:15)."
+                ),
+                AddedClaim(
+                    text="Names the work as Scripture and places it in chapter 6.",
+                    kind="claim",
+                    category="entity",
+                    sentence="Scripture, chapter 6, says so.",
+                ),
+                AddedClaim(
+                    text="God establishes a covenant with Noah",
+                    kind="claim",
+                    category="event",
+                    sentence='Then comes the covenant: "I will establish my covenant with you" (6:18).',
+                ),
+                AddedClaim(
+                    text="The vessel is 300 by 50 by 30 cubits",
+                    kind="claim",
+                    category="number",
+                    sentence="The vessel is 300 by 50 by 30 cubits (6:15).",
+                ),
+                AddedClaim(
+                    text="Names the Epic and cites 24.527",
+                    kind="claim",
+                    category="entity",
+                    sentence="Out go the two jars (Epic 24.527).",
+                ),
+            ]
+        )
+        return cand
+
+    cand = candidate()
+    permit_primary(cand, [gen], allow_facts=False, original="Noah is told to build.")
+    assert [a.text for a in cand.semantic.added] == [
+        "The vessel is 300 by 50 by 30 cubits",
+        "Names the Epic and cites 24.527",
+    ]
+    assert [a.note for a in cand.semantic.cleared] == [
+        "a citation that resolves in a declared primary text",
+        "names a declared primary text",
+        "verbatim in Scripture 6:18",
+    ]
+    assert not cand.semantic.ok, "a fact from the primary text is still an addition by default"
+
+    cand = candidate()
+    permit_primary(cand, [gen], allow_facts=True, original="Noah is told to build.")
+    assert [a.text for a in cand.semantic.added] == ["Names the Epic and cites 24.527"]
+    assert cand.semantic.cleared[-1].note == "a fact verifiable at Scripture 6:15"
+
+    bare = candidate()
+    permit_primary(bare, [], allow_facts=True, original="Noah is told to build.")
+    assert len(bare.semantic.added) == 5, "no primary text, no permission"
 
 
 def test_texture_hints_reach_the_writer_and_never_the_lock(fixture_voice, slop_text):
@@ -272,32 +379,37 @@ def test_budget_stops_before_the_first_candidate(fixture_voice, slop_text):
 def test_primary_text_rejects_fabricated_quotation_and_lists_unverified(
     fixture_voice, slop_text, tmp_path
 ):
-    marked = tmp_path / "gen.txt"
-    marked.write_text(
-        "# title: Genesis\n# book: Genesis\n\n{{Genesis 22:2}} Take now thy son, thine only "
-        "son Isaac, whom thou lovest.\n",
-        encoding="utf-8",
+    import json
+
+    from deslop.reference import CitationScheme, PrimaryTextSpec
+
+    text = tmp_path / "gen.txt"
+    line = "Take now thy son, thine only son Isaac, whom thou lovest."
+    text.write_text(line + "\n", encoding="utf-8")
+    (tmp_path / "gen.locs.json").write_text(
+        json.dumps([{"ref": "Gen 22:2", "start": 0, "end": len(line)}]), encoding="utf-8"
     )
+    verse = CitationScheme(name="verse", pattern=r"\bGen\.?\s+\d+:\d+")
+    spec = PrimaryTextSpec(path=str(text), title="Genesis", schemes=[verse])
     fabricated = factory_for(Scripted("anthropic", add_quote="Take now thy daughter"))
-    result = apply(
-        slop_text, fixture_voice, n=1, primary_texts=[str(marked)], provider_factory=fabricated
-    )
+    result = apply(slop_text, fixture_voice, n=1, primary_texts=[spec], provider_factory=fabricated)
     unit = result.units[0]
     assert unit.kept_original and result.primary_texts == ["Genesis"]
-    rejected = [c for c in unit.candidates if "not in the primary text" in c.reason]
+    rejected = [c for c in unit.candidates if "not in any primary text" in c.reason]
     assert rejected and "Take now thy daughter" in rejected[0].reason
+    assert "nearest:" in rejected[0].reason
     verbatim = factory_for(
         Scripted("anthropic", add_quote="Take now thy son, thine only son Isaac")
     )
-    result = apply(
-        slop_text, fixture_voice, n=1, primary_texts=[str(marked)], provider_factory=verbatim
-    )
+    result = apply(slop_text, fixture_voice, n=1, primary_texts=[spec], provider_factory=verbatim)
     assert not result.units[0].kept_original and not result.unverified_additions
+    assert result.verified_additions and "Gen 22:2" in "".join(result.verified_additions)
+    assert "verified additions" in result.meaning_diff
     # Without primary texts the same additions pass and are listed.
     loose = apply(slop_text, fixture_voice, n=1, provider_factory=verbatim)
     assert loose.unverified_additions and "Gen 22:2" in "".join(loose.unverified_additions)
     assert "unverified additions" in loose.meaning_diff
-    assert PrimaryText.load(marked).resolve("Gen 22:2") == "Genesis 22:2"
+    assert PrimaryText.load(text, schemes=[verse]).resolve("Gen 22:2") == "Gen 22:2"
 
 
 def test_models_pair_a_writer_with_a_different_judge_on_one_provider():

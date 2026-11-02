@@ -164,6 +164,39 @@ def main(
         fail(str(exc))
 
 
+def _citation_schemes(items: list[Any]) -> list[Any]:
+    """`--citation-scheme` values: JSON objects with name, pattern and optional bare_pattern."""
+    from deslop.reference import CitationScheme
+
+    out = []
+    for item in items:
+        try:
+            data = json.loads(item) if isinstance(item, str) else item
+            out.append(CitationScheme.model_validate(data))
+        except (ValueError, TypeError) as exc:
+            fail(f"--citation-scheme must be JSON with name and pattern: {exc}")
+    return out
+
+
+def _declared_texts(v: Any) -> list[Any]:
+    """The voice's `primary_texts`: paths, or specs with their own schemes, relative to the
+    voice file."""
+    from deslop.reference import PrimaryTextSpec
+
+    base = v.path.parent if v.path is not None else Path(".")
+    out = []
+    for item in v.meta.primary_texts:
+        spec = (
+            PrimaryTextSpec(path=item)
+            if isinstance(item, str)
+            else PrimaryTextSpec.model_validate(item)
+        )
+        if not Path(spec.path).is_absolute():
+            spec.path = str(base / spec.path)
+        out.append(spec)
+    return out
+
+
 def read_input(path: Path | None) -> str:
     if path is None or str(path) == "-":
         return sys.stdin.read()
@@ -315,6 +348,9 @@ def voice_show(
     )
     if m.licenses:
         console.print("licenses: " + "; ".join(m.licenses))
+    if m.primary_texts:
+        names = [t if isinstance(t, str) else str(t.get("path", "")) for t in m.primary_texts]
+        console.print("primary texts: " + "; ".join(names))
     small = v.metrics.small_corpus
     if small is not None:
         console.print(
@@ -776,8 +812,21 @@ def apply_cmd(
     primary_text: list[str] = typer.Option(
         [],
         "--primary-text",
-        help="Primary texts (file or directory) added quotations and citations must verify "
-        "against; without one, additions are listed as unverified",
+        help="Primary texts (a text file with an optional NAME.locs.json sidecar, or a "
+        "directory of them) added quotations and citations must verify against; default: "
+        "the voice's declared primary texts; without any, additions are listed as unverified",
+    ),
+    citation_scheme: list[str] = typer.Option(
+        [],
+        "--citation-scheme",
+        help='A citation scheme for the command-line primary texts, as JSON: {"name": "verse", '
+        '"pattern": "<regex>", "bare_pattern": "<regex or null>"}; repeatable',
+    ),
+    allow_primary_facts: bool = typer.Option(
+        False,
+        "--allow-primary-facts",
+        help="A fact the input lacks is not an addition when it is verifiable at a cited "
+        "location of a primary text (off: it remains a material addition)",
     ),
     max_iter: int | None = typer.Option(None, "--max-iter", help="Edit-mode iterations (4)"),
     patterns: list[Path] = typer.Option([], "--patterns"),
@@ -811,7 +860,10 @@ def apply_cmd(
         input_file=str(brief or file or "stdin"),
         max_calls=max_calls,
     )
-    texts = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
+    texts: list[Any] = [str(x) for x in _as_list(s.get("primary_text", primary_text or None, []))]
+    schemes = _citation_schemes(_as_list(s.get("citation_scheme", citation_scheme or None, [])))
+    if not texts and v.meta.primary_texts:
+        texts = _declared_texts(v)
     reference = s.path("reference", reference)
     ref_text = split_frontmatter(reference.read_text(encoding="utf-8"))[1] if reference else None
     try:
@@ -832,6 +884,10 @@ def apply_cmd(
             reference_name=reference.name if reference else "reference",
             max_recitation=float(s.get("max_recitation", max_recitation, 2.0)),
             primary_texts=list(texts) or None,
+            citation_schemes=schemes,
+            allow_primary_facts=bool(
+                s.get("allow_primary_facts", allow_primary_facts or None, False)
+            ),
             max_iter=int(s.get("max_iter", max_iter, 4)),
             patterns=s.paths("patterns", patterns),
             progress=s.progress(json_out),

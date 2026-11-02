@@ -63,6 +63,7 @@ class VoiceMeta(BaseModel):
     checksum: str | None = None
     has_exemplars: bool = True
     judge_calibration: dict[str, Any] = Field(default_factory=dict)  # provider -> JudgeCalibration
+    primary_texts: list[Any] = Field(default_factory=list)  # paths or PrimaryTextSpec dicts
 
 
 class LexiconEntry(BaseModel):

@@ -142,6 +142,7 @@ class ParagraphCheck(BaseModel):
     band_high: float | None = None
     ok: bool = True
     note: str = ""
+    advisory: bool = False  # the band is reported, not enforced (short inputs)
 
 
 def paragraph_check(before: Analysis, after: Analysis, band: Band | None) -> ParagraphCheck:
@@ -225,12 +226,17 @@ class CoherenceResult(BaseModel):
     @property
     def ok(self) -> bool:
         return (
-            self.paragraphs.ok and not self.tense and not self.antecedents and self.connectives.ok
+            (self.paragraphs.ok or self.paragraphs.advisory)
+            and not self.tense
+            and not self.antecedents
+            and self.connectives.ok
         )
 
     def reader_notes(self) -> list[str]:
+        """What a reader would say about the failures; an advisory paragraph band is left
+        out, since it is a note to the writer and not a rejection."""
         notes = []
-        if not self.paragraphs.ok:
+        if not self.paragraphs.ok and not self.paragraphs.advisory:
             notes.append(self.paragraphs.note)
         for d in self.tense:
             notes.append(

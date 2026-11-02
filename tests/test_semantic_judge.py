@@ -382,6 +382,7 @@ def test_judge_retries_once_with_a_stricter_format_before_giving_up(fixture_voic
     assert len(judge.systems) == 2 and "JSON object only" in judge.systems[1]
     assert v.note != "judge gave no JSON" and v.confidence == 0.9
     assert "headings and lists is not part of this item" in judge.systems[0]
+    assert "Paragraph length is governed by the writer's exemplars" in judge.systems[0]
     hopeless = Canned("anthropic", "no")
     v = compare_document("cand", "orig", "orig", fixture_voice, hopeless, exemplars=[])
     assert v.note == "judge gave no JSON" and len(hopeless.prompts) == 2

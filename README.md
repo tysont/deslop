@@ -137,7 +137,9 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
-| `--primary-text` | none | reference text (file or directory) added quotations and citations must verify against; repeatable |
+| `--primary-text` | the voice's declared texts | a primary text (a text file with an optional `NAME.locs.json` sidecar of labelled spans, or a directory of them) added quotations and citations must verify against; repeatable; a voice declares its own in `voice.yaml` under `primary_texts` (see docs/primary-texts.md) |
+| `--citation-scheme` | none | JSON `{"name", "pattern", "bare_pattern"}`: the regex shape of citations of the command-line primary texts; repeatable |
+| `--allow-primary-facts` | off | a fact the input lacks is not an addition when its numbers and names are all at a cited, resolved location of a primary text; off, it remains a material addition |
 | `--budget` | `5` | USD this invocation may spend on live calls; past it the run stops with the best text so far |
 | `--max-iter` | `4` | edit-mode iterations |
 | `--diff` | off | print the unified diff and the meaning diff |
@@ -153,7 +155,8 @@ writer's person and address, let paragraph length and count follow the exemplars
 the input, and keep the author's tense and order of argument unless the profile says
 otherwise. Each candidate must pass the content lock (nothing locked removed), the length
 limit (`--max-growth`), the primary-text check, the coherence checks (sentences per
-paragraph inside the exemplars' range; the dominant tense unchanged; every sentence-initial
+paragraph inside the exemplars' range, which for an input under ten paragraphs is advisory:
+reported, told to the writer on retry, never a rejection; the dominant tense unchanged; every sentence-initial
 pronoun with an antecedent in the two sentences before it; connective openers in the voice's
 band and near the original's share) and the semantic lock paragraph by paragraph (every
 proposition kept, nothing material added: no new entity, number, event, unstated cause, or
@@ -169,11 +172,16 @@ rewrite. A document longer than `--chunk-words` is rewritten section by section,
 the already-rewritten section before it in context and the original section after it
 visible.
 
+With a primary text declared, a citation that resolves to one of its labelled spans and a
+quotation that appears in it verbatim (whitespace and punctuation normalised) are permitted
+and not material; they are listed as "verified additions" with their locations. A quotation
+that does not appear verbatim is rejected, with the nearest run of the text shown. A
+citation whose scheme the text declares but whose label the text lacks is a rejection. A
+fact the input lacks remains a material addition unless `--allow-primary-facts` is on.
 Without a primary text, added quotations and citations are allowed and listed as
-"unverified additions" at the top of the report and in `--diff`. deslop ships no reference
-texts; you supply them with `--primary-text`. A reference text is a plain-text file with `# title:`, `# book:` and `# aliases:`
-header lines and `{{Genesis 6:5}}` or `{{369b}}` markers in the text; a file without markers
-still verifies quotations.
+"unverified additions" at the top of the report and in `--diff`. deslop ships no texts: a
+primary text is a plain-text or markdown file, an optional `NAME.locs.json` sidecar of
+labelled spans, and a citation scheme (`docs/primary-texts.md`).
 
 The judge gate is only used with a provider that has been measured: `deslop lab
 calibrate-judge` stores each provider's accuracy at telling held-out corpus paragraphs

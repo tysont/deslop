@@ -45,7 +45,8 @@ TEXT A and TEXT B (one of them may be the original itself). Answer four question
 each with "A", "B" or "tie":
 
 voice: which reads more like the writer of the samples (judge the prose, not the subject or
-the length).
+the length). Paragraph length is governed by the writer's exemplars and is not by itself
+evidence for or against the voice.
 coherent: in which does each sentence follow from the last, with every pronoun and "this"
 pointing at something already said.
 tense_person: which keeps a consistent tense and grammatical person throughout.

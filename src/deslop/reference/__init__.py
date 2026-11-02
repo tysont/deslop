@@ -1,9 +1,11 @@
-# ABOUTME: Primary texts: plain-text sources with {{ref}} markers (verse or Stephanus), used to
-# ABOUTME: verify that an added quotation is verbatim and that an added citation resolves.
+# ABOUTME: Primary texts: a plain text with an optional sidecar of labelled spans and per-text
+# ABOUTME: citation schemes; verifies that an added quotation is verbatim and a citation resolves.
 from __future__ import annotations
 
+import difflib
+import json
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,26 +13,86 @@ from pydantic import BaseModel, Field
 
 from deslop.lock import ANY_QUOTE_RE, PRIMARY_CITATION_PATTERNS
 
-MARKER_RE = re.compile(r"\{\{([^{}]{1,40})\}\}")
-HEADER_RE = re.compile(r"^#\s*([a-z_]+):\s*(.*)$")
-VERSE_REF_RE = re.compile(
-    r"^(?:(?P<book>[1-3]?\s?[A-Za-z]+)\.?\s+)?(?P<chapter>\d{1,3}):(?P<verse>\d{1,3})"
-    r"(?:[-–](?P<end>\d{1,3}))?$"
-)
-STEPHANUS_REF_RE = re.compile(
-    r"^(?P<page>\d{2,3})(?P<section>[a-e])?(?:[-–](?P<end>\d{2,3}[a-e]?|[a-e]))?$"
-)
 MIN_QUOTE_WORDS = 3  # shorter quoted spans are terms, not quotations
+NEAREST_MIN_RATIO = 0.5
+SIDECAR_SUFFIX = ".locs.json"  # `<name>.locs.json` beside `<name>.md` or `<name>.txt`
+RANGE_RE = re.compile(r"\s*[-–]\s*")
+
+
+class CitationScheme(BaseModel):
+    """How citations of one text look, so deslop can recognise them without knowing what they
+    mean: `pattern` matches a citation that names the text or a location in it, and
+    `bare_pattern`, when given, matches a bare location whose text is known from context."""
+
+    name: str
+    pattern: str
+    bare_pattern: str | None = None
+
+    def matches(self, citation: str) -> bool:
+        item = citation.strip()
+        return any(pat and re.fullmatch(pat, item) for pat in (self.pattern, self.bare_pattern))
+
+    def finditer(self, text: str) -> Iterable[re.Match[str]]:
+        for pat in (self.pattern, self.bare_pattern):
+            if pat:
+                yield from re.finditer(pat, text)
+
+
+class PrimaryTextSpec(BaseModel):
+    """One declared primary text: its path (relative to the voice file when declared in
+    `voice.yaml`), an optional display title, and its citation schemes."""
+
+    path: str
+    title: str = ""
+    schemes: list[CitationScheme] = Field(default_factory=list)
 
 
 def normalize(text: str) -> str:
     """Whitespace- and punctuation-normalised form for verbatim comparison: lower case, curly
     quotes straightened, punctuation dropped, single spaces."""
-    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-    text = text.replace("—", " ").replace("–", " ").replace("-", " ")
-    text = re.sub(r"[^\w\s']", " ", text.lower())
-    text = re.sub(r"'(?!\w)|(?<!\w)'", " ", text)
-    return " ".join(text.split())
+    return _normalize_with_map(text)[0]
+
+
+def _normalize_with_map(text: str) -> tuple[str, list[int]]:
+    """`normalize(text)` and, for every raw character offset, the normalised offset its
+    output starts at (plus one final entry for the end)."""
+    out: list[str] = []
+    offsets: list[int] = []
+    length = 0
+    pending_space = False
+    n = len(text)
+    for i, c in enumerate(text):
+        offsets.append(length + (1 if pending_space and length else 0))
+        if c in "’‘":
+            c = "'"
+        if c in "—–-":
+            c = " "
+        c = c.lower()
+        if c == "'":
+            before = i > 0 and (text[i - 1].isalnum() or text[i - 1] == "_")
+            after = i + 1 < n and (text[i + 1].isalnum() or text[i + 1] == "_")
+            if not (before and after):
+                c = " "
+        elif not (c.isalnum() or c == "_" or c.isspace()):
+            c = " "
+        if c.isspace():
+            pending_space = True
+            continue
+        if pending_space and length:
+            out.append(" ")
+            length += 1
+        pending_space = False
+        out.append(c)
+        length += 1
+    offsets.append(length)
+    return "".join(out), offsets
+
+
+def canonical_label(citation: str) -> str:
+    """A citation string as a sidecar key: lower case, periods and trailing punctuation
+    dropped, single spaces."""
+    item = citation.strip().rstrip(".,;:)").replace(".", "")
+    return " ".join(item.lower().split())
 
 
 @dataclass
@@ -42,107 +104,83 @@ class Segment:
 
 @dataclass
 class PrimaryText:
-    """One source: its normalised text, its markers as segments, and the names it answers to."""
+    """One source: its normalised text, its labelled spans from the sidecar, and the
+    citation schemes it answers to."""
 
     name: str
     path: str
-    text: str  # normalised, markers removed
-    segments: list[Segment] = field(default_factory=list)
-    book: str = ""
-    aliases: list[str] = field(default_factory=list)
-    kinds: set[str] = field(default_factory=set)  # "verse" | "stephanus" present in markers
-    _verses: dict[tuple[int, int], str] = field(default_factory=dict)
-    _pages: dict[str, str] = field(default_factory=dict)
+    text: str  # normalised
+    segments: list[Segment] = field(default_factory=list)  # in sidecar order
+    schemes: list[CitationScheme] = field(default_factory=list)
+    _labels: dict[str, Segment] = field(default_factory=dict)
 
     @property
-    def has_markers(self) -> bool:
+    def has_locations(self) -> bool:
         return bool(self.segments)
 
     @classmethod
-    def load(cls, path: Path | str) -> PrimaryText:
-        """Read a marked plain-text file. Header lines `# key: value` give `title`, `book` and
-        `aliases`; `{{Genesis 6:5}}` and `{{369b}}` markers start a segment each. A file
-        without markers still verifies quotations."""
+    def load(
+        cls,
+        path: Path | str,
+        *,
+        schemes: Sequence[CitationScheme] = (),
+        title: str = "",
+    ) -> PrimaryText:
+        """Read a plain-text or markdown file. A sidecar `<name>.locs.json` beside it, when
+        present, lists `{"ref", "start", "end"}` entries with character offsets into the
+        file; each becomes a labelled span. Without one the text still verifies quotations."""
         p = Path(path)
         raw = p.read_text(encoding="utf-8")
-        meta: dict[str, str] = {}
-        body_lines = []
-        in_header = True
-        for line in raw.splitlines():
-            m = HEADER_RE.match(line) if in_header else None
-            if m:
-                meta[m.group(1)] = m.group(2).strip()
-                continue
-            in_header = False
-            body_lines.append(line)
-        body = "\n".join(body_lines)
+        sidecar = p.with_name(p.stem + SIDECAR_SUFFIX)
+        locs: list[dict[str, object]] = []
+        if sidecar.is_file():
+            data = json.loads(sidecar.read_text(encoding="utf-8"))
+            locs = list(data.get("locations", []) if isinstance(data, dict) else data)
         return cls.from_text(
-            body,
-            name=meta.get("title") or p.stem,
-            path=str(p),
-            book=meta.get("book", ""),
-            aliases=[a.strip() for a in meta.get("aliases", "").split(",") if a.strip()],
+            raw, name=title or p.stem, path=str(p), locations=locs, schemes=schemes
         )
 
     @classmethod
     def from_text(
         cls,
-        body: str,
+        raw: str,
         *,
         name: str,
         path: str = "",
-        book: str = "",
-        aliases: list[str] | None = None,
+        locations: Sequence[dict[str, object]] = (),
+        schemes: Sequence[CitationScheme] = (),
     ) -> PrimaryText:
-        pieces: list[str] = []
-        refs: list[tuple[str, int]] = []  # ref, offset into normalised text
-        pos = 0
-        length = 0
-        for m in MARKER_RE.finditer(body):
-            chunk = normalize(body[pos : m.start()])
-            if chunk:
-                pieces.append(chunk)
-                length += len(chunk) + 1
-            refs.append((m.group(1).strip(), length))
-            pos = m.end()
-        chunk = normalize(body[pos:])
-        if chunk:
-            pieces.append(chunk)
-        text = " ".join(pieces)
+        text, offsets = _normalize_with_map(raw)
         segments = []
-        for i, (ref, start) in enumerate(refs):
-            end = refs[i + 1][1] if i + 1 < len(refs) else len(text)
-            segments.append(Segment(ref=ref, start=min(start, len(text)), end=end))
-        pt = cls(
-            name=name, path=path, text=text, segments=segments, book=book, aliases=aliases or []
-        )
-        pt._index()
-        return pt
-
-    def _index(self) -> None:
-        for seg in self.segments:
-            v = VERSE_REF_RE.match(seg.ref)
-            if v and v.group("chapter"):
-                self.kinds.add("verse")
-                self._verses[(int(v.group("chapter")), int(v.group("verse")))] = seg.ref
-                if not self.book and v.group("book"):
-                    self.book = v.group("book")
+        for loc in locations:
+            try:
+                start, end = int(str(loc["start"])), int(str(loc["end"]))
+                ref = str(loc["ref"]).strip()
+            except (KeyError, TypeError, ValueError):
                 continue
-            s = STEPHANUS_REF_RE.match(seg.ref.lower())
-            if s:
-                self.kinds.add("stephanus")
-                self._pages[s.group("page") + (s.group("section") or "a")] = seg.ref
+            if not ref or start < 0 or end < start:
+                continue
+            a = offsets[min(start, len(raw))]
+            b = offsets[min(end, len(raw))]
+            segments.append(Segment(ref=ref, start=a, end=max(a, b)))
+        pt = cls(name=name, path=path, text=text, segments=segments, schemes=list(schemes))
+        for seg in segments:
+            pt._labels.setdefault(canonical_label(seg.ref), seg)
+        return pt
 
     # ------------------------------------------------------------ lookups
     def locate(self, offset: int) -> str:
-        """The marker in force at an offset of the normalised text, or the text's name."""
-        where = self.name
+        """The label of the first sidecar span containing an offset of the normalised text,
+        or the text's name."""
         for seg in self.segments:
-            if seg.start <= offset:
-                where = seg.ref
-            else:
-                break
-        return where
+            if seg.start <= offset < seg.end:
+                return seg.ref
+        return self.name
+
+    def segment_text(self, ref: str) -> str:
+        """The normalised text of a labelled span, or empty."""
+        seg = self._labels.get(canonical_label(ref))
+        return self.text[seg.start : seg.end] if seg else ""
 
     def find_quote(self, span: str) -> str | None:
         """Where `span` occurs verbatim (after normalisation), or None."""
@@ -154,75 +192,78 @@ class PrimaryText:
             return None
         return self.locate(at)
 
-    def answers_to(self, book: str | None) -> bool:
-        if not book:
-            return True
-        key = book.lower().replace(".", "").strip()
-        key = re.sub(r"^([1-3])\s*", r"\1 ", key)
-        names = [self.book.lower()] + [a.lower() for a in self.aliases]
-        names = [re.sub(r"^([1-3])\s*", r"\1 ", n) for n in names if n]
-        return any(n == key or (len(key) >= 3 and n.startswith(key)) for n in names)
+    def nearest(self, span: str) -> tuple[str, str]:
+        """The closest run of the text to `span`, as (location, run), for showing why a
+        quotation was rejected; ("", "") when nothing comes near."""
+        needle = normalize(span).split()
+        words = self.text.split()
+        if not needle or not words:
+            return "", ""
+        n = len(needle)
+        wanted = set(needle)
+        best, best_ratio, best_at = "", 0.0, -1
+        offsets = []
+        pos = 0
+        for w in words:
+            offsets.append(pos)
+            pos += len(w) + 1
+        for i in range(0, max(len(words) - n + 1, 1)):
+            window = words[i : i + n]
+            if len(wanted & set(window)) * 2 < len(wanted):
+                continue
+            matcher = difflib.SequenceMatcher(None, needle, window)
+            ratio = matcher.ratio()
+            if ratio > best_ratio:
+                # show and locate the matched stretch, not the window's edges, which may sit
+                # in the span before or after
+                blocks = [b for b in matcher.get_matching_blocks() if b.size]
+                lo = blocks[0].b if blocks else 0
+                hi = blocks[-1].b + blocks[-1].size if blocks else n
+                best, best_ratio, best_at = " ".join(window[lo:hi]), ratio, offsets[i + lo]
+        if best_ratio < NEAREST_MIN_RATIO:
+            return "", ""
+        return self.locate(best_at), best
+
+    def answers_to(self, citation: str) -> bool:
+        """Whether one of this text's schemes recognises the citation string."""
+        return any(s.matches(citation) for s in self.schemes)
 
     def resolve(self, citation: str) -> str | None:
-        """The marker a citation names, or None. Verse references need the book to match
-        this text (or to be absent); ranges resolve when both ends exist."""
-        item = citation.strip().rstrip(".,;:)")
-        item = re.sub(r"^(?:Republic|Rep\.?)\s*(?:[IVX]+|\d+)?,?\s*", "", item, flags=re.I)
-        v = VERSE_REF_RE.match(item)
-        if v and "verse" in self.kinds:
-            if not self.answers_to(v.group("book")):
-                return None
-            chapter, verse = int(v.group("chapter")), int(v.group("verse"))
-            start = self._verses.get((chapter, verse))
-            if start is None:
-                return None
-            if v.group("end") and (chapter, int(v.group("end"))) not in self._verses:
-                return None
-            return start
-        s = STEPHANUS_REF_RE.match(item.lower())
-        if s and "stephanus" in self.kinds:
-            start = self._pages.get(s.group("page") + (s.group("section") or "a"))
-            if start is None:
-                return None
-            end = s.group("end")
-            if end:
-                end_key = end if end[0].isdigit() else s.group("page") + end
-                if len(end_key) == 3:
-                    end_key += "a"
-                if end_key not in self._pages:
-                    return None
-            return start
-        return None
-
-
-def citation_kind(citation: str) -> str | None:
-    item = citation.strip().rstrip(".,;:)")
-    item = re.sub(r"^(?:Republic|Rep\.?)\s*(?:[IVX]+|\d+)?,?\s*", "", item, flags=re.I)
-    if VERSE_REF_RE.match(item):
-        return "verse"
-    if STEPHANUS_REF_RE.match(item.lower()):
-        return "stephanus"
-    return None
+        """The sidecar label a citation names, or None: a scheme must match the string, and
+        its canonical form (or, for a range, the part before the dash) must be a label."""
+        if not self.answers_to(citation):
+            return None
+        key = canonical_label(citation)
+        seg = self._labels.get(key)
+        if seg is None and RANGE_RE.search(key):
+            seg = self._labels.get(RANGE_RE.split(key, 1)[0].strip())
+        return seg.ref if seg else None
 
 
 def load_primary_texts(
-    items: Sequence[str | Path], *, relative_to: Path | None = None
+    items: Sequence[str | Path | PrimaryTextSpec],
+    *,
+    relative_to: Path | None = None,
+    schemes: Sequence[CitationScheme] = (),
 ) -> list[PrimaryText]:
-    """Load each item: a file, or a directory of .txt/.md files. Relative paths resolve
-    against `relative_to` when given."""
+    """Load each item: a file, a directory of .txt/.md files, or a `PrimaryTextSpec`. Relative
+    paths resolve against `relative_to` when given. `schemes` apply to every item that
+    carries none of its own."""
     out: list[PrimaryText] = []
     for item in items:
-        p = Path(str(item))
+        spec = item if isinstance(item, PrimaryTextSpec) else PrimaryTextSpec(path=str(item))
+        own = spec.schemes or list(schemes)
+        p = Path(spec.path)
         if not p.is_absolute() and relative_to is not None and not p.exists():
             p = relative_to / p
         if p.is_dir():
             for f in sorted(p.iterdir()):
                 if f.suffix.lower() in (".txt", ".md") and f.is_file():
-                    out.append(PrimaryText.load(f))
+                    out.append(PrimaryText.load(f, schemes=own))
         elif p.is_file():
-            out.append(PrimaryText.load(p))
+            out.append(PrimaryText.load(p, schemes=own, title=spec.title))
         else:
-            raise FileNotFoundError(f"primary text not found: {item}")
+            raise FileNotFoundError(f"primary text not found: {spec.path}")
     return out
 
 
@@ -235,14 +276,16 @@ class Addition(BaseModel):
     kind: str  # quote | citation
     text: str
     verified: bool = False
-    where: str = ""  # marker and text name when verified
+    where: str = ""  # label and text name when verified
     note: str = ""  # "not in any primary text" / "no primary text given" / "unresolved"
+    nearest: str = ""  # for a rejected quotation, the closest run of a primary text
 
     def __str__(self) -> str:
         label = f'"{self.text}"' if self.kind == "quote" else self.text
         if self.verified:
             return f"{label} ({self.where})"
-        return f"{label}: {self.note}"
+        near = f'; nearest: "{self.nearest}"' if self.nearest else ""
+        return f"{label}: {self.note}{near}"
 
 
 class PrimaryCheck(BaseModel):
@@ -276,11 +319,15 @@ def quoted_spans(text: str) -> list[str]:
     ]
 
 
-def primary_citations(text: str) -> list[str]:
+def primary_citations(text: str, texts: Sequence[PrimaryText] = ()) -> list[str]:
+    """Citation strings in `text`: those the texts' schemes recognise, then the generic
+    citation shapes the lock knows (so an unrecognised scheme is still listed)."""
     seen: list[tuple[int, int]] = []
     out = []
-    for pattern in PRIMARY_CITATION_PATTERNS:
-        for m in pattern.finditer(text):
+    sources: list[Iterable[re.Match[str]]] = [s.finditer(text) for t in texts for s in t.schemes]
+    sources += [p.finditer(text) for p in PRIMARY_CITATION_PATTERNS]
+    for matches in sources:
+        for m in matches:
             if not any(s <= m.start() < e or s < m.end() <= e for s, e in seen):
                 seen.append((m.start(), m.end()))
                 out.append(m.group(0).strip())
@@ -288,14 +335,14 @@ def primary_citations(text: str) -> list[str]:
 
 
 def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) -> PrimaryCheck:
-    """Every quoted span (3+ words) and primary citation `candidate` has that `original` lacks.
-    With `texts`, a quotation must occur verbatim in one of them and a citation must resolve
-    in a text carrying markers of its kind; a kind no text carries markers for is
-    `unverifiable` and merely listed. Without texts everything is listed as unverified."""
+    """Every quoted span (3+ words) and citation `candidate` has that `original` lacks. With
+    `texts`, a quotation must occur verbatim in one of them (the nearest run is shown when it
+    does not) and a citation a scheme recognises must resolve to a labelled span of a text
+    with that scheme; a citation no scheme recognises is `unverifiable` and merely listed.
+    Without texts everything is listed as unverified."""
     check = PrimaryCheck(checked=bool(texts))
     before_quotes = {normalize(q) for q in quoted_spans(original)}
-    before_cites = set(primary_citations(original))
-    kinds = {k for t in texts for k in t.kinds}
+    before_cites = set(primary_citations(original, texts))
     for q in quoted_spans(candidate):
         if normalize(q) in before_quotes:
             continue
@@ -307,21 +354,42 @@ def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) ->
                 if where:
                     add.verified, add.where, add.note = True, f"{t.name} {where}", ""
                     break
+            if not add.verified:
+                for t in texts:
+                    where, run = t.nearest(q)
+                    if run:
+                        add.nearest = f"{run} ({t.name} {where})"
+                        break
         check.additions.append(add)
-    for c in primary_citations(candidate):
+    for c in primary_citations(candidate, texts):
         if c in before_cites:
             continue
         add = Addition(kind="citation", text=c, note="no primary text given")
         if texts:
-            kind = citation_kind(c)
-            if kind is None or kind not in kinds:
+            answering = [t for t in texts if t.answers_to(c)]
+            if not answering:
                 add.note = "unverifiable"
             else:
-                add.note = "does not resolve in any primary text"
-                for t in texts:
+                add.note = "does not resolve in " + ", ".join(t.name for t in answering)
+                for t in answering:
                     where = t.resolve(c)
                     if where:
                         add.verified, add.where, add.note = True, f"{t.name} {where}", ""
                         break
         check.additions.append(add)
     return check
+
+
+__all__ = [
+    "Addition",
+    "CitationScheme",
+    "PrimaryCheck",
+    "PrimaryText",
+    "PrimaryTextSpec",
+    "canonical_label",
+    "load_primary_texts",
+    "normalize",
+    "primary_citations",
+    "quoted_spans",
+    "verify_additions",
+]

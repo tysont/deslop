@@ -142,6 +142,22 @@ def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[st
                 f"{_votes(a)} — {a.get('note', '')}",
             }
         )
+    for a in (cand.get("primary") or {}).get("additions", []):
+        found = _find_paragraph(a.get("text", ""), paragraphs)
+        if a.get("verified"):
+            text = f"verified {a.get('kind')}: {a.get('text')} ({a.get('where')})"
+        else:
+            near = f"; nearest: {a['nearest']}" if a.get("nearest") else ""
+            text = f"{a.get('kind')} not verified: {a.get('text')} — {a.get('note')}{near}"
+        notes.append(
+            {
+                "kind": "primary" if a.get("verified") else "lock",
+                "paragraph": -1 if found is None else found,
+                "text": text,
+            }
+        )
+    for adv in cand.get("advisories", []):
+        notes.append({"kind": "advisory", "paragraph": -1, "text": f"advisory: {adv}"})
     coh = cand.get("coherence") or {}
     for d in coh.get("tense", []):
         notes.append(
@@ -308,7 +324,7 @@ ins{background:var(--ins);color:var(--insfg);text-decoration:none}del{background
 .s.changed:hover .plain,.s.moved:hover .plain{display:none}.s.changed:hover .diff,.s.moved:hover .diff{display:inline}
 body.clean .s{background:none;border:none}body.clean .diff{display:none!important}body.clean .plain{display:inline!important}
 .notes{font:13px/1.45 system-ui,sans-serif;border-left:3px solid var(--rule);padding:4px 8px;margin:0 0 1em;color:var(--muted)}
-.notes .recitation{color:var(--delfg)}.notes .lock{color:var(--delfg)}.notes .added{color:var(--delfg)}.notes .dropped{color:var(--delfg)}.notes .cleared{color:var(--accent)}.notes .coherence{color:var(--delfg)}.notes .judge{color:var(--fg)}
+.notes .recitation{color:var(--delfg)}.notes .lock{color:var(--delfg)}.notes .added{color:var(--delfg)}.notes .dropped{color:var(--delfg)}.notes .cleared{color:var(--accent)}.notes .primary{color:var(--accent)}.notes .advisory{color:var(--muted)}.notes .coherence{color:var(--delfg)}.notes .judge{color:var(--fg)}
 .legend span{padding:0 6px;border-radius:2px;margin-right:6px}
 select{font:inherit}
 """

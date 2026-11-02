@@ -186,7 +186,7 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
     assert "against the voice's band" in flat(r)
     marked = tmp_path / "gen.txt"
     marked.write_text(
-        "# title: Genesis\n# book: Genesis\n\n{{Genesis 22:2}} Take now thy son.\n",
+        "Take now thy son.\n",
         encoding="utf-8",
     )
     r = runner.invoke(
@@ -209,7 +209,7 @@ def test_apply_rewrite_and_edit_with_scripted_providers(
     )
     assert r.exit_code in (0, 2), r.output
     data = json.loads(r.stdout)
-    assert data["primary_texts"] == ["Genesis"] and data["max_growth"] == 40.0
+    assert data["primary_texts"] == ["gen"] and data["max_growth"] == 40.0
     assert data["chunk_words"] == 150 and "growth_pct" in data
     assert len(data["units"]) > 1 and data["units"][0]["kind"].startswith("section 1/")
     assert "coherence" in data and "metric_table" in data and "judge_items" in data
@@ -543,6 +543,62 @@ def test_apply_compare_page_and_report_html(fixture_voice, slop_text, tmp_path, 
     )
     assert r.exit_code == 0, r.output
     assert out.exists() and "<!doctype html>" in out.read_text()
+
+
+def test_apply_uses_the_voices_declared_primary_texts(
+    fixture_voice, slop_text, tmp_path, monkeypatch
+):
+    (tmp_path / "primary").mkdir()
+    (tmp_path / "primary" / "gen.txt").write_text("Take now thy son.\n", encoding="utf-8")
+    (tmp_path / "primary" / "gen.locs.json").write_text(
+        json.dumps([{"ref": "Gen 22:2", "start": 0, "end": 17}]), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        fixture_voice.meta,
+        "primary_texts",
+        [
+            {
+                "path": "primary/gen.txt",
+                "title": "Genesis",
+                "schemes": [{"name": "verse", "pattern": r"\bGen\.?\s+\d+:\d+"}],
+            }
+        ],
+    )
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    sample = tmp_path / "sample.md"
+    sample.write_text(slop_text)
+    scripted_factory(monkeypatch)
+    r = runner.invoke(app, ["apply", str(sample), "--voice", str(voice), "--n", "1", "--json"])
+    assert r.exit_code in (0, 2), r.output
+    data = json.loads(r.stdout)
+    assert data["primary_texts"] == ["Genesis"] and data["allow_primary_facts"] is False
+    r = runner.invoke(app, ["voice", "show", str(voice)])
+    assert "primary texts: primary/gen.txt" in r.output
+    scheme = json.dumps({"name": "verse", "pattern": r"\bGen\.?\s+\d+:\d+"})
+    r = runner.invoke(
+        app,
+        [
+            "apply",
+            str(sample),
+            "--voice",
+            str(voice),
+            "--n",
+            "1",
+            "--json",
+            "--allow-primary-facts",
+            "--primary-text",
+            str(tmp_path / "primary" / "gen.txt"),
+            "--citation-scheme",
+            scheme,
+        ],
+    )
+    assert r.exit_code in (0, 2), r.output
+    data = json.loads(r.stdout)
+    assert data["allow_primary_facts"] is True and data["primary_texts"] == ["gen"]
+    r = runner.invoke(
+        app, ["apply", str(sample), "--voice", str(voice), "--citation-scheme", "not json"]
+    )
+    assert r.exit_code == 1 and "--citation-scheme must be JSON" in r.output
 
 
 def test_lab_slop_writes_model_prose_with_provenance(tmp_path, monkeypatch):

@@ -8,6 +8,7 @@ import difflib
 import json
 import math
 import os
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +26,7 @@ from deslop.judge import (
 )
 from deslop.lock import DocumentLock, check, inventory
 from deslop.metrics import compute_all, detect_tells
-from deslop.nlp import WORD_RE, Analysis, Paragraph, Sentence, analyze
+from deslop.nlp import WORD_RE, Analysis, Paragraph, Sentence, analyze, split_paragraphs
 from deslop.patterns import Catalog, load_catalog
 from deslop.providers.base import (
     DEFAULT_JUDGE,
@@ -37,7 +38,16 @@ from deslop.providers.base import (
     resolve_model,
 )
 from deslop.recitation import DEFAULT_MAX_RECITATION, NGRAM, RecitationResult, recitation
-from deslop.reference import PrimaryCheck, PrimaryText, load_primary_texts, verify_additions
+from deslop.reference import (
+    Addition,
+    CitationScheme,
+    PrimaryCheck,
+    PrimaryText,
+    PrimaryTextSpec,
+    load_primary_texts,
+    normalize,
+    verify_additions,
+)
 from deslop.report import MetricResult, Report, TellHitResult
 from deslop.score import score
 from deslop.semantic import (
@@ -65,6 +75,8 @@ def pairs_dir() -> Path:
 CANDIDATE_TEMPERATURE = 0.9
 DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow the original
 ROUNDS = 2  # the first round, then one retry carrying what a reader noticed
+ADVISORY_PARAGRAPHS = 10  # under this many input paragraphs the paragraph band only advises
+KEY_TOKEN_RE = re.compile(r"\b[A-Z][A-Za-z'-]+\b|\d+(?:[.:]\d+)*")
 
 
 # ---------------------------------------------------------------- result models
@@ -90,6 +102,7 @@ class CandidateLog(BaseModel):
     growth_pct: float | None = None
     new_tells: list[str] = Field(default_factory=list)
     reader_notes: list[str] = Field(default_factory=list)  # what the retry prompt was told
+    advisories: list[str] = Field(default_factory=list)  # noted to the writer, never a rejection
     accepted: bool = False
     reason: str = ""
 
@@ -192,12 +205,14 @@ class Result(BaseModel):
     fidelity: str = "content"
     report_all: bool = False
     unverified_additions: list[str] = Field(default_factory=list)
+    verified_additions: list[str] = Field(default_factory=list)
     primary_texts: list[str] = Field(default_factory=list)
     judge_gate: str = ""
     draft: list[SectionLog] | None = None
     draft_text: str | None = None
     reference: str | None = None
     max_recitation: float = DEFAULT_MAX_RECITATION
+    allow_primary_facts: bool = False
     recitation: RecitationResult | None = None
 
     def to_json(self, indent: int | None = 1) -> str:
@@ -862,6 +877,10 @@ def _log_pairs(voice: Voice, units: list[UnitLog], path: Path | None) -> None:
 
 def _meaning_diff(units: list[UnitLog]) -> str:
     lines = []
+    verified = _verified(units)
+    if verified:
+        lines.append("verified additions (resolved in a primary text):")
+        lines.extend(f"  ✓ {u}" for u in verified)
     unverified = _unverified(units)
     if unverified:
         lines.append("unverified additions (no primary text confirmed them):")
@@ -892,6 +911,8 @@ def _meaning_diff(units: list[UnitLog]) -> str:
         for add in chosen.primary.additions if chosen.primary else []:
             mark = "✓" if add.verified else "?"
             lines.append(f"  {mark} [{add.kind}] {add}")
+        for adv in chosen.advisories:
+            lines.append(f"  ~ advisory: {adv}")
     return "\n".join(lines)
 
 
@@ -987,12 +1008,14 @@ def apply(
     n: int = 3,
     max_growth: float = DEFAULT_MAX_GROWTH,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
-    primary_texts: list[str | Path | PrimaryText] | None = None,
+    primary_texts: list[str | Path | PrimaryText | PrimaryTextSpec] | None = None,
+    citation_schemes: Sequence[CitationScheme] = (),
     fidelity: Fidelity = "content",
     report_all: bool = False,
     reference: str | None = None,
     reference_name: str = "reference",
     max_recitation: float = DEFAULT_MAX_RECITATION,
+    allow_primary_facts: bool = False,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -1018,7 +1041,8 @@ def apply(
     rewritten section by section, each with the already-rewritten section before it in context
     and the original section after it visible. Edit mode rewrites only flagged sentences under
     the same locks. A `Brief` is drafted section by section first, then rewritten.
-    `primary_texts` (files, directories or loaded `PrimaryText`s) are supplied by the caller;
+    `primary_texts` (files, directories, `PrimaryTextSpec`s or loaded `PrimaryText`s) are
+    supplied by the caller, with `citation_schemes` for items that declare none;
     without any, added quotations and citations are allowed and listed as unverified.
     `reference` is the human text the input was made from, when there is one: it is never
     shown to the writer or the judge, only compared against, and a candidate whose words are
@@ -1046,7 +1070,7 @@ def apply(
         mode = "rewrite"
     else:
         text = text_or_brief
-    texts = _load_texts(list(primary_texts or []))
+    texts = _load_texts(list(primary_texts or []), citation_schemes)
     if progress:
         progress(models.describe())
         if texts:
@@ -1066,6 +1090,7 @@ def apply(
         report_all=report_all,
         reference=reference,
         max_recitation=max_recitation,
+        allow_primary_facts=allow_primary_facts,
     )
 
     if mode == "edit":
@@ -1126,6 +1151,7 @@ def apply(
         judge_items=dict(vs.items) if vs is not None else {},
         metric_table=metric_table(report_before, report_after),
         unverified_additions=_unverified(units),
+        verified_additions=_verified(units),
         primary_texts=[t.name for t in texts],
         judge_gate=models.describe(),
         fidelity=fidelity,
@@ -1134,6 +1160,7 @@ def apply(
         draft_text=draft_text,
         reference=reference_name if reference is not None else None,
         max_recitation=max_recitation,
+        allow_primary_facts=allow_primary_facts,
         recitation=winner.recitation if winner is not None else None,
     )
 
@@ -1153,12 +1180,98 @@ class Options:
     report_all: bool = False
     reference: str | None = None  # never shown to a model; compared against only
     max_recitation: float = DEFAULT_MAX_RECITATION
+    allow_primary_facts: bool = False  # facts verifiable in a primary text are not additions
 
 
-def _load_texts(sources: list[str | Path | PrimaryText]) -> list[PrimaryText]:
+def _load_texts(
+    sources: list[str | Path | PrimaryText | PrimaryTextSpec],
+    schemes: Sequence[CitationScheme] = (),
+) -> list[PrimaryText]:
     loaded = [t for t in sources if isinstance(t, PrimaryText)]
     names = [t for t in sources if not isinstance(t, PrimaryText)]
-    return loaded + load_primary_texts(names)
+    return loaded + load_primary_texts(names, schemes=schemes)
+
+
+def _verified(units: list[UnitLog]) -> list[str]:
+    out: list[str] = []
+    for u in units:
+        if u.kept_original or u.chosen is None or u.candidates[u.chosen].primary is None:
+            continue
+        for add in u.candidates[u.chosen].primary.additions:  # type: ignore[union-attr]
+            if add.verified:
+                out.append(f"unit {u.index + 1}: {add}")
+    return out
+
+
+def permit_primary(
+    cand: CandidateLog, texts: list[PrimaryText], allow_facts: bool, original: str = ""
+) -> None:
+    """The primary-text policy on the semantic lock's additions: a citation that resolves in a
+    declared primary text, a sentence that merely names one, and a claim whose new names and
+    numbers (those `original` lacks) are all inside a quotation verified verbatim are
+    permitted and moved to `cleared` with the reason. With `allow_facts`, a claim whose
+    sentence cites a resolved location and whose names and numbers all occur in that
+    location is permitted too. Everything else stands."""
+    if cand.semantic is None or not texts:
+        return
+    verified = [a for a in (cand.primary.additions if cand.primary else []) if a.verified]
+    names = {w.lower() for t in texts for w in re.findall(r"[A-Za-z]+", t.name)}
+    known = set(normalize(original).split())
+    kept = []
+    for item in cand.semantic.added:
+        why = _primary_permission(item, verified, texts, names, allow_facts, known)
+        if item.kind == "claim" and why:
+            item.note = why
+            cand.semantic.cleared.append(item)
+        else:
+            kept.append(item)
+    cand.semantic.added = kept
+
+
+STRUCTURE_WORDS = {"book", "books", "chapter", "chapters", "verse", "verses", "part"}
+ROMAN_RE = re.compile(r"^[IVXLC]+$")
+
+
+def _primary_permission(
+    item: AddedClaim,
+    verified: list[Addition],
+    texts: list[PrimaryText],
+    names: set[str],
+    allow_facts: bool,
+    known: set[str] = frozenset(),  # type: ignore[assignment]
+) -> str:
+    sentence = item.sentence or ""
+    tokens = [t for t in KEY_TOKEN_RE.findall(item.text)]
+    if item.text and item.text[:1].isupper() and tokens and item.text.startswith(tokens[0]):
+        tokens = tokens[1:]  # a sentence-initial capital is not a name
+    keys = [t.lower() for t in tokens]
+    cites = [a for a in verified if a.kind == "citation" and a.text in sentence]
+    if any(a.kind == "citation" and a.text == item.text.strip() for a in verified):
+        return "a citation that resolves in a declared primary text"
+    if (
+        item.category == "entity"
+        and keys
+        and all(
+            k in names or k in STRUCTURE_WORDS or k.isdigit() or ROMAN_RE.match(k.upper())
+            for k in keys
+        )
+    ):
+        return "names a declared primary text"
+    for a in verified:
+        if a.kind != "quote" or normalize(a.text) not in normalize(sentence):
+            continue
+        quoted = set(normalize(a.text).split())
+        if keys and all(k in quoted or k in known for k in keys):
+            return f"verbatim in {a.where}"
+    if allow_facts and keys:
+        for a in cites:
+            for t in texts:
+                if not a.where.startswith(t.name + " "):
+                    continue
+                span = t.segment_text(a.where[len(t.name) + 1 :])
+                if span and all(k in span.split() for k in keys):
+                    return f"a fact verifiable at {a.where}"
+    return ""
 
 
 def _unverified(units: list[UnitLog]) -> list[str]:
@@ -1353,11 +1466,15 @@ def _verify_section(
         cand.lexical_detail = "new items for the semantic lock: " + "; ".join(lock.additions)
     cand.primary = verify_additions(section_text, candidate, opts.texts)
     if not cand.primary.ok:
-        notes.extend(f"{add} is not in the primary text" for add in cand.primary.rejected[:3])
+        notes.extend(f"added {add.kind} {add}" for add in cand.primary.rejected[:3])
     band = voice.metrics.thresholds.metrics.get("connective_opener_pct")
     stat = voice.metrics.metrics.get("para_len_mean")
     para_band = Band(low=stat.p10, high=stat.p90) if stat is not None else None
     cand.coherence = check_coherence(section_text, candidate, band=band, para_band=para_band)
+    paragraphs = cand.coherence.paragraphs
+    if not paragraphs.ok and len(split_paragraphs(section_text)) < ADVISORY_PARAGRAPHS:
+        paragraphs.advisory = True
+        cand.advisories.append(paragraphs.note)
     notes.extend(cand.coherence.reader_notes())
     if opts.reference is not None:
         cand.recitation = recitation(candidate, opts.reference, section_text)
@@ -1485,6 +1602,7 @@ def _rewrite_section(
                 except ProviderError as exc:
                     cand.reason = f"meaning check unavailable: {exc}"[:200]
                     continue
+                permit_primary(cand, opts.texts, opts.allow_primary_facts, section_text)
                 if not cand.semantic.ok:
                     notes.extend(
                         f'the claim "{c.proposition}" was dropped'
@@ -1508,11 +1626,11 @@ def _rewrite_section(
             failed = bool(notes)
             if failed:
                 cand.reason = "; ".join(notes)[:300]
-                cand.reader_notes = notes + linter
+                cand.reader_notes = notes + linter + cand.advisories
                 if not opts.report_all:
                     continue
             else:
-                cand.reader_notes = linter
+                cand.reader_notes = linter + cand.advisories
             try:
                 cand.verdicts.append(
                     compare_document(
