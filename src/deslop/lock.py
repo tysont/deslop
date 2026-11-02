@@ -28,6 +28,7 @@ PRIMARY_CITATION_PATTERNS = (
     CITATION_PATTERNS[5],
     CITATION_PATTERNS[6],
 )
+LOCKED_NUMBER_WORD_MIN = 10  # a number word below this, on its own, is prose
 NAME_LABELS = {"PERSON", "ORG", "GPE", "LOC", "NORP", "WORK_OF_ART", "EVENT", "FAC", "LANGUAGE"}
 
 
@@ -110,7 +111,13 @@ def inventory(text: str, names: set[str] | None = None) -> Inventory:
         inv.quotes[_normalize_quote(m.group(1))] += 1
     quoted = [(m.start(), m.end()) for m in ANY_QUOTE_RE.finditer(text)]
     found = [(m.start(), m.end(), m.group(0)) for m in NUMBER_RE.finditer(text)]
-    found += number_phrases(text)  # "three hundred" counts as 300: the two spellings are one
+    # "three hundred" counts as 300: the two spellings are one. Small single words ("one
+    # man", "two things", "the first") are prose, not figures, and are not locked.
+    found += [
+        (a, b, value)
+        for a, b, value in number_phrases(text)
+        if int(value) >= LOCKED_NUMBER_WORD_MIN or " " in text[a:b] or "-" in text[a:b]
+    ]
     for start, _end, value in found:
         if any(s <= start < e for s, e in seen):
             continue  # part of a citation

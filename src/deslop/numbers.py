@@ -57,27 +57,37 @@ def phrase_value(phrase: str) -> int | None:
 
 
 def number_phrases(text: str) -> list[tuple[int, int, str]]:
-    """Every run of number words in `text` as (start, end, digits)."""
+    """Every run of number words in `text` as (start, end, digits). "and" joins words only
+    after a scale ("a hundred and five"); "second and third" is two numbers."""
     out = []
     for m in PHRASE_RE.finditer(text):
-        phrase = m.group(0)
-        # trim a leading or trailing "and", which is not a number by itself
-        core = re.sub(r"^(?:and[\s-]+)+|(?:[\s-]+and)+$", "", phrase, flags=re.IGNORECASE)
-        if not core:
-            continue
-        value = phrase_value(core)
-        if value is None:
-            continue
-        start = m.start() + phrase.lower().find(core.lower())
-        end = start + len(core)
-        first = re.split(r"[\s-]+", core.lower())[0]
-        if (
-            first in SCALES
-            and text[max(start - 2, 0) : start].lower() == "a "
-            and (start < 2 or not text[start - 3].isalpha())
-        ):
-            start -= 2  # "a hundred and five" is one number
-        out.append((start, end, str(value)))
+        groups: list[list[tuple[int, int, str]]] = [[]]
+        for word_match in re.finditer(r"[A-Za-z]+", m.group(0)):
+            word = word_match.group(0).lower()
+            start, end = m.start() + word_match.start(), m.start() + word_match.end()
+            if word == "and":
+                if groups[-1] and groups[-1][-1][2] in SCALES:
+                    groups[-1].append((start, end, word))
+                else:
+                    groups.append([])
+                continue
+            groups[-1].append((start, end, word))
+        for group in groups:
+            while group and group[-1][2] == "and":
+                group.pop()
+            if not group:
+                continue
+            value = phrase_value(" ".join(w for _, _, w in group))
+            if value is None:
+                continue
+            start, end = group[0][0], group[-1][1]
+            if (
+                group[0][2] in SCALES
+                and text[max(start - 2, 0) : start].lower() == "a "
+                and (start < 2 or not text[start - 3].isalpha())
+            ):
+                start -= 2  # "a hundred and five" is one number
+            out.append((start, end, str(value)))
     return out
 
 

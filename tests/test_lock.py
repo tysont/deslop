@@ -150,7 +150,13 @@ def test_number_words_and_digits_are_one_number_in_both_directions():
         "300 cubits, 50 wide and the 10 day"
     )
     assert words_to_digits("twenty-one and a hundred and five") == "21 and 105"
+    assert words_to_digits("lower, second, and third levels") == "lower, 2, and 3 levels"
+    assert words_to_digits("one hundred twenty years and seven pairs") == "120 years and 7 pairs"
     assert inventory("The ship was three hundred cubits long.").numbers == {"300": 1}
+    assert inventory("One man walked with God, and two of every sort came.").numbers == {}, (
+        "small number words alone are prose, not figures"
+    )
+    assert inventory("Twenty-one came, then fifty.").numbers == {"21": 1, "50": 1}
     doc = DocumentLock.build("The ship was 300 cubits long and fifty wide.")
     assert check(
         "The ship was 300 cubits long and fifty wide.",
