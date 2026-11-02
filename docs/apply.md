@@ -113,7 +113,9 @@ resolving citation are permitted and listed as verified additions with their loc
 quotation that is not verbatim is rejected with the nearest run of the text shown; a
 citation a scheme recognises but no label answers is rejected; one no scheme recognises is
 listed as unverifiable. Facts drawn from a primary text that the input does not state stay
-material additions unless `--allow-primary-facts` is on. Without a primary text everything
+material additions unless `--allow-primary-facts` is on. The writer is shown, verbatim, the
+spans the input's own citations resolve to (the whole chapter when it fits under
+`--quote-context-words`), told to quote only from them, and told how each text is cited. Without a primary text everything
 added is listed as unverified and nothing is rejected.
 
 ## The comparative judge

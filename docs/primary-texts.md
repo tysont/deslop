@@ -70,6 +70,21 @@ numbers, label them (`369b`) and declare a scheme such as
 paragraphs) and still declare the page scheme: page citations are then recognised and
 rejected, which is what you want from a text that cannot confirm them.
 
+## What the writer sees
+
+When texts are declared, every citation the input makes is resolved and its span is shown
+to the writer verbatim under "Passages you may quote", labelled with its ref in the
+sidecar's own form. For a text whose scheme has a bare pattern (chapter:verse style) the
+whole chapter is offered, meaning every span whose label shares the text before the last
+colon, when it fits under `--quote-context-words` (1500); otherwise the cited span alone.
+For a paragraph-labelled text the cited paragraph and one on either side are offered. The
+total is capped at the same limit, in citation order, and the report lists what was offered.
+The writer is told to quote only from these passages and only verbatim, never from memory,
+and to paraphrase without quotation marks anything not offered. One line per text says how
+it is cited, generated from the scheme and the sidecar: the scheme name with a resolvable
+example label, or, for a declared scheme the sidecar has no labels for, that citations of
+that kind do not resolve in this edition and will be rejected.
+
 ## What apply does with the result
 
 A resolved citation and a verbatim quotation are permitted and not material: they are

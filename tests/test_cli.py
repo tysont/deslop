@@ -586,6 +586,8 @@ def test_apply_uses_the_voices_declared_primary_texts(
             "1",
             "--json",
             "--allow-primary-facts",
+            "--quote-context-words",
+            "40",
             "--primary-text",
             str(tmp_path / "primary" / "gen.txt"),
             "--citation-scheme",

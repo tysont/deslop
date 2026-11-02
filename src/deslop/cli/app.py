@@ -822,6 +822,11 @@ def apply_cmd(
         help='A citation scheme for the command-line primary texts, as JSON: {"name": "verse", '
         '"pattern": "<regex>", "bare_pattern": "<regex or null>"}; repeatable',
     ),
+    quote_context_words: int | None = typer.Option(
+        None,
+        "--quote-context-words",
+        help="Cap on the verbatim primary-text passages offered to the writer (1500)",
+    ),
     allow_primary_facts: bool = typer.Option(
         False,
         "--allow-primary-facts",
@@ -885,6 +890,7 @@ def apply_cmd(
             max_recitation=float(s.get("max_recitation", max_recitation, 2.0)),
             primary_texts=list(texts) or None,
             citation_schemes=schemes,
+            quote_context_words=int(s.get("quote_context_words", quote_context_words, 1500)),
             allow_primary_facts=bool(
                 s.get("allow_primary_facts", allow_primary_facts or None, False)
             ),

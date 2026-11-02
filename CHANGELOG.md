@@ -2,6 +2,18 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.4.3 - 2026-11-02
+
+- Quotable passages: with primary texts declared, every citation the input makes is resolved
+  and its span is shown to the writer verbatim under "Passages you may quote" (the whole
+  chapter for a chapter:verse text when it fits under `--quote-context-words`, default 1500,
+  else the cited span; the cited paragraph and its neighbours for a paragraph-labelled
+  text), with the instruction to quote only from these and only verbatim, never from memory.
+  The report lists what was offered.
+- Citation guidance: one line per text in the writer prompt, generated from the scheme and
+  the sidecar: the scheme name with a resolvable example label, or the warning that a
+  declared scheme without labels does not resolve in this edition and will be rejected.
+
 ## v2.4.2 - 2026-11-02
 
 - `voice.yaml` records `corpus_path` relative to the voice file when the corpus lies in the

@@ -255,6 +255,57 @@ def test_paragraphing_outside_the_voices_range_rejects_long_inputs(fixture_voice
     assert "this writer's paragraphs run from" in cand.reason and "split paragraphs" in cand.reason
 
 
+def test_quotable_passages_reach_the_writer_with_the_rule(fixture_voice, slop_text, tmp_path):
+    import json
+
+    from deslop.reference import CitationScheme, PrimaryTextSpec
+
+    text = tmp_path / "gen.txt"
+    line = "Take now thy son, thine only son Isaac, whom thou lovest."
+    text.write_text(line + " And he rose up early.\n", encoding="utf-8")
+    (tmp_path / "gen.locs.json").write_text(
+        json.dumps(
+            [
+                {"ref": "Gen 22:2", "start": 0, "end": len(line)},
+                {"ref": "Gen 22:3", "start": len(line) + 1, "end": len(line) + 22},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    verse = CitationScheme(
+        name="verse", pattern=r"\bGen\.?\s+\d+:\d+", bare_pattern=r"(?<![\d:])\d+:\d+(?![\d:])"
+    )
+    spec = PrimaryTextSpec(path=str(text), title="Genesis", schemes=[verse])
+    a, b, factory = pair()
+    cited = slop_text.replace(
+        "Abraham is told to take his", "Abraham is told (Gen 22:2) to take his", 1
+    )
+    assert "Gen 22:2" in cited
+    result = apply(cited, fixture_voice, n=1, primary_texts=[spec], provider_factory=factory)
+    unit = result.units[0]
+    assert unit.quotable == [
+        {"text": "Genesis", "ref": "Gen 22:2", "words": 11},
+        {"text": "Genesis", "ref": "Gen 22:3", "words": 5},
+    ], "the whole chapter is offered"
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    assert "# Passages you may quote" in user and "[Genesis Gen 22:2] Take now thy son" in user
+    assert 'Genesis: cite by verse, as in "Gen 22:2".' in user
+    assert "do not quote from memory" in user and "paraphrase it without quotation marks" in user
+    assert "quotable passages offered to the writer" in result.meaning_diff
+    plain = apply(cited, fixture_voice, n=1, provider_factory=factory)
+    system, user = next(c for c in a.calls[::-1] if "write prose" in c[0])
+    assert "Passages you may quote" not in user and plain.units[0].quotable == []
+    capped = apply(
+        cited,
+        fixture_voice,
+        n=1,
+        primary_texts=[spec],
+        quote_context_words=12,
+        provider_factory=factory,
+    )
+    assert [q["ref"] for q in capped.units[0].quotable] == ["Gen 22:2"], "cited span only"
+
+
 def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts(tmp_path):
     from deslop.apply import CandidateLog, permit_primary
     from deslop.reference import Addition, PrimaryCheck, PrimaryText

@@ -173,3 +173,48 @@ def test_load_primary_texts_takes_specs_paths_and_directories(tmp_path):
 def test_short_quoted_terms_are_not_quotations():
     check = verify_additions("x", 'The "ark" and "two words" here.', [])
     assert check.additions == []
+
+
+def test_passages_for_a_chapter_verse_text_offer_the_whole_chapter(tmp_path):
+    from deslop.reference import citation_guidance, quotable_passages
+
+    t = PrimaryText.load(scripture(tmp_path), schemes=[VERSE], title="Book")
+    whole = t.passages_for("6:18")
+    assert [p.ref for p in whole] == ["Book 6:5", "Book 6:6", "Book 6:18"], "the chapter"
+    assert whole[0].text.startswith("The Lord saw") and whole[2].text.startswith("But I will")
+    assert t.passages_for("6:99") == []
+    offered = quotable_passages("The covenant (6:18) comes before the rain.", [t])
+    assert [(p.ref, p.words) for p in offered] == [
+        ("Book 6:5", 24),
+        ("Book 6:6", 17),
+        ("Book 6:18", 14),
+    ]
+    tight = quotable_passages("The covenant (6:18) comes before the rain.", [t], limit_words=20)
+    assert [p.ref for p in tight] == ["Book 6:18"], "over the cap, the cited span alone"
+    assert quotable_passages("Nothing cited here.", [t]) == []
+    assert quotable_passages("See 6:5 and 6:18.", [t], limit_words=30) == [], "cap is a cap"
+    assert citation_guidance([t]) == ['Book: cite by verse, as in "Book 6:5".']
+
+
+def test_passages_for_a_paragraph_text_offer_the_neighbours_and_warn(tmp_path):
+    from deslop.reference import citation_guidance, quotable_passages
+
+    p = tmp_path / "dialogue.md"
+    paras = ["One is here.", "Two is here.", "Three is here.", "Four is here."]
+    p.write_text(" ".join(paras), encoding="utf-8")
+    locs, pos = [], 0
+    for i, para in enumerate(paras, 1):
+        locs.append({"ref": f"ch. 1 ¶{i}", "start": pos, "end": pos + len(para)})
+        pos += len(para) + 1
+    (tmp_path / "dialogue.locs.json").write_text(json.dumps(locs), encoding="utf-8")
+    para_scheme = CitationScheme(name="paragraph", pattern=r"ch\. \d+ ¶\d+")
+    d = PrimaryText.load(p, schemes=[para_scheme, STEPHANUS], title="Dialogue")
+    assert [x.ref for x in d.passages_for("ch. 1 ¶3")] == ["ch. 1 ¶2", "ch. 1 ¶3", "ch. 1 ¶4"]
+    assert [x.ref for x in d.passages_for("ch. 1 ¶1")] == ["ch. 1 ¶1", "ch. 1 ¶2"]
+    assert d.passages_for("369b") == []
+    assert quotable_passages("As ch. 1 ¶3 says, and 369b.", [d])[1].text == "Three is here."
+    assert citation_guidance([d]) == [
+        'Dialogue: cite by paragraph, as in "ch. 1 ¶1".',
+        'Dialogue: this edition locates passages as "ch. 1 ¶1"; stephanus citations of this '
+        "kind do not resolve in this edition and will be rejected.",
+    ]

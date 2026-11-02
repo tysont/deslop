@@ -139,6 +139,7 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
 | `--primary-text` | the voice's declared texts | a primary text (a text file with an optional `NAME.locs.json` sidecar of labelled spans, or a directory of them) added quotations and citations must verify against; repeatable; a voice declares its own in `voice.yaml` under `primary_texts` (see docs/primary-texts.md) |
 | `--citation-scheme` | none | JSON `{"name", "pattern", "bare_pattern"}`: the regex shape of citations of the command-line primary texts; repeatable |
+| `--quote-context-words` | `1500` | cap on the verbatim primary-text passages offered to the writer: every citation the input makes is resolved and its span shown under "Passages you may quote", with the whole chapter for a chapter:verse text when it fits, or the cited paragraphs and their neighbours for a paragraph-labelled text; the writer may quote only from these, verbatim |
 | `--allow-primary-facts` | off | a fact the input lacks is not an addition when its numbers and names are all at a cited, resolved location of a primary text; off, it remains a material addition |
 | `--budget` | `5` | USD this invocation may spend on live calls; past it the run stops with the best text so far |
 | `--max-iter` | `4` | edit-mode iterations |

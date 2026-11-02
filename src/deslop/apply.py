@@ -41,12 +41,15 @@ from deslop.recitation import DEFAULT_MAX_RECITATION, NGRAM, RecitationResult, r
 from deslop.reference import (
     Addition,
     CitationScheme,
+    Passage,
     PrimaryCheck,
     PrimaryText,
     PrimaryTextSpec,
     canonical_label,
+    citation_guidance,
     load_primary_texts,
     normalize,
+    quotable_passages,
     verify_additions,
 )
 from deslop.report import MetricResult, Report, TellHitResult
@@ -77,6 +80,7 @@ CANDIDATE_TEMPERATURE = 0.9
 DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow the original
 ROUNDS = 2  # the first round, then one retry carrying what a reader noticed
 ADVISORY_PARAGRAPHS = 10  # under this many input paragraphs the paragraph band only advises
+DEFAULT_QUOTE_CONTEXT_WORDS = 1500  # cap on the verbatim passages offered to the writer
 KEY_TOKEN_RE = re.compile(r"\b[A-Z][A-Za-z'-]+\b|\d+(?:[.:]\d+)*")
 
 
@@ -129,7 +133,10 @@ class UnitLog(BaseModel):
     final: str
     propositions: list[str] = Field(default_factory=list)
     propositions_by_paragraph: list[list[str]] = Field(default_factory=list)
-    texture_by_paragraph: list[str] = Field(default_factory=list)  # hints to the writer only
+    texture_by_paragraph: list[str] = Field(default_factory=list)
+    quotable: list[dict[str, Any]] = Field(
+        default_factory=list
+    )  # passages offered: ref, words  # hints to the writer only
     candidates: list[CandidateLog] = Field(default_factory=list)
     chosen: int | None = None
     kept_original: bool = False
@@ -401,7 +408,7 @@ DOCUMENT_TEMPLATE = """# Exemplars of the voice
 
 # What it asserts, paragraph by paragraph (keep every one, add none)
 {propositions}
-{section_block}
+{section_block}{quotable}
 # Instruction
 Write {what} as this writer would, from its first paragraph to its last. Keep every
 proposition listed above and add none. Adopt this writer's grammatical person and mode of
@@ -413,9 +420,22 @@ follows the exemplars; the input's formatting is not a constraint, and when the 
 have no headings the output has none. Paragraph length and count follow the exemplars, not
 the input: merge or split the input's paragraphs freely. Keep the author's tense and order of
 argument unless the voice's profile says otherwise. Keep it about the length of the original.
-Return {returned} and nothing else.{noticed}
+{quote_rule}Return {returned} and nothing else.{noticed}
 
 Draft {attempt} of {n}."""
+
+QUOTABLE_TEMPLATE = """
+# Passages you may quote (verbatim, from the primary texts the original cites)
+{passages}
+
+# How these texts are cited
+{guidance}
+"""
+
+QUOTE_RULE = (
+    "Quote only from the passages listed above and only verbatim; do not quote from memory; "
+    "if a passage you want is not there, paraphrase it without quotation marks. "
+)
 
 SECTION_BLOCK = """
 # The section to write now (paragraphs {first} to {last} of the original)
@@ -651,12 +671,15 @@ def document_prompt(
     n: int,
     noticed: list[str],
     textures: Sequence[str] = (),
+    passages: Sequence[Passage] = (),
+    guidance: Sequence[str] = (),
 ) -> tuple[str, str]:
     """The writer's prompt: profile and rules (system), exemplars nearest the piece, the full
     original, its propositions by paragraph (each with its texture note, when there is one),
-    and the instruction. A long document adds the section to write with the already-rewritten
-    section before it and the original section after it. `noticed` carries what a reader saw
-    in earlier drafts, for the retry."""
+    the passages it may quote verbatim with how the texts are cited (when primary texts are
+    declared), and the instruction. A long document adds the section to write with the
+    already-rewritten section before it and the original section after it. `noticed` carries
+    what a reader saw in earlier drafts, for the retry."""
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
     whole = section.count == 1
     block = (
@@ -675,6 +698,14 @@ def document_prompt(
         document=original,
         propositions=_numbered(propositions, 0 if whole else section.first, textures) or "(none)",
         section_block=block,
+        quotable=QUOTABLE_TEMPLATE.format(
+            passages="\n\n".join(f"[{p.text_name} {p.ref}] {p.text.strip()}" for p in passages)
+            or "(the original cites nothing that resolves in the primary texts)",
+            guidance="\n".join(f"- {g}" for g in guidance) or "- (none)",
+        )
+        if passages or guidance
+        else "",
+        quote_rule=QUOTE_RULE if passages or guidance else "",
         what="this piece" if whole else "this section",
         returned="the whole piece" if whole else "the section",
         noticed=NOTICED_TEMPLATE.format(notes="\n".join(f"- {x}" for x in noticed))
@@ -878,6 +909,10 @@ def _log_pairs(voice: Voice, units: list[UnitLog], path: Path | None) -> None:
 
 def _meaning_diff(units: list[UnitLog]) -> str:
     lines = []
+    offered = [(u, q) for u in units for q in u.quotable]
+    if offered:
+        lines.append("quotable passages offered to the writer:")
+        lines.extend(f"  · {q['text']} {q['ref']} ({q['words']} words)" for _, q in offered)
     verified = _verified(units)
     if verified:
         lines.append("verified additions (resolved in a primary text):")
@@ -1017,6 +1052,7 @@ def apply(
     reference_name: str = "reference",
     max_recitation: float = DEFAULT_MAX_RECITATION,
     allow_primary_facts: bool = False,
+    quote_context_words: int = DEFAULT_QUOTE_CONTEXT_WORDS,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -1092,6 +1128,7 @@ def apply(
         reference=reference,
         max_recitation=max_recitation,
         allow_primary_facts=allow_primary_facts,
+        quote_context_words=quote_context_words,
     )
 
     if mode == "edit":
@@ -1182,6 +1219,7 @@ class Options:
     reference: str | None = None  # never shown to a model; compared against only
     max_recitation: float = DEFAULT_MAX_RECITATION
     allow_primary_facts: bool = False  # facts verifiable in a primary text are not additions
+    quote_context_words: int = DEFAULT_QUOTE_CONTEXT_WORDS
 
 
 def _load_texts(
@@ -1562,6 +1600,15 @@ def _rewrite_section(
         texture_by_paragraph=list(textures),
     )
     near = exemplars.closest(section_text, 2)
+    passages = quotable_passages(section_text, opts.texts, limit_words=opts.quote_context_words)
+    guidance = citation_guidance(opts.texts)
+    log.quotable = [{"text": p.text_name, "ref": p.ref, "words": p.words} for p in passages]
+    if progress and passages:
+        progress(
+            f"  quotable passages: {len(passages)} ({sum(p.words for p in passages)} words) "
+            + ", ".join(f"{p.text_name} {p.ref}" for p in passages[:6])
+            + (" ..." if len(passages) > 6 else "")
+        )
     noticed: list[str] = []
     for round_index in range(ROUNDS):
         eligible: list[CandidateLog] = []
@@ -1580,6 +1627,8 @@ def _rewrite_section(
                 n=ROUNDS * n,
                 noticed=noticed,
                 textures=textures,
+                passages=passages,
+                guidance=guidance,
             )
             try:
                 completion = writer.complete(system, user, temperature=CANDIDATE_TEMPERATURE)

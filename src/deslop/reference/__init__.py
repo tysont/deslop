@@ -100,6 +100,21 @@ class Segment:
     ref: str
     start: int  # offset into the normalised text
     end: int
+    raw_start: int = 0  # offsets into the raw text, for quoting verbatim
+    raw_end: int = 0
+
+
+@dataclass
+class Passage:
+    """A verbatim span of a primary text offered to the writer, labelled with its ref."""
+
+    text_name: str
+    ref: str
+    text: str
+
+    @property
+    def words(self) -> int:
+        return len(self.text.split())
 
 
 @dataclass
@@ -112,6 +127,7 @@ class PrimaryText:
     text: str  # normalised
     segments: list[Segment] = field(default_factory=list)  # in sidecar order
     schemes: list[CitationScheme] = field(default_factory=list)
+    raw: str = ""
     _labels: dict[str, Segment] = field(default_factory=dict)
 
     @property
@@ -162,8 +178,12 @@ class PrimaryText:
                 continue
             a = offsets[min(start, len(raw))]
             b = offsets[min(end, len(raw))]
-            segments.append(Segment(ref=ref, start=a, end=max(a, b)))
-        pt = cls(name=name, path=path, text=text, segments=segments, schemes=list(schemes))
+            segments.append(
+                Segment(
+                    ref=ref, start=a, end=max(a, b), raw_start=start, raw_end=min(end, len(raw))
+                )
+            )
+        pt = cls(name=name, path=path, text=text, segments=segments, schemes=list(schemes), raw=raw)
         for seg in segments:
             pt._labels.setdefault(canonical_label(seg.ref), seg)
         return pt
@@ -224,6 +244,57 @@ class PrimaryText:
             return "", ""
         return self.locate(best_at), best
 
+    # ------------------------------------------------------------ passages
+    def spans(self) -> list[Segment]:
+        """The distinct spans of the sidecar in order, one segment each (the first label)."""
+        seen: set[tuple[int, int]] = set()
+        out = []
+        for seg in self.segments:
+            key = (seg.raw_start, seg.raw_end)
+            if key not in seen:
+                seen.add(key)
+                out.append(seg)
+        return out
+
+    def has_bare_scheme(self) -> bool:
+        return any(s.bare_pattern for s in self.schemes)
+
+    def example_label(self) -> str:
+        """A sidecar label one of the schemes recognises, or empty when none does."""
+        for seg in self.segments:
+            if self.answers_to(seg.ref):
+                return seg.ref
+        return ""
+
+    def passages_for(self, citation: str) -> list[Passage]:
+        """The verbatim spans a citation of this text entitles the writer to quote: the cited
+        span; for a text with a bare (chapter:verse style) scheme the whole chapter, meaning
+        every span whose label shares the text before the last colon; for a paragraph-labelled
+        text the cited span and one on either side. Empty when the citation does not resolve."""
+        ref = self.resolve(citation)
+        if ref is None:
+            return []
+        target = self._labels[canonical_label(ref)]
+        spans = self.spans()
+        index = next(
+            (
+                i
+                for i, s in enumerate(spans)
+                if (s.raw_start, s.raw_end) == (target.raw_start, target.raw_end)
+            ),
+            None,
+        )
+        if index is None:
+            return [Passage(self.name, target.ref, self.raw[target.raw_start : target.raw_end])]
+        if self.has_bare_scheme() and ":" in target.ref:
+            prefix = canonical_label(target.ref).rsplit(":", 1)[0] + ":"
+            chapter = [s for s in spans if canonical_label(s.ref).startswith(prefix)]
+            return [Passage(self.name, s.ref, self.raw[s.raw_start : s.raw_end]) for s in chapter]
+        lo, hi = max(index - 1, 0), min(index + 1, len(spans) - 1)
+        return [
+            Passage(self.name, s.ref, self.raw[s.raw_start : s.raw_end]) for s in spans[lo : hi + 1]
+        ]
+
     def answers_to(self, citation: str) -> bool:
         """Whether one of this text's schemes recognises the citation string."""
         return any(s.matches(citation) for s in self.schemes)
@@ -238,6 +309,68 @@ class PrimaryText:
         if seg is None and RANGE_RE.search(key):
             seg = self._labels.get(RANGE_RE.split(key, 1)[0].strip())
         return seg.ref if seg else None
+
+
+def quotable_passages(
+    source: str, texts: Sequence[PrimaryText], *, limit_words: int = 1500
+) -> list[Passage]:
+    """What the writer may quote verbatim, from every citation `source` contains that resolves
+    in a text: for a chapter:verse text the whole chapter when it fits under `limit_words`,
+    else the cited spans; for a paragraph-labelled text the cited paragraphs and their
+    neighbours. The total is capped at `limit_words`, in citation order."""
+    chosen: list[Passage] = []
+    seen: set[tuple[str, str]] = set()
+    total = 0
+    for citation in primary_citations(source, texts):
+        for t in texts:
+            group = t.passages_for(citation)
+            if not group:
+                continue
+            group_words = sum(p.words for p in group)
+            if t.has_bare_scheme() and (
+                group_words > limit_words or total + group_words > limit_words
+            ):
+                ref = t.resolve(citation)
+                seg = t._labels[canonical_label(ref)] if ref else None
+                group = (
+                    [Passage(t.name, seg.ref, t.raw[seg.raw_start : seg.raw_end])] if seg else []
+                )
+            for passage in group:
+                key = (passage.text_name, passage.ref)
+                if key in seen:
+                    continue
+                if total + passage.words > limit_words:
+                    return chosen
+                seen.add(key)
+                chosen.append(passage)
+                total += passage.words
+            break
+    return chosen
+
+
+def citation_guidance(texts: Sequence[PrimaryText]) -> list[str]:
+    """One line per text for the writer: the scheme name, a resolvable example drawn from the
+    sidecar, and the warning when a declared scheme has no labels in this edition."""
+    lines = []
+    for t in texts:
+        for scheme in t.schemes:
+            example = t.example_label()
+            labels = t.spans()
+            if example:
+                lines.append(f'{t.name}: cite by {scheme.name}, as in "{example}".')
+            elif labels:
+                lines.append(
+                    f'{t.name}: this edition locates passages as "{labels[0].ref}"; {scheme.name} '
+                    "citations of this kind do not resolve in this edition and will be rejected."
+                )
+            else:
+                lines.append(
+                    f"{t.name}: {scheme.name} citations do not resolve in this edition and will "
+                    "be rejected."
+                )
+        if not t.schemes and t.spans():
+            lines.append(f'{t.name}: this edition locates passages as "{t.spans()[0].ref}".')
+    return lines
 
 
 def load_primary_texts(
@@ -388,6 +521,9 @@ def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) ->
 __all__ = [
     "Addition",
     "CitationScheme",
+    "Passage",
+    "citation_guidance",
+    "quotable_passages",
     "PrimaryCheck",
     "PrimaryText",
     "PrimaryTextSpec",
