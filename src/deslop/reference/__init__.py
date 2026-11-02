@@ -256,13 +256,23 @@ class PrimaryText:
                 out.append(seg)
         return out
 
+    def span_for(self, ref: str) -> Segment | None:
+        """The distinct span a label names, under its first label."""
+        seg = self._labels.get(canonical_label(ref))
+        if seg is None:
+            return None
+        return next(
+            (s for s in self.spans() if (s.raw_start, s.raw_end) == (seg.raw_start, seg.raw_end)),
+            seg,
+        )
+
     def has_bare_scheme(self) -> bool:
         return any(s.bare_pattern for s in self.schemes)
 
-    def example_label(self) -> str:
-        """A sidecar label one of the schemes recognises, or empty when none does."""
+    def example_label(self, scheme: CitationScheme) -> str:
+        """A sidecar label the scheme recognises, or empty when none does."""
         for seg in self.segments:
-            if self.answers_to(seg.ref):
+            if scheme.matches(seg.ref):
                 return seg.ref
         return ""
 
@@ -286,8 +296,9 @@ class PrimaryText:
         )
         if index is None:
             return [Passage(self.name, target.ref, self.raw[target.raw_start : target.raw_end])]
-        if self.has_bare_scheme() and ":" in target.ref:
-            prefix = canonical_label(target.ref).rsplit(":", 1)[0] + ":"
+        first = spans[index]
+        if self.has_bare_scheme() and ":" in first.ref:
+            prefix = canonical_label(first.ref).rsplit(":", 1)[0] + ":"
             chapter = [s for s in spans if canonical_label(s.ref).startswith(prefix)]
             return [Passage(self.name, s.ref, self.raw[s.raw_start : s.raw_end]) for s in chapter]
         lo, hi = max(index - 1, 0), min(index + 1, len(spans) - 1)
@@ -331,7 +342,7 @@ def quotable_passages(
                 group_words > limit_words or total + group_words > limit_words
             ):
                 ref = t.resolve(citation)
-                seg = t._labels[canonical_label(ref)] if ref else None
+                seg = t.span_for(ref) if ref else None
                 group = (
                     [Passage(t.name, seg.ref, t.raw[seg.raw_start : seg.raw_end])] if seg else []
                 )
@@ -354,7 +365,7 @@ def citation_guidance(texts: Sequence[PrimaryText]) -> list[str]:
     lines = []
     for t in texts:
         for scheme in t.schemes:
-            example = t.example_label()
+            example = t.example_label(scheme)
             labels = t.spans()
             if example:
                 lines.append(f'{t.name}: cite by {scheme.name}, as in "{example}".')

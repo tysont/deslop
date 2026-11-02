@@ -185,14 +185,17 @@ def test_passages_for_a_chapter_verse_text_offer_the_whole_chapter(tmp_path):
     assert t.passages_for("6:99") == []
     offered = quotable_passages("The covenant (6:18) comes before the rain.", [t])
     assert [(p.ref, p.words) for p in offered] == [
-        ("Book 6:5", 24),
+        ("Book 6:5", 13),
         ("Book 6:6", 17),
         ("Book 6:18", 14),
     ]
     tight = quotable_passages("The covenant (6:18) comes before the rain.", [t], limit_words=20)
     assert [p.ref for p in tight] == ["Book 6:18"], "over the cap, the cited span alone"
     assert quotable_passages("Nothing cited here.", [t]) == []
-    assert quotable_passages("See 6:5 and 6:18.", [t], limit_words=30) == [], "cap is a cap"
+    two = quotable_passages("See 6:5 and 6:18.", [t], limit_words=30)
+    assert [p.ref for p in two] == ["Book 6:5", "Book 6:18"], "cited spans, chapter too big"
+    one = quotable_passages("See 6:5 and 6:18.", [t], limit_words=20)
+    assert [p.ref for p in one] == ["Book 6:5"], "the cap stops the list"
     assert citation_guidance([t]) == ['Book: cite by verse, as in "Book 6:5".']
 
 
