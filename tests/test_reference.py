@@ -139,10 +139,10 @@ def test_verify_additions_against_texts(tmp_path):
     )
     check = verify_additions(original, cand, [t])
     assert check.checked and not check.ok
-    kjv, web, verse, steph, page = check.additions
-    assert kjv.kind == "quote" and not kjv.verified and kjv.nearest.startswith("but i will")
-    assert "(Book Book 6:18)" in kjv.nearest
-    assert web.verified and web.where == "Book Book 6:6"
+    other, verbatim, verse, steph, page = check.additions
+    assert other.kind == "quote" and not other.verified and other.nearest.startswith("but i will")
+    assert "(Book Book 6:18)" in other.nearest
+    assert verbatim.verified and verbatim.where == "Book Book 6:6"
     assert verse.verified and verse.where == "Book 6:6"
     assert steph.note == "unverifiable", "no scheme recognises it: listed, not rejected"
     assert page.note == "unverifiable"

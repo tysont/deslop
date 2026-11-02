@@ -270,7 +270,7 @@ generate-then-verify apply loop. No compatibility with v1 voices or commands.
   linter in document context and the judge, ranked by distance then judge; one retry naming
   the failures, else the original is kept and recorded; a document-level pass for T14, T15 and
   aphoristic closes. Edit mode keeps its mechanism under the new locks.
-- Tests: `tests/fixtures/genesis06_lesson.md` with both v1 conversions as regression
+- Tests: a lesson fixture with both v1 conversions as regression
   references; the e2e suite asserts the v2 output scores lower and judges higher than both.
 
 ## v1.0.2 - 2026-10-31

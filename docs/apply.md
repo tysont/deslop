@@ -116,25 +116,6 @@ listed as unverifiable. Facts drawn from a primary text that the input does not 
 material additions unless `--allow-primary-facts` is on. Without a primary text everything
 added is listed as unverified and nothing is rejected.
 
-## Editions and the lock policy
-
-A primary text may also be a Paideia-style edition directory: `_meta.yaml` names the work
-and `full/NNN.md` holds one chapter each, with `{{v:N}}` verse markers (scripture; "Gen 6:5"
-and a bare "6:18" both resolve) or `{{p:N}}` paragraph markers (a dialogue). A dialogue
-edition without Stephanus markers declares the Stephanus kind as unresolvable, so an added
-Stephanus citation against it is a rejection while its quotations still verify. A voice
-declares its texts in `voice.yaml` under `primary_texts` (paths relative to the voice file)
-and `apply` uses them when `--primary-text` is not given.
-
-The policy on what the semantic lock reports: a citation that resolves in a declared text,
-a sentence that merely names one ("the Republic, Book II"), and a claim covered by a
-quotation verified verbatim are permitted and listed under cleared with the reason. A
-quotation that is not verbatim is rejected with the nearest run of the text shown, so
-another translation's wording of the same verse fails. A fact the input lacks (the ark's
-dimensions) stays a material addition unless `--allow-primary-facts` is on, which permits a
-claim whose sentence cites a resolved location and whose numbers and names all occur there.
-Verified additions are listed at the top of the report with their resolved locations.
-
 ## The comparative judge
 
 The judge sees the original and two texts, A and B, in a fixed but arbitrary order, plus two
