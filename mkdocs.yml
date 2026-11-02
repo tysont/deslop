@@ -27,6 +27,7 @@ nav:
       - Voice: voice.md
       - Score: score.md
       - Apply: apply.md
+      - Personal voice: personal-voice.md
   - Examples: examples.md
   - API reference: api.md
 

@@ -102,3 +102,19 @@ def test_fixture_check_drafts_from_propositions_alone_and_measures_recitation(fi
     clean = build_models("opus", "sonnet", factory=factory_for(Scripted("anthropic")))
     ok = lab.fixture_check(text, fixture_voice, clean)
     assert ok.qualifies and ok.recitation.ngrams == 0
+
+
+def test_slop_from_propositions_never_shows_the_text():
+    from tests.test_apply import Scripted, factory_for
+
+    text = "Abraham is told to take his son. The chapter withholds its answer."
+    provider = factory_for(Scripted("anthropic"))("anthropic")
+    draft = lab.slop_from_propositions(text, provider, kind="a short essay")
+    assert draft.propositions == [
+        "The chapter withholds its answer.",
+        "Abraham is told to take his son.",
+    ]
+    assert draft.text
+    system, user = provider.calls[-1]
+    assert system == lab.SLOP_SYSTEM and "a short essay" in user and "roughly 12 words" in user
+    assert "1. The chapter withholds its answer." in user and text not in user

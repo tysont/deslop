@@ -247,7 +247,7 @@ patterns:
         - "\\bholds? together\\b"
   - id: T4
     name: triad
-    description: Three parallel conjuncts in one sentence.
+    description: Three or more parallel clauses or predicates, or three abstract nouns, adjectives or adverbs in rhetorical parallel, in one sentence; an enumeration of concrete nouns is not a triad.
     detector: dep-pattern
     function: triad
     params:

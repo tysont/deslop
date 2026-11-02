@@ -9,10 +9,10 @@ from pathlib import Path
 
 from deslop import Voice, score, spend
 from deslop.baselines import llm_reference
+from deslop.lab import slop_from_propositions
 from deslop.metrics import compute_all
 from deslop.nlp import analyze
 from deslop.providers.base import get_provider
-from deslop.semantic import extract_propositions
 from deslop.stats import MetricStat
 
 REGISTERS = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "registers"
@@ -23,7 +23,6 @@ KINDS = {
     "product": "a product page",
     "fiction": "a short-story excerpt",
 }
-SYSTEM = "You are a writing assistant. Return only the piece you are asked for, as prose."
 
 
 def body_of(path: Path) -> str:
@@ -31,14 +30,6 @@ def body_of(path: Path) -> str:
     if text.startswith("---"):
         text = text.split("---", 2)[2]
     return text.strip()
-
-
-def instruction(kind: str, words: int, propositions: list[str]) -> str:
-    listed = "\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1))
-    return (
-        f"Write {kind} of roughly {words} words that makes every one of these points, in "
-        f"this order, and no others.\n\n{listed}"
-    )
 
 
 def mean_abs_z(text: str, stats: dict[str, MetricStat]) -> float:
@@ -65,11 +56,10 @@ def main(provider_name: str = "anthropic", only: str | None = None) -> None:
         if only and register != only:
             continue
         original = body_of(REGISTERS / register / "original.md")
-        props = extract_propositions(original, provider)  # temperature 0, cached
-        words = len(original.split())
-        completion = provider.complete(SYSTEM, instruction(kind, words, props), temperature=0.7)
-        total += completion.usage.cost_usd
-        text = completion.text.strip()
+        spent = provider.usage.cost_usd
+        draft = slop_from_propositions(original, provider, kind=kind)  # both calls cached
+        props, text = draft.propositions, draft.text
+        total += provider.usage.cost_usd - spent
         voice = Voice.load(REGISTERS / register / f"{register}.voice")
         report = score(text, voice)
         z_voice = mean_abs_z(text, voice.metrics.metrics)
@@ -78,7 +68,7 @@ def main(provider_name: str = "anthropic", only: str | None = None) -> None:
         header = (
             "---\n"
             f"title: {register} (model prose from propositions)\n"
-            f"generated_by: {completion.provider}:{completion.model}\n"
+            f"generated_by: {provider.name}:{provider.default_model}\n"
             f"generated_on: {dt.date.today().isoformat()}\n"
             f"propositions: {len(props)}\n"
             f"score_vs_voice: {report.distance:.1f} ({report.verdict})\n"
@@ -99,7 +89,7 @@ def main(provider_name: str = "anthropic", only: str | None = None) -> None:
         print(
             f"{register}: {len(text.split())} words, {len(props)} propositions; vs voice "
             f"{report.distance:.0f} ({report.verdict}); mean |z| voice {z_voice:.2f}, "
-            f"LLM {z_llm:.2f}: {verdict}{' (cached)' if completion.from_cache else ''}"
+            f"LLM {z_llm:.2f}: {verdict}"
         )
     print(f"cost ${total:.3f} (cap ${CAP:.2f})")
 

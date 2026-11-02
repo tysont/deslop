@@ -161,6 +161,38 @@ def rescore_recitation(result: dict[str, Any], reference: str) -> list[dict[str,
     return rows
 
 
+SLOP_SYSTEM = "You are a writing assistant. Return only the piece you are asked for, as prose."
+
+
+def slop_instruction(kind: str, words: int, propositions: list[str]) -> str:
+    listed = "\n".join(f"{i}. {p}" for i, p in enumerate(propositions, 1))
+    return (
+        f"Write {kind} of roughly {words} words that makes every one of these points, in "
+        f"this order, and no others.\n\n{listed}"
+    )
+
+
+class SlopDraft(BaseModel):
+    """Model prose written from a text's propositions alone: the text's claims, in order,
+    in whatever prose the model writes by default. The text itself is never shown."""
+
+    propositions: list[str]
+    text: str
+
+
+def slop_from_propositions(
+    text: str, provider: CachingProvider, *, kind: str = "a piece of prose"
+) -> SlopDraft:
+    """Extract the text's propositions (one call, temperature 0) and write `kind` from them
+    alone (one call, temperature 0.7), both cached. This is how a held-out human piece
+    becomes an apply input that carries its content and none of its prose."""
+    props = extract_propositions(text, provider)
+    completion = provider.complete(
+        SLOP_SYSTEM, slop_instruction(kind, count_words(text), props), temperature=0.7
+    )
+    return SlopDraft(propositions=props, text=completion.text.strip())
+
+
 FIXTURE_DRAFT_TEMPLATE = """# Exemplars of the voice
 {exemplars}
 
@@ -218,6 +250,7 @@ def fixture_check(
 __all__ = [
     "FixtureCheck",
     "Pair",
+    "SlopDraft",
     "calibrate_judges",
     "export_blind",
     "fixture_check",
@@ -225,4 +258,5 @@ __all__ = [
     "llm_paragraphs",
     "prose_paragraphs",
     "rescore_recitation",
+    "slop_from_propositions",
 ]

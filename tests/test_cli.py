@@ -545,6 +545,19 @@ def test_apply_compare_page_and_report_html(fixture_voice, slop_text, tmp_path, 
     assert out.exists() and "<!doctype html>" in out.read_text()
 
 
+def test_lab_slop_writes_model_prose_with_provenance(tmp_path, monkeypatch):
+    ref = tmp_path / "piece.md"
+    ref.write_text("---\ntitle: piece\n---\n\nAbraham is told to take his son.\n")
+    scripted_factory(monkeypatch)
+    out = tmp_path / "slop.md"
+    r = runner.invoke(app, ["lab", "slop", str(ref), "-o", str(out), "--kind", "an essay"])
+    assert r.exit_code == 0, r.output
+    text = out.read_text()
+    assert text.startswith("---") and "generated_by: anthropic:" in text
+    assert "propositions: 2" in text and "never saw the text" in text
+    assert "wrote" in r.output and "2 propositions" in r.output
+
+
 def test_lab_recitation_and_fixture_check(fixture_voice, slop_text, tmp_path, monkeypatch):
     from tests.test_apply import RECITED
 

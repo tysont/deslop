@@ -10,9 +10,9 @@ nothing, so this is still the current picture of what a rewrite looks like.
 | --- | ---: | ---: | ---: | --- |
 | original (reference) | 991 | 4 | | |
 | input (model prose) | 936 | 13 | 26.1 | PASS |
-| output (candidate 3) | 1005 | 11 | 19.5 | FAIL |
+| output (candidate 3) | 1005 | 11 | 13.6 | PASS (v2.4.1 triad rule; 19.5 FAIL at the time of the run) |
 
-Checks on the output: lexical lock ok; 93/93 proposition checks kept, 0 material additions, 0 cleared; sentences per paragraph 4.0 (voice 2.4 to 9.0); tense drift 0; recitation of the original 4.2% raw, 0.0% novel (limit 2% novel); judge against the input: voice win, coherent tie, tense_person win, order win, confidence 0.72. The after verdict is FAIL because the triad tell fires on Grew's own lists of materials.
+Checks on the output: lexical lock ok; 93/93 proposition checks kept, 0 material additions, 0 cleared; sentences per paragraph 4.0 (voice 2.4 to 9.0); tense drift 0; recitation of the original 4.2% raw, 0.0% novel (limit 2% novel); judge against the input: voice win, coherent tie, tense_person win, order win, confidence 0.72. At the time of the run the after verdict was FAIL because the triad tell fired on Grew's own lists of materials; under v2.4.1, where an enumeration of concrete nouns is not a triad, the same text scores PASS at 13.6.
 
 What came back and what did not: the address returns only as far as the input kept it ("you may see it
 with your own eyes"); Grew's "Can you not see..." and "sceptred isles set in the silver sea" are gone from

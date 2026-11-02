@@ -2,6 +2,17 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.4.1 - 2026-11-01
+
+- Triad tell (T4): fires only on three or more parallel clauses or predicates, or three
+  abstract nouns, adjectives or adverbs in rhetorical parallel ("honestly, seriously, and
+  philosophically"); an enumeration of concrete nouns ("sand, gravel, chalk, shale and clay")
+  is not a triad. The v2.3.4 Grew output re-scores PASS at 13.6 (it was FAIL at 19.5).
+- `deslop lab slop ORIGINAL.md -o SLOP.md`: model prose written from a text's propositions
+  alone, for holding one's own piece out as a test (the register slop script uses it).
+- `docs/personal-voice.md`: the one-page quickstart for a voice built from one's own writing.
+- The King fiction leave-alone run is under `reports/registers/leave-alone/`.
+
 ## v2.4.0 - 2026-11-01
 
 - Semantic lock: a statement that follows necessarily from stated facts is an inference,

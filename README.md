@@ -259,6 +259,14 @@ outside the propositions' vocabulary are under 1% of the draft (the raw share is
 alongside); exit 2 when it does not. `tests/fixtures/registers/README.md` states the rule for
 the fixture set.
 
+### `deslop lab slop ORIGINAL.md -o SLOP.md [--kind "a personal essay"]`
+
+Model prose from a text's propositions alone: the propositions are extracted, then a piece
+of the same length is written from them (two live calls, cached; the text is never shown).
+This is how a held-out human piece becomes an `apply` input that carries its content and
+none of its prose, with the piece itself as `--reference`. `docs/personal-voice.md` walks
+through it for one's own writing.
+
 ### `deslop lab blind --candidates DIR [--texts DIR] [--n 5] [--seed N] [--min-overlap 0.03] [--export DIR]`
 
 Pair paragraphs from your drafts with human paragraphs (from `--texts`, else the voice's
@@ -435,7 +443,7 @@ added there or in a file passed with `--patterns`.
 | T1 | `text_as_agent` | A text noun is the subject of an intentional verb (the chapter asks, the passage insists) |
 | T2 | `negative_parallelism` | Contrastive framing by negation (not X; Y / not X but Y / X, not Y / rather than / less X than Y) |
 | T3 | `balance_markers` | Words that assert a poised both-ness instead of taking a side |
-| T4 | `triad` | Three parallel conjuncts in one sentence |
+| T4 | `triad` | Three or more parallel clauses or predicates, or three abstract nouns, adjectives or adverbs in rhetorical parallel; an enumeration of concrete nouns (gravel, chalk and clay) is not a triad |
 | T5 | `aphoristic_close` | Paragraph-final sentence with no anchor and an antithetical shape or high abstract-noun density |
 | T6 | `invented_label` | Possessive abstract noun modifying another abstract noun (appetite's arithmetic) |
 | T7 | `meta_commentary` | The predicate describes what the text or author is doing rather than asserting content |

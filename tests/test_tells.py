@@ -39,9 +39,18 @@ def test_T3_balance_markers():
     )
 
 
-def test_T4_triad():
+def test_T4_triad_counts_parallel_predicates_and_abstractions_not_enumerations():
+    # three parallel clauses or predicates
     assert ids("He hesitates, he broods, and he stalls.", "T4")
-    assert ids("Johnson wrote prefaces, dictionaries, and lives.", "T4")
+    assert ids("He wrote the preface, revised the text, and corrected the proofs.", "T4")
+    # three abstract nouns, adjectives or adverbs in rhetorical parallel
+    assert ids("He answered honestly, seriously, and philosophically.", "T4")
+    assert ids("The burden of memory, the beauty of loss, and the clarity of grief.", "T4")
+    # an enumeration of concrete nouns (materials, items, names, places) is not a triad
+    assert not ids("The sea takes sand, gravel, chalk, shale and clay from the cliffs.", "T4")
+    assert not ids("Every shower washes some sand, gravel, loam or chalk from the land.", "T4")
+    assert not ids("Johnson wrote prefaces, dictionaries, and lives.", "T4")
+    assert not ids("They sailed to Harwich, Rotterdam, and Antwerp.", "T4")
     assert not ids("Johnson wrote prefaces and lives.", "T4")
     clauses = (
         "Abraham is told to take his son, whom he loves, and the text withholds any account of it."

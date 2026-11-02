@@ -1091,6 +1091,54 @@ def lab_fixture_check(
     raise typer.Exit(0 if check.qualifies else 2)
 
 
+@lab_app.command("slop")
+def lab_slop(
+    ctx: typer.Context,
+    original: Path = typer.Argument(..., help="The human text to write model prose from"),
+    out: Path = typer.Option(..., "--out", "-o", help="SLOP.md to write"),
+    kind: str = typer.Option("a piece of prose", "--kind", help='e.g. "a personal essay"'),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or claude-cli"),
+    max_calls: int | None = typer.Option(None, "--max-calls", help="Max live calls (200)"),
+    budget: float | None = typer.Option(None, "--budget", help="Max USD on live calls (5)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Model prose from a text's propositions alone (the text is never shown): the input for
+    an apply run that holds the text out as the reference. Two live calls, cached."""
+    import datetime as dt
+
+    from deslop.lab import slop_from_propositions
+    from deslop.providers.base import BudgetExceeded, ProviderError, get_provider
+
+    s = Settings(ctx, "slop")
+    arm_budget(s, budget, command="lab slop", input_file=str(original), max_calls=max_calls)
+    body = split_frontmatter(read_input(original))[1].strip()
+    try:
+        p = get_provider(provider_name(s, provider))
+        draft = slop_from_propositions(body, p, kind=kind)
+    except (ValueError, BudgetExceeded, ProviderError) as exc:
+        fail(str(exc), code=2)
+    report_budget()
+    header = (
+        "---\n"
+        f"title: {original.name} (model prose from propositions)\n"
+        f"generated_by: {p.name}:{p.default_model}\n"
+        f"generated_on: {dt.date.today().isoformat()}\n"
+        f"propositions: {len(draft.propositions)}\n"
+        f"reference: {original}\n"
+        "note: Written by `deslop lab slop` from the text's proposition list alone; the model\n"
+        "  never saw the text.\n"
+        "---\n\n"
+    )
+    out.write_text(header + draft.text + "\n", encoding="utf-8")
+    if json_out:
+        print_json(draft.model_dump_json(indent=1))
+        return
+    console.print(
+        f"wrote {out}: {len(draft.text.split())} words from {len(draft.propositions)} "
+        f"propositions of {original}"
+    )
+
+
 @lab_app.command("blind")
 def lab_blind(
     ctx: typer.Context,

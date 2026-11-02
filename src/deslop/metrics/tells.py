@@ -166,12 +166,16 @@ def triad(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog) -> li
         if tok.dep_ in CHAIN_DEPS:
             continue
         chain = conjunct_chain(tok)
-        if len(chain) >= minimum and any(c.dep_ == "cc" for t in chain for c in t.children):
+        if (
+            len(chain) >= minimum
+            and any(c.dep_ == "cc" for t in chain for c in t.children)
+            and is_rhetorical_parallel(chain, catalog)
+        ):
             hits.append(_token_hit(pattern, sent, tok, chain[-1], note=f"{len(chain)}"))
     if hits:
         return hits
     for m in SURFACE_TRIAD_RE.finditer(sent.text):
-        if _parallel_items(sent, m):
+        if _parallel_items(sent, m, catalog):
             hits.append(
                 _hit(
                     pattern,
@@ -185,17 +189,40 @@ def triad(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog) -> li
     return hits
 
 
-def _parallel_items(sent: Sentence, m: re.Match[str]) -> bool:
-    """Surface triads count only when the three items end in the same part of speech."""
+def _parallel_items(sent: Sentence, m: re.Match[str], catalog: Catalog) -> bool:
+    """Surface triads count only when the three items end in the same part of speech and
+    the items are a rhetorical parallel, not an enumeration."""
     ends = [m.end(1), m.end(2), m.end(3)]
-    pos = []
+    toks = []
     for end in ends:
         char = sent.span.start_char + end - 1
         tok = next((t for t in sent.span if t.idx <= char < t.idx + len(t.text)), None)
         if tok is None:
             return False
-        pos.append(tok.pos_)
-    return len(set(pos)) == 1
+        toks.append(tok)
+    return len({t.pos_ for t in toks}) == 1 and is_rhetorical_parallel(toks, catalog)
+
+
+RHETORICAL_MODIFIER_SUFFIXES = ("ly", "ous", "ive", "al", "ic", "ful", "less", "able", "ible")
+
+
+def is_rhetorical_parallel(items: list[Token], catalog: Catalog) -> bool:
+    """A triad is three or more parallel clauses or predicates, or three abstract nouns,
+    adjectives or adverbs in rhetorical parallel ("honestly, seriously, and
+    philosophically"). A list of concrete nouns (materials, items, names, places: "gravel,
+    chalk and clay") is an enumeration, not a triad."""
+    pos = items[0].pos_
+    if pos in ("VERB", "AUX"):
+        return True
+    if pos == "NOUN":
+        return all(is_abstract(t, catalog) for t in items)
+    if pos in ("ADJ", "ADV"):
+        return all(
+            is_abstract(t, catalog)
+            or (len(t.lemma_) > 5 and t.lemma_.lower().endswith(RHETORICAL_MODIFIER_SUFFIXES))
+            for t in items
+        )
+    return False
 
 
 CHAIN_DEPS = ("conj", "parataxis")
