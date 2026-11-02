@@ -81,8 +81,9 @@ cleared on review, and every decision carries its vote split (`3-0`, `2-1`) so t
 borderline cases can be seen. Each rejection names its category. `--fidelity strict` fails
 any new claim, for originals already in the target voice. `--report-all` judges and reports
 every candidate, pass or fail. The lexical lock compares words case-insensitively in both
-directions. The coherence checks exempt first and second person from the antecedent rule
-and report tense drift only between two different dominant tenses (a paragraph is mixed
+directions. The coherence checks exempt first and second person from the antecedent rule,
+report tense drift only between two different dominant tenses, and treat the connective
+band as advisory (it reaches the writer only when the judge's coherence item is a loss) (a paragraph is mixed
 when no tense holds more than half of its finite verbs). `--compare PAGE.html` writes the
 comparison page described under `deslop report`.
 

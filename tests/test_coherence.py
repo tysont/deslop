@@ -132,3 +132,18 @@ def test_first_and_second_person_need_no_antecedent():
     assert antecedent_flags(a) == []
     b = analyze("It is my purpose to begin. This is the plan.")
     assert [f.word for f in antecedent_flags(b)] == ["It"]  # "This" has "purpose" before it
+
+
+def test_connective_band_is_advisory_when_marked():
+    from deslop.coherence import CoherenceResult, ConnectiveCheck, ParagraphCheck
+
+    conn = ConnectiveCheck(before=0.13, after=0.02, ok=False, note="2% open with a connective")
+    result = CoherenceResult(
+        paragraphs_before=5,
+        paragraphs_after=5,
+        paragraphs=ParagraphCheck(before=5, after=5, sentences_per_paragraph=5.0),
+        connectives=conn,
+    )
+    assert not result.ok and result.reader_notes() == ["2% open with a connective"]
+    conn.advisory = True
+    assert result.ok and result.reader_notes() == []

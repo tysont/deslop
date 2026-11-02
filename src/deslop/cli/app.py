@@ -822,6 +822,13 @@ def apply_cmd(
         help='A citation scheme for the command-line primary texts, as JSON: {"name": "verse", '
         '"pattern": "<regex>", "bare_pattern": "<regex or null>"}; repeatable',
     ),
+    citations: str | None = typer.Option(
+        None,
+        "--citations",
+        help="keep: the input's citations and quotations must reappear exactly; verified "
+        "(default): additions must verify against the primary texts; none: as keep, and "
+        "nothing may be added",
+    ),
     quote_context_words: int | None = typer.Option(
         None,
         "--quote-context-words",
@@ -857,6 +864,10 @@ def apply_cmd(
     mode = s.get("mode", mode, "rewrite")
     if mode not in ("edit", "rewrite"):
         fail("--mode must be rewrite or edit")
+    citation_mode = str(s.get("citations", citations, "verified"))
+    if citation_mode not in ("keep", "verified", "none"):
+        fail("--citations must be keep, verified or none")
+    citation_policy: Any = citation_mode
     limit = arm_budget(
         s,
         budget,
@@ -891,6 +902,7 @@ def apply_cmd(
             primary_texts=list(texts) or None,
             citation_schemes=schemes,
             quote_context_words=int(s.get("quote_context_words", quote_context_words, 1500)),
+            citations=citation_policy,
             allow_primary_facts=bool(
                 s.get("allow_primary_facts", allow_primary_facts or None, False)
             ),

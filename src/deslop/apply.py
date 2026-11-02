@@ -27,6 +27,7 @@ from deslop.judge import (
 from deslop.lock import DocumentLock, check, inventory
 from deslop.metrics import compute_all, detect_tells
 from deslop.nlp import WORD_RE, Analysis, Paragraph, Sentence, analyze, split_paragraphs
+from deslop.numbers import words_to_digits
 from deslop.patterns import Catalog, load_catalog
 from deslop.providers.base import (
     DEFAULT_JUDGE,
@@ -49,7 +50,9 @@ from deslop.reference import (
     citation_guidance,
     load_primary_texts,
     normalize,
+    primary_citations,
     quotable_passages,
+    quoted_spans,
     verify_additions,
 )
 from deslop.report import MetricResult, Report, TellHitResult
@@ -81,6 +84,7 @@ DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow the origin
 ROUNDS = 2  # the first round, then one retry carrying what a reader noticed
 ADVISORY_PARAGRAPHS = 10  # under this many input paragraphs the paragraph band only advises
 DEFAULT_QUOTE_CONTEXT_WORDS = 1500  # cap on the verbatim passages offered to the writer
+Citations = Literal["keep", "verified", "none"]
 KEY_TOKEN_RE = re.compile(r"\b[A-Z][A-Za-z'-]+\b|\d+(?:[.:]\d+)*")
 
 
@@ -108,6 +112,7 @@ class CandidateLog(BaseModel):
     new_tells: list[str] = Field(default_factory=list)
     reader_notes: list[str] = Field(default_factory=list)  # what the retry prompt was told
     advisories: list[str] = Field(default_factory=list)  # noted to the writer, never a rejection
+    connective_note: str = ""  # the connective band, told to the writer only on a coherence loss
     accepted: bool = False
     reason: str = ""
 
@@ -221,6 +226,7 @@ class Result(BaseModel):
     reference: str | None = None
     max_recitation: float = DEFAULT_MAX_RECITATION
     allow_primary_facts: bool = False
+    citations: str = "verified"
     recitation: RecitationResult | None = None
 
     def to_json(self, indent: int | None = 1) -> str:
@@ -408,7 +414,7 @@ DOCUMENT_TEMPLATE = """# Exemplars of the voice
 
 # What it asserts, paragraph by paragraph (keep every one, add none)
 {propositions}
-{section_block}{quotable}
+{section_block}{quotable}{reproduce}
 # Instruction
 Write {what} as this writer would, from its first paragraph to its last. Keep every
 proposition listed above and add none. Adopt this writer's grammatical person and mode of
@@ -431,6 +437,18 @@ QUOTABLE_TEMPLATE = """
 # How these texts are cited
 {guidance}
 """
+
+REPRODUCE_TEMPLATE = """
+# Reproduce exactly (each once, in the sentence that makes the same point)
+{items}
+"""
+
+REPRODUCE_RULE = {
+    "keep": "Reproduce every citation and quotation listed above exactly as written, once each, "
+    "in the sentence that makes the same point. ",
+    "none": "Reproduce every citation and quotation listed above exactly as written, once each, "
+    "in the sentence that makes the same point, and add no citation or quotation of your own. ",
+}
 
 QUOTE_RULE = (
     "Quote only from the passages listed above and only verbatim; do not quote from memory; "
@@ -673,6 +691,8 @@ def document_prompt(
     textures: Sequence[str] = (),
     passages: Sequence[Passage] = (),
     guidance: Sequence[str] = (),
+    reproduce: Sequence[str] = (),
+    citations: Citations = "verified",
 ) -> tuple[str, str]:
     """The writer's prompt: profile and rules (system), exemplars nearest the piece, the full
     original, its propositions by paragraph (each with its texture note, when there is one),
@@ -705,7 +725,11 @@ def document_prompt(
         )
         if passages or guidance
         else "",
-        quote_rule=QUOTE_RULE if passages or guidance else "",
+        quote_rule=(QUOTE_RULE if passages or guidance else "")
+        + (REPRODUCE_RULE.get(citations, "") if reproduce or citations == "none" else ""),
+        reproduce=REPRODUCE_TEMPLATE.format(items="\n".join(f"- {r}" for r in reproduce))
+        if reproduce
+        else "",
         what="this piece" if whole else "this section",
         returned="the whole piece" if whole else "the section",
         noticed=NOTICED_TEMPLATE.format(notes="\n".join(f"- {x}" for x in noticed))
@@ -949,6 +973,8 @@ def _meaning_diff(units: list[UnitLog]) -> str:
             lines.append(f"  {mark} [{add.kind}] {add}")
         for adv in chosen.advisories:
             lines.append(f"  ~ advisory: {adv}")
+        if chosen.connective_note:
+            lines.append(f"  ~ advisory (connectives): {chosen.connective_note}")
     return "\n".join(lines)
 
 
@@ -1053,6 +1079,7 @@ def apply(
     max_recitation: float = DEFAULT_MAX_RECITATION,
     allow_primary_facts: bool = False,
     quote_context_words: int = DEFAULT_QUOTE_CONTEXT_WORDS,
+    citations: Citations = "verified",
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -1129,6 +1156,7 @@ def apply(
         max_recitation=max_recitation,
         allow_primary_facts=allow_primary_facts,
         quote_context_words=quote_context_words,
+        citations=citations,
     )
 
     if mode == "edit":
@@ -1199,6 +1227,7 @@ def apply(
         reference=reference_name if reference is not None else None,
         max_recitation=max_recitation,
         allow_primary_facts=allow_primary_facts,
+        citations=citations,
         recitation=winner.recitation if winner is not None else None,
     )
 
@@ -1220,6 +1249,7 @@ class Options:
     max_recitation: float = DEFAULT_MAX_RECITATION
     allow_primary_facts: bool = False  # facts verifiable in a primary text are not additions
     quote_context_words: int = DEFAULT_QUOTE_CONTEXT_WORDS
+    citations: Citations = "verified"  # keep | verified | none
 
 
 def _load_texts(
@@ -1281,7 +1311,7 @@ def _primary_permission(
     known: set[str] = frozenset(),  # type: ignore[assignment]
 ) -> str:
     sentence = item.sentence or ""
-    tokens = [t for t in KEY_TOKEN_RE.findall(item.text)]
+    tokens = [t for t in KEY_TOKEN_RE.findall(words_to_digits(item.text))]
     if item.text and item.text[:1].isupper() and tokens and item.text.startswith(tokens[0]):
         tokens = tokens[1:]  # a sentence-initial capital is not a name
     keys = [t.lower() for t in tokens if t.lower() not in FUNCTION_WORDS]
@@ -1315,9 +1345,9 @@ def _primary_permission(
     if allow_facts and keys:
         for a in cites:
             for t in texts:
-                if not a.where.startswith(t.name + " "):
+                if not t.answers_to(a.text):
                     continue
-                span = t.segment_text(a.where[len(t.name) + 1 :])
+                span = words_to_digits(t.cited_text(a.text))
                 if span and all(k in span.split() for k in keys):
                     return f"a fact verifiable at {a.where}"
     return ""
@@ -1524,7 +1554,12 @@ def _verify_section(
     if not paragraphs.ok and len(split_paragraphs(section_text)) < ADVISORY_PARAGRAPHS:
         paragraphs.advisory = True
         cand.advisories.append(paragraphs.note)
+    connectives = cand.coherence.connectives
+    if not connectives.ok:
+        connectives.advisory = True  # the judge's coherence item decides whether it matters
+        cand.connective_note = connectives.note
     notes.extend(cand.coherence.reader_notes())
+    notes.extend(citation_policy_notes(section_text, candidate, opts))
     if opts.reference is not None:
         cand.recitation = recitation(candidate, opts.reference, section_text)
         if cand.recitation.novel_share > opts.max_recitation:
@@ -1534,6 +1569,39 @@ def _verify_section(
                 f"published text in runs of {NGRAM} words or more; it must be put in the "
                 "writer's own words"
             )
+    return notes
+
+
+def input_citations(text: str, opts: Options) -> list[str]:
+    """The citation strings the input carries, as the declared schemes (or, without any
+    primary text, the generic citation shapes) recognise them."""
+    return primary_citations(text, opts.texts)
+
+
+def citation_policy_notes(section_text: str, candidate: str, opts: Options) -> list[str]:
+    """`--citations keep` and `none`: every citation the input carries must appear in the
+    output exactly as written and as often, and every input quotation byte-identically;
+    under `none` the output may add no citation or quotation either. `verified` leaves this
+    to the primary-text check."""
+    if opts.citations == "verified":
+        return []
+    notes = []
+    before = input_citations(section_text, opts)
+    for c in sorted(set(before)):
+        want, have = before.count(c), candidate.count(c)
+        if have < want:
+            notes.append(f"the citation {c} must appear exactly as written ({want}x, found {have})")
+    for q in quoted_spans(section_text):
+        if q not in candidate:
+            notes.append(f'the quotation "{q[:60]}" must be reproduced exactly as written')
+    if opts.citations == "none":
+        after = input_citations(candidate, opts)
+        for c in sorted(set(after) - set(before)):
+            notes.append(f"the citation {c} is not in the original; add no citations")
+        kept = {normalize(q) for q in quoted_spans(section_text)}
+        for q in quoted_spans(candidate):
+            if normalize(q) not in kept:
+                notes.append(f'the quotation "{q[:60]}" is not in the original; add no quotations')
     return notes
 
 
@@ -1602,6 +1670,11 @@ def _rewrite_section(
     near = exemplars.closest(section_text, 2)
     passages = quotable_passages(section_text, opts.texts, limit_words=opts.quote_context_words)
     guidance = citation_guidance(opts.texts)
+    reproduce = (
+        input_citations(section_text, opts) + [f'"{q}"' for q in quoted_spans(section_text)]
+        if opts.citations != "verified"
+        else []
+    )
     log.quotable = [{"text": p.text_name, "ref": p.ref, "words": p.words} for p in passages]
     if progress and passages:
         progress(
@@ -1629,6 +1702,8 @@ def _rewrite_section(
                 textures=textures,
                 passages=passages,
                 guidance=guidance,
+                reproduce=reproduce,
+                citations=opts.citations,
             )
             try:
                 completion = writer.complete(system, user, temperature=CANDIDATE_TEMPERATURE)
@@ -1686,11 +1761,11 @@ def _rewrite_section(
             failed = bool(notes)
             if failed:
                 cand.reason = "; ".join(notes)[:300]
-                cand.reader_notes = notes + linter + cand.advisories
+                cand.reader_notes = _retry_notes(cand, notes, linter)
                 if not opts.report_all:
                     continue
             else:
-                cand.reader_notes = linter + cand.advisories
+                cand.reader_notes = _retry_notes(cand, [], linter)
             try:
                 cand.verdicts.append(
                     compare_document(
@@ -1700,10 +1775,10 @@ def _rewrite_section(
             except ProviderError as exc:
                 if not failed:
                     cand.reason = f"judge unavailable: {exc}"[:200]
-                    cand.reader_notes = linter
                 continue
             vs = cand.vs_original
             cand.judge_ok = vs is not None and vs.no_loss
+            cand.reader_notes = _retry_notes(cand, notes, linter)
             if failed:
                 continue  # judged for the record only
             if not cand.judge_ok:
@@ -1714,7 +1789,7 @@ def _rewrite_section(
                 ]
                 cand.reader_notes = [
                     f"a second reader preferred the original for {', '.join(lost)}: {note}",
-                    *linter,
+                    *_retry_notes(cand, [], linter),
                 ]
                 continue
             eligible.append(cand)
@@ -1766,6 +1841,25 @@ def _rewrite_section(
     if progress:
         progress(f"  {section.kind}: kept original (no candidate passed)")
     return log
+
+
+def _retry_notes(cand: CandidateLog, hard: list[str], linter: list[str]) -> list[str]:
+    """What the retry prompt is told about this candidate. The hard failures (lock, meaning,
+    tense, antecedents, primary texts, recitation) always; the linter's finds, the paragraph
+    band and the connective band only when the judge found something to lose: a candidate
+    the judge rated win or tie on every item hears only its hard failures, and the
+    connective band only when the judge's coherence item was a loss. With no verdict yet,
+    everything."""
+    vs = cand.vs_original
+    soft = linter + cand.advisories
+    connective = [cand.connective_note] if cand.connective_note else []
+    if vs is None:
+        return hard + soft + connective
+    if vs.no_loss:
+        return list(hard)
+    if vs.items.get("coherent") != "loss":
+        connective = []
+    return hard + soft + connective
 
 
 def _rank_key(cand: CandidateLog) -> tuple[float, float]:

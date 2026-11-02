@@ -297,12 +297,12 @@ class PrimaryText:
         scheme the whole chapter, meaning every span whose label shares the text before the
         last colon; in a paragraph-labelled text the cited span and one on either side. Empty
         when the citation does not resolve."""
-        ref = self.resolve(citation)
-        if ref is None:
+        cited = self.cited_spans(citation)
+        if not cited:
             return []
-        target = self._labels[canonical_label(ref)]
-        if self.is_coarse(citation):
-            return [Passage(self.name, target.ref, self.raw[target.raw_start : target.raw_end])]
+        if self.is_coarse(citation) or len(cited) > 1:
+            return [Passage(self.name, s.ref, self.raw[s.raw_start : s.raw_end]) for s in cited]
+        target = cited[0]
         spans = self.spans()
         index = next(
             (
@@ -331,13 +331,70 @@ class PrimaryText:
     def resolve(self, citation: str) -> str | None:
         """The sidecar label a citation names, or None: a scheme must match the string, and
         its canonical form (or, for a range, the part before the dash) must be a label."""
+        spans = self.cited_spans(citation)
+        return spans[0].ref if spans else None
+
+    def cited_spans(self, citation: str) -> list[Segment]:
+        """The distinct spans a citation names, in sidecar order: one for a single label, and
+        for a range ("6:14-16", "372c-e", "369b-370c") every span from the first label through
+        the last. The last label is the first with its tail replaced by the part after the
+        dash: trailing digits by digits, a trailing letter by a letter, else the whole last
+        token. An unknown last label leaves the first span alone."""
         if not self.answers_to(citation):
-            return None
+            return []
         key = canonical_label(citation)
         seg = self._labels.get(key)
-        if seg is None and RANGE_RE.search(key):
-            seg = self._labels.get(RANGE_RE.split(key, 1)[0].strip())
-        return seg.ref if seg else None
+        if seg is not None:
+            first = self.span_for(seg.ref) or seg
+            return [first]
+        if not RANGE_RE.search(key):
+            return []
+        head, tail = (part.strip() for part in RANGE_RE.split(key, 1)[:2])
+        seg = self._labels.get(head)
+        if seg is None:
+            return []
+        first = self.span_for(seg.ref) or seg
+        if tail.isdigit():
+            last_key = re.sub(r"\d+$", tail, head)
+        elif len(tail) == 1 and tail.isalpha():
+            last_key = re.sub(r"[a-z]$", tail, head)
+        else:
+            last_key = re.sub(r"\S+$", tail, head)
+        last_seg = self._labels.get(last_key)
+        spans = self.spans()
+        try:
+            i = next(
+                k
+                for k, s in enumerate(spans)
+                if (s.raw_start, s.raw_end) == (first.raw_start, first.raw_end)
+            )
+        except StopIteration:
+            return [first]
+        if last_seg is None:
+            return [first]
+        last = self.span_for(last_seg.ref) or last_seg
+        j = next(
+            (
+                k
+                for k, s in enumerate(spans)
+                if (s.raw_start, s.raw_end) == (last.raw_start, last.raw_end)
+            ),
+            i,
+        )
+        return spans[i : j + 1] if j >= i else [first]
+
+    def cited_text(self, citation: str) -> str:
+        """The normalised text of everything a citation names (a range's union)."""
+        return " ".join(
+            " ".join(self.text[s.start : s.end].split()) for s in self.cited_spans(citation)
+        ).strip()
+
+    def cited_label(self, citation: str) -> str:
+        """The label a citation resolves to, or "first–last" for a range over several spans."""
+        spans = self.cited_spans(citation)
+        if not spans:
+            return ""
+        return spans[0].ref if len(spans) == 1 else f"{spans[0].ref}–{spans[-1].ref}"
 
 
 def quotable_passages(
@@ -359,11 +416,10 @@ def quotable_passages(
             if t.has_bare_scheme() and (
                 group_words > limit_words or total + group_words > limit_words
             ):
-                ref = t.resolve(citation)
-                seg = t.span_for(ref) if ref else None
-                group = (
-                    [Passage(t.name, seg.ref, t.raw[seg.raw_start : seg.raw_end])] if seg else []
-                )
+                group = [
+                    Passage(t.name, s.ref, t.raw[s.raw_start : s.raw_end])
+                    for s in t.cited_spans(citation)
+                ]
             for passage in group:
                 key = (passage.text_name, passage.ref)
                 if key in seen:
@@ -549,7 +605,7 @@ def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) ->
             else:
                 add.note = "does not resolve in " + ", ".join(t.name for t in answering)
                 for t in answering:
-                    where = t.resolve(c)
+                    where = t.cited_label(c)
                     if where:
                         add.verified, add.where, add.note = True, _place(t, where), ""
                         add.coarse = t.is_coarse(c)

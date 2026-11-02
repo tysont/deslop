@@ -139,6 +139,7 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
 | `--primary-text` | the voice's declared texts | a primary text (a text file with an optional `NAME.locs.json` sidecar of labelled spans, or a directory of them) added quotations and citations must verify against; repeatable; a voice declares its own in `voice.yaml` under `primary_texts` (see docs/primary-texts.md) |
 | `--citation-scheme` | none | JSON `{"name", "pattern", "bare_pattern"}`: the regex shape of citations of the command-line primary texts; repeatable |
+| `--citations` | `verified` | `keep`: every citation string a declared scheme (or, without a primary text, the generic citation shapes) recognises in the input must reappear exactly as written and as often, and every input quotation byte-identically; the writer sees them under "reproduce exactly"; `verified`: additions must verify against the primary texts; `none`: as keep, and nothing may be added |
 | `--quote-context-words` | `1500` | cap on the verbatim primary-text passages offered to the writer: every citation the input makes is resolved and its span shown under "Passages you may quote", with the whole chapter for a chapter:verse text when it fits, or the cited paragraphs and their neighbours for a paragraph-labelled text; the writer may quote only from these, verbatim |
 | `--allow-primary-facts` | off | a fact the input lacks is not an addition when its numbers and names are all at a cited, resolved location of a primary text; off, it remains a material addition |
 | `--budget` | `5` | USD this invocation may spend on live calls; past it the run stops with the best text so far |
@@ -159,7 +160,9 @@ limit (`--max-growth`), the primary-text check, the coherence checks (sentences 
 paragraph inside the exemplars' range, which for an input under ten paragraphs is advisory:
 reported, told to the writer on retry, never a rejection; the dominant tense unchanged; every sentence-initial
 pronoun with an antecedent in the two sentences before it; connective openers in the voice's
-band and near the original's share) and the semantic lock paragraph by paragraph (every
+band and near the original's share, which is advisory: reported, and told to the writer only
+when the judge's coherence item is a loss, never a rejection on its own; tense and
+antecedents stay hard) and the semantic lock paragraph by paragraph (every
 proposition kept, nothing material added: no new entity, number, event, unstated cause, or
 scene the stated facts do not entail, while an inference from them is permitted; judged by a
 different provider, each flag by a three-sample majority vote). Then a
@@ -168,7 +171,8 @@ answered separately: reads as the voice, coherent, consistent tense and person, 
 the argument's order and emphasis. A candidate must win or tie on every item; survivors are
 judged round-robin and the best win rate wins. If none passes, one retry carries what a
 reader noticed in the earlier drafts (the linter's finds with their spans, never a metric
-name); if that fails too the result is the original with the report, never a partial
+name; a draft the judge rated win or tie on every item passes on only its hard failures,
+nothing about paragraph length or connectives); if that fails too the result is the original with the report, never a partial
 rewrite. A document longer than `--chunk-words` is rewritten section by section, each with
 the already-rewritten section before it in context and the original section after it
 visible.

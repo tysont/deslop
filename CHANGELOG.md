@@ -2,7 +2,19 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
-## Unreleased
+## v2.4.4 - 2026-11-02
+
+- The connective-opener band is advisory: reported, told to the writer on retry only when
+  the judge's coherence item is a loss, never a rejection on its own. Tense and antecedent
+  checks stay hard.
+- A citation range resolves to the union of its spans from the first label through the
+  last; offered passages, quotation checks and `--allow-primary-facts` use the union. Number
+  words and digits are one number for the fact check and the lexical lock.
+- `--citations keep|verified|none`: keep reproduces the input's citations and quotations
+  exactly (listed to the writer under "reproduce exactly"), verified is the previous
+  behaviour and the default, none adds nothing on top of keep.
+- The retry prompt for a draft the judge rated win or tie on every item carries only the
+  hard failures, nothing about paragraph length or connectives.
 
 - Coarse citations: a scheme may carry `coarse_pattern` (a chapter- or book-level form);
   coarse matches resolve against sidecar labels like any other, offer their span to the

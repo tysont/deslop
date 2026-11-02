@@ -74,8 +74,8 @@ def test_normalize_ignores_case_punctuation_and_curly_quotes():
 def test_sidecar_spans_resolve_citations_and_locate_quotations(tmp_path):
     t = PrimaryText.load(scripture(tmp_path), schemes=[VERSE], title="Book")
     assert t.name == "Book" and t.has_locations and len(t.segments) == 7
-    assert t.resolve("Book 6:5") == "Book 6:5" and t.resolve("Bk. 6:5") == "Bk 6:5"
-    assert t.resolve("6:18") == "6:18", "a bare location, the book known from context"
+    assert t.resolve("Book 6:5") == "Book 6:5" and t.resolve("Bk. 6:5") == "Book 6:5"
+    assert t.resolve("6:18") == "Book 6:18", "a bare location, the book known from context"
     assert t.resolve("Book 6:5-6") == "Book 6:5", "a range resolves by its first label"
     assert t.resolve("6:99") is None and t.resolve("369b") is None
     assert t.find_quote("it grieved him in his heart") == "Book 6:6"
@@ -157,9 +157,9 @@ def test_load_primary_texts_takes_specs_paths_and_directories(tmp_path):
     scripture(tmp_path)
     spec = PrimaryTextSpec(path="book.md", title="Book", schemes=[VERSE])
     (t,) = load_primary_texts([spec], relative_to=tmp_path)
-    assert t.name == "Book" and t.resolve("6:5") == "6:5"
+    assert t.name == "Book" and t.resolve("6:5") == "Book 6:5"
     (u,) = load_primary_texts([tmp_path / "book.md"], schemes=[VERSE])
-    assert u.name == "book" and u.resolve("6:5") == "6:5"
+    assert u.name == "book" and u.resolve("6:5") == "Book 6:5"
     (d,) = load_primary_texts([str(tmp_path)])
     assert d.name == "book" and d.resolve("6:5") is None, "no scheme given for the directory"
     try:
@@ -269,3 +269,30 @@ def test_coarse_citations_resolve_offer_their_span_and_are_marked(tmp_path):
     assert citation_guidance([t]) == [
         'Book: cite by verse, as in "Book 6:5", or coarsely as in "Book 6".'
     ]
+
+
+def test_ranges_resolve_to_the_union_of_their_spans(tmp_path):
+    from deslop.reference import quotable_passages
+
+    t = PrimaryText.load(scripture(tmp_path), schemes=[VERSE], title="Book")
+    assert [x.ref for x in t.cited_spans("6:5-6")] == ["Book 6:5", "Book 6:6"]
+    assert [x.ref for x in t.cited_spans("Book 6:5-18")] == ["Book 6:5", "Book 6:6", "Book 6:18"]
+    assert [x.ref for x in t.cited_spans("6:6-99")] == ["Book 6:6"], "unknown end: first alone"
+    assert t.cited_label("6:5-6") == "Book 6:5–Book 6:6" and t.cited_label("6:6") == "Book 6:6"
+    assert "sorry that he had made humankind" in t.cited_text("6:5-6")
+    offered = quotable_passages("See 6:5-6.", [t], limit_words=40)
+    assert [p.ref for p in offered] == ["Book 6:5", "Book 6:6"], "the union, chapter too big"
+    check = verify_additions("x", "See 6:5-6.", [t])
+    assert check.additions[0].verified and check.additions[0].where == "Book 6:5–Book 6:6"
+    p = tmp_path / "dialogue.md"
+    paras = ["Alpha here.", "Beta here.", "Gamma here.", "Delta here."]
+    p.write_text(" ".join(paras), encoding="utf-8")
+    locs, pos = [], 0
+    for label, para in zip(("372c", "372d", "372e", "373a"), paras, strict=True):
+        locs.append({"ref": label, "start": pos, "end": pos + len(para)})
+        pos += len(para) + 1
+    (tmp_path / "dialogue.locs.json").write_text(json.dumps(locs), encoding="utf-8")
+    d = PrimaryText.load(p, schemes=[STEPHANUS], title="Dialogue")
+    assert [x.ref for x in d.cited_spans("372c-e")] == ["372c", "372d", "372e"]
+    assert [x.ref for x in d.cited_spans("372d-373a")] == ["372d", "372e", "373a"]
+    assert d.cited_text("372c-e") == "alpha here beta here gamma here"

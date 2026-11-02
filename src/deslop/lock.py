@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from deslop.metrics.anchors import CITATION_PATTERNS, NUMBER_RE
 from deslop.nlp import load_nlp
+from deslop.numbers import number_phrases
 
 LOCK_CLASSES = ("citations", "quotes", "numbers", "proper_nouns")
 ANY_QUOTE_RE = re.compile(r"[\"“]([^\"”]{1,600})[\"”]")
@@ -108,12 +109,14 @@ def inventory(text: str, names: set[str] | None = None) -> Inventory:
     for m in ANY_QUOTE_RE.finditer(text):
         inv.quotes[_normalize_quote(m.group(1))] += 1
     quoted = [(m.start(), m.end()) for m in ANY_QUOTE_RE.finditer(text)]
-    for m in NUMBER_RE.finditer(text):
-        if any(s <= m.start() < e for s, e in seen):
+    found = [(m.start(), m.end(), m.group(0)) for m in NUMBER_RE.finditer(text)]
+    found += number_phrases(text)  # "three hundred" counts as 300: the two spellings are one
+    for start, _end, value in found:
+        if any(s <= start < e for s, e in seen):
             continue  # part of a citation
-        if any(s <= m.start() < e for s, e in quoted):
+        if any(s <= start < e for s, e in quoted):
             continue  # protected by the quote already
-        inv.numbers[m.group(0)] += 1
+        inv.numbers[value] += 1
     doc = load_nlp(ner=True)(text)
     entity_tokens = {t.i for ent in doc.ents if ent.label_ in NAME_LABELS for t in ent}
     lowercase = {tok.text.lower() for tok in doc if tok.is_alpha and tok.text.islower()}

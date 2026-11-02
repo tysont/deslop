@@ -308,7 +308,7 @@ def test_quotable_passages_reach_the_writer_with_the_rule(fixture_voice, slop_te
 
 def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts(tmp_path):
     from deslop.apply import CandidateLog, permit_primary
-    from deslop.reference import Addition, PrimaryCheck, PrimaryText
+    from deslop.reference import Addition, CitationScheme, PrimaryCheck, PrimaryText
     from deslop.semantic import AddedClaim, SemanticResult
 
     raw = (
@@ -322,6 +322,7 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
             {"ref": "6:15", "start": 0, "end": raw.index("But")},
             {"ref": "6:18", "start": raw.index("But"), "end": len(raw)},
         ],
+        schemes=[CitationScheme(name="verse", pattern=r"\d+:\d+", coarse_pattern=r"Scripture \d+")],
     )
 
     def candidate() -> CandidateLog:
@@ -620,3 +621,86 @@ def test_a_candidate_reciting_the_reference_is_rejected_and_the_reference_stays_
     assert loose.recitation is not None and loose.recitation.novel_share > 2.0
     plain = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
     assert plain.units[0].candidates[0].recitation is None and plain.recitation is None
+
+
+def test_retry_notes_follow_the_judge():
+    from deslop.apply import CandidateLog, _retry_notes
+    from deslop.judge import DocumentVerdict
+
+    cand = CandidateLog(attempt=1, text="x", provider="p", model="m", lexical_ok=True)
+    cand.advisories = ["its 6 paragraphs average 9 sentences"]
+    cand.connective_note = "4% open with a connective; the original has 13%"
+    hard = ['the claim "x" was dropped']
+    linter = ['"so the": a stock opener']
+    assert _retry_notes(cand, hard, linter) == hard + linter + cand.advisories + [
+        cand.connective_note
+    ]
+    all_fine = {"voice": "win", "coherent": "tie", "tense_person": "tie", "order": "win"}
+    cand.verdicts = [DocumentVerdict(against="original", items=all_fine, confidence=0.7)]
+    assert _retry_notes(cand, hard, linter) == hard, "all win or tie: hard failures only"
+    lost_voice = {**all_fine, "voice": "loss"}
+    cand.verdicts = [DocumentVerdict(against="original", items=lost_voice, confidence=0.7)]
+    assert _retry_notes(cand, hard, linter) == hard + linter + cand.advisories, (
+        "coherent not lost: the connective band stays out"
+    )
+    lost_coherence = {**all_fine, "coherent": "loss"}
+    cand.verdicts = [DocumentVerdict(against="original", items=lost_coherence, confidence=0.7)]
+    assert _retry_notes(cand, hard, linter)[-1] == cand.connective_note
+
+
+def test_connective_band_never_rejects_on_its_own(fixture_voice, slop_text):
+    a, b, factory = pair()
+    result = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
+    for cand in result.units[0].candidates:
+        if cand.coherence and not cand.coherence.connectives.ok:
+            assert cand.coherence.connectives.advisory and cand.connective_note
+            assert "open with" not in cand.reason
+
+
+def test_citations_keep_and_none_reproduce_the_inputs_citations(fixture_voice, slop_text):
+    from deslop.apply import Options, citation_policy_notes
+
+    cited = slop_text.replace(
+        "Abraham is told to take his", "Abraham is told (Gen 22:2) to take his", 1
+    )
+    cited = cited.replace("The chapter asks", 'The chapter "asks a question it" asks', 1)
+    a, b, factory = pair()
+    kept = apply(cited, fixture_voice, n=1, provider_factory=factory, citations="keep")
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    assert "# Reproduce exactly" in user and "- Gen 22:2" in user
+    assert (
+        '- "asks a question it"' in user
+        and "once each, in the sentence that makes the same point" in user
+    )
+    assert "add no citation or quotation of your own" not in user
+    assert kept.citations == "keep"
+    none = apply(cited, fixture_voice, n=1, provider_factory=factory, citations="none")
+    system, user = next(c for c in a.calls[::-1] if "write prose" in c[0])
+    assert "add no citation or quotation of your own" in user and none.citations == "none"
+    verified = apply(cited, fixture_voice, n=1, provider_factory=factory)
+    system, user = next(c for c in a.calls[::-1] if "write prose" in c[0])
+    assert "Reproduce exactly" not in user and verified.citations == "verified"
+
+    def opts(mode):
+        o = Options.__new__(Options)
+        o.texts, o.citations = [], mode
+        return o
+
+    original = 'He is told (Gen 22:2) to go, "a question it asks" twice (Gen 22:2).'
+    assert citation_policy_notes(original, "anything", opts("verified")) == []
+    notes = citation_policy_notes(
+        original, 'He goes (Gen 22:2), "a question it asks".', opts("keep")
+    )
+    assert notes == ["the citation Gen 22:2 must appear exactly as written (2x, found 1)"]
+    notes = citation_policy_notes(
+        original, 'He goes (Gen 22:2; Gen 22:2) "a question he asks".', opts("keep")
+    )
+    assert notes == ['the quotation "a question it asks" must be reproduced exactly as written']
+    exact = 'He goes (Gen 22:2), then (Gen 22:2), "a question it asks".'
+    assert citation_policy_notes(original, exact, opts("keep")) == []
+    added = exact + ' See Gen 22:3 and "another phrase here".'
+    assert citation_policy_notes(original, added, opts("keep")) == []
+    assert citation_policy_notes(original, added, opts("none")) == [
+        "the citation Gen 22:3 is not in the original; add no citations",
+        'the quotation "another phrase here" is not in the original; add no quotations',
+    ]

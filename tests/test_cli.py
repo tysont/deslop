@@ -601,6 +601,14 @@ def test_apply_uses_the_voices_declared_primary_texts(
         app, ["apply", str(sample), "--voice", str(voice), "--citation-scheme", "not json"]
     )
     assert r.exit_code == 1 and "--citation-scheme must be JSON" in r.output
+    r = runner.invoke(app, ["apply", str(sample), "--voice", str(voice), "--citations", "some"])
+    assert r.exit_code == 1 and "--citations must be keep, verified or none" in r.output
+    r = runner.invoke(
+        app,
+        ["apply", str(sample), "--voice", str(voice), "--n", "1", "--json", "--citations", "keep"],
+    )
+    assert r.exit_code in (0, 2), r.output
+    assert json.loads(r.stdout)["citations"] == "keep"
 
 
 def test_lab_slop_writes_model_prose_with_provenance(tmp_path, monkeypatch):

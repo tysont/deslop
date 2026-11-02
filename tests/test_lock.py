@@ -140,3 +140,23 @@ def test_removals_are_case_insensitive():
     assert check(
         quoted, 'He said "the bright day is done" and 3 men left.', DocumentLock.build(quoted)
     ).ok
+
+
+def test_number_words_and_digits_are_one_number_in_both_directions():
+    from deslop.lock import DocumentLock, check, inventory
+    from deslop.numbers import words_to_digits
+
+    assert words_to_digits("three hundred cubits, fifty wide and the tenth day") == (
+        "300 cubits, 50 wide and the 10 day"
+    )
+    assert words_to_digits("twenty-one and a hundred and five") == "21 and 105"
+    assert inventory("The ship was three hundred cubits long.").numbers == {"300": 1}
+    doc = DocumentLock.build("The ship was 300 cubits long and fifty wide.")
+    assert check(
+        "The ship was 300 cubits long and fifty wide.",
+        "The ship ran three hundred cubits in length and 50 in width.",
+        doc,
+    ).ok
+    assert not check(
+        "The ship was 300 cubits long.", "The ship was three thousand cubits long.", doc
+    ).ok

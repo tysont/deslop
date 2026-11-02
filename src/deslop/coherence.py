@@ -178,6 +178,8 @@ class ConnectiveCheck(BaseModel):
     band_high: float | None = None
     ok: bool = True
     note: str = ""
+    advisory: bool = False  # reported, and told to the writer only when the judge finds
+    # the candidate incoherent; never a rejection on its own
 
 
 def connective_check(before: Analysis, after: Analysis, band: Band | None) -> ConnectiveCheck:
@@ -229,7 +231,7 @@ class CoherenceResult(BaseModel):
             (self.paragraphs.ok or self.paragraphs.advisory)
             and not self.tense
             and not self.antecedents
-            and self.connectives.ok
+            and (self.connectives.ok or self.connectives.advisory)
         )
 
     def reader_notes(self) -> list[str]:
@@ -248,7 +250,7 @@ class CoherenceResult(BaseModel):
                 f'"{f.text[:100]}" opens with "{f.word}" and nothing in the two sentences before '
                 "it says what that refers to"
             )
-        if not self.connectives.ok:
+        if not self.connectives.ok and not self.connectives.advisory:
             notes.append(self.connectives.note)
         return notes
 
