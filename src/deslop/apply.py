@@ -44,6 +44,7 @@ from deslop.reference import (
     PrimaryCheck,
     PrimaryText,
     PrimaryTextSpec,
+    canonical_label,
     load_primary_texts,
     normalize,
     verify_additions,
@@ -1246,7 +1247,16 @@ def _primary_permission(
         tokens = tokens[1:]  # a sentence-initial capital is not a name
     keys = [t.lower() for t in tokens]
     cites = [a for a in verified if a.kind == "citation" and a.text in sentence]
-    if any(a.kind == "citation" and a.text == item.text.strip() for a in verified):
+    cited = {canonical_label(a.text) for a in verified if a.kind == "citation"}
+    cited |= {canonical_label(a.text.split()[-1]) for a in verified if a.kind == "citation"}
+    if (
+        cited
+        and keys
+        and all(
+            canonical_label(k) in cited or k in STRUCTURE_WORDS or k in ("verse", "reference")
+            for k in keys
+        )
+    ):
         return "a citation that resolves in a declared primary text"
     if (
         item.category == "entity"

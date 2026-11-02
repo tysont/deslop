@@ -311,6 +311,11 @@ class PrimaryCheck(BaseModel):
         return not self.rejected
 
 
+def _place(text: PrimaryText, where: str) -> str:
+    """`<text name> <label>`, without repeating a name the label already starts with."""
+    return where if where.lower().startswith(text.name.lower()) else f"{text.name} {where}"
+
+
 def quoted_spans(text: str) -> list[str]:
     return [
         m.group(1).strip()
@@ -352,13 +357,13 @@ def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) ->
             for t in texts:
                 where = t.find_quote(q)
                 if where:
-                    add.verified, add.where, add.note = True, f"{t.name} {where}", ""
+                    add.verified, add.where, add.note = True, _place(t, where), ""
                     break
             if not add.verified:
                 for t in texts:
                     where, run = t.nearest(q)
                     if run:
-                        add.nearest = f"{run} ({t.name} {where})"
+                        add.nearest = f"{run} ({_place(t, where)})"
                         break
         check.additions.append(add)
     for c in primary_citations(candidate, texts):
@@ -374,7 +379,7 @@ def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) ->
                 for t in answering:
                     where = t.resolve(c)
                     if where:
-                        add.verified, add.where, add.note = True, f"{t.name} {where}", ""
+                        add.verified, add.where, add.note = True, _place(t, where), ""
                         break
         check.additions.append(add)
     return check

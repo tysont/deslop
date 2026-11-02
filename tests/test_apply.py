@@ -317,6 +317,12 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
                     category="entity",
                     sentence="Out go the two jars (Epic 24.527).",
                 ),
+                AddedClaim(
+                    text="Verse reference 6:18 locating the covenant statement",
+                    kind="claim",
+                    category="number",
+                    sentence="The covenant is given (6:18).",
+                ),
             ]
         )
         return cand
@@ -331,17 +337,21 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
         "a citation that resolves in a declared primary text",
         "names a declared primary text",
         "verbatim in Scripture 6:18",
+        "a citation that resolves in a declared primary text",
     ]
     assert not cand.semantic.ok, "a fact from the primary text is still an addition by default"
 
     cand = candidate()
     permit_primary(cand, [gen], allow_facts=True, original="Noah is told to build.")
     assert [a.text for a in cand.semantic.added] == ["Names the Epic and cites 24.527"]
-    assert cand.semantic.cleared[-1].note == "a fact verifiable at Scripture 6:15"
+    assert [a.note for a in cand.semantic.cleared][-2:] == [
+        "a fact verifiable at Scripture 6:15",
+        "a citation that resolves in a declared primary text",
+    ]
 
     bare = candidate()
     permit_primary(bare, [], allow_facts=True, original="Noah is told to build.")
-    assert len(bare.semantic.added) == 5, "no primary text, no permission"
+    assert len(bare.semantic.added) == 6, "no primary text, no permission"
 
 
 def test_texture_hints_reach_the_writer_and_never_the_lock(fixture_voice, slop_text):
