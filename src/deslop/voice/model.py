@@ -28,6 +28,13 @@ class AuthorProvenance(BaseModel):
     sources: list[str] = Field(default_factory=list)  # sites or origin notes
 
 
+def _is_relative(path: str | None) -> bool:
+    """A recorded path a voice may keep: relative, and not home-relative."""
+    if not path:
+        return False
+    return not path.startswith(("/", "~")) and not Path(path).is_absolute()
+
+
 class DocumentProvenance(BaseModel):
     title: str
     author: str
@@ -112,6 +119,7 @@ class Voice(BaseModel):
     exemplars: str
     path: Path | None = None
     read_only: bool = False  # True when loaded from a packed .voice zip
+    sources: list[Path] = Field(default_factory=list, exclude=True)  # what from_texts measured
 
     @property
     def name(self) -> str:
@@ -140,6 +148,7 @@ class Voice(BaseModel):
         target = Path(path)
         if self.read_only and self.path is not None and target.resolve() == self.path.resolve():
             raise PackError("this voice was loaded read-only from its zip; save to another path")
+        self.meta.corpus_path = self._relative_corpus(target)
         if target.is_dir():
             self.write_dir(target)
             self.path = target
@@ -149,6 +158,17 @@ class Voice(BaseModel):
             pack_voice(Path(tmp), target)
         self.path = target
         return target
+
+    def _relative_corpus(self, target: Path) -> str | None:
+        """The corpus directory relative to the voice file's location when it lies inside
+        that tree, else None: a voice never records an absolute or home-relative path."""
+        if len(self.sources) != 1 or not self.sources[0].is_dir():
+            return self.meta.corpus_path if _is_relative(self.meta.corpus_path) else None
+        base = (target if target.is_dir() else target.parent).resolve()
+        try:
+            return self.sources[0].resolve().relative_to(base).as_posix() or None
+        except ValueError:
+            return None
 
     @classmethod
     def load(cls, path: Path | str) -> Voice:
@@ -166,6 +186,8 @@ class Voice(BaseModel):
         meta = VoiceMeta.model_validate(
             yaml.safe_load((root / "voice.yaml").read_text(encoding="utf-8"))
         )
+        if not _is_relative(meta.corpus_path):
+            meta.corpus_path = None  # older voices recorded the machine's absolute path
         return cls(
             meta=meta,
             metrics=MetricsProfile.model_validate_json(
@@ -219,18 +241,21 @@ class Voice(BaseModel):
                 f"{len(report.failed)} unreadable file(s)"
             )
         if base is not None:
-            return extend(base, corpus, max_share=max_share, progress=progress)
-        return calibrate(
-            corpus,
-            name=name,
-            max_share=max_share,
-            exemplar_words=exemplar_words,
-            use_llm=use_llm,
-            llm_model=llm_model,
-            patterns=patterns,
-            progress=progress,
-            **opts,
-        )
+            voice = extend(base, corpus, max_share=max_share, progress=progress)
+        else:
+            voice = calibrate(
+                corpus,
+                name=name,
+                max_share=max_share,
+                exemplar_words=exemplar_words,
+                use_llm=use_llm,
+                llm_model=llm_model,
+                patterns=patterns,
+                progress=progress,
+                **opts,
+            )
+        voice.sources = [Path(p) for p in paths]
+        return voice
 
     @classmethod
     def calibrate(cls, corpus: Corpus, **opts: Any) -> Voice:

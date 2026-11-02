@@ -156,3 +156,33 @@ def test_small_corpus_voice_passes_its_own_documents_and_says_so(tmp_path, monke
     assert "more words" in flat
     big = Voice.from_texts([FIXTURES], name="big", use_llm=False, min_docs=2)
     assert big.metrics.small_corpus is None
+
+
+def test_a_voice_records_its_corpus_relative_to_itself_or_not_at_all(tmp_path):
+    import re
+    import shutil
+
+    corpus = tmp_path / "corpus"
+    shutil.copytree(FIXTURES, corpus)
+    voice = Voice.from_texts([corpus], name="critics", use_llm=False)
+    assert voice.meta.corpus_path is None, "nothing is recorded until the voice has a home"
+    voice.save(tmp_path / "critics.voice")
+    assert voice.meta.corpus_path == "corpus"
+    nested = tmp_path / "voices"
+    nested.mkdir()
+    voice.save(nested / "critics.voice")
+    assert voice.meta.corpus_path is None, "the corpus is outside the voice's tree"
+    elsewhere = Voice.from_texts([FIXTURES], name="critics", use_llm=False)
+    out = elsewhere.save(tmp_path / "elsewhere.voice")
+    assert elsewhere.meta.corpus_path is None
+    with zipfile.ZipFile(out) as zf:
+        text = zf.read("voice.yaml").decode("utf-8")
+    assert not re.search(r":\s+['\"]?[/~]", text), "no absolute or home path in voice.yaml"
+    # An older voice that recorded the machine's absolute path loads with it dropped.
+    work = tmp_path / "old"
+    work.mkdir()
+    voice.save(work)
+    meta = yaml.safe_load((work / "voice.yaml").read_text())
+    meta["corpus_path"] = "/home/someone/corpus"
+    (work / "voice.yaml").write_text(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
+    assert Voice.load(work).meta.corpus_path is None

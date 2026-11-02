@@ -2,7 +2,11 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
-## Unreleased
+## v2.4.2 - 2026-11-02
+
+- `voice.yaml` records `corpus_path` relative to the voice file when the corpus lies in the
+  same tree, else null, never an absolute or home path; an older voice's absolute path is
+  dropped on load. A test asserts a built voice contains no path starting with `/` or `~`.
 
 - Primary texts have a neutral format defined by deslop: a plain-text or markdown file, an
   optional `NAME.locs.json` sidecar of labelled spans (`{"ref", "start", "end"}` character
