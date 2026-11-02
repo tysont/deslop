@@ -563,11 +563,13 @@ def test_lab_recitation_and_fixture_check(fixture_voice, slop_text, tmp_path, mo
     r = runner.invoke(app, ["lab", "recitation", str(result), "--reference", str(ref)])
     assert r.exit_code == 0, r.output
     assert "shared run(s)" in r.output and "resister of force" in r.output
+    assert "shared run(s)" in r.output and "2.6%" in r.output
     r = runner.invoke(
         app, ["lab", "fixture-check", str(ref), "--voice", str(voice), "--max-calls", "10"]
     )
     assert r.exit_code == 2, r.output
     assert "does not qualify" in r.output and "resister of force" in r.output
+    assert "outside the propositions' vocabulary" in r.output
     scripted_factory(monkeypatch)
     r = runner.invoke(app, ["lab", "fixture-check", str(ref), "--voice", str(voice), "--json"])
     assert r.exit_code == 0, r.output

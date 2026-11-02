@@ -27,7 +27,7 @@ class Scripted(CachingProvider):
         break_on: str = "",
         pad_words: int = 0,
         add_quote: str = "",
-        drop_paragraph: bool = False,
+        one_paragraph: bool = False,
         recite: str = "",
     ):
         super().__init__(use_cache=False, cache_only=False)
@@ -39,7 +39,7 @@ class Scripted(CachingProvider):
         self.break_on = break_on
         self.pad_words = pad_words
         self.add_quote = add_quote
-        self.drop_paragraph = drop_paragraph
+        self.one_paragraph = one_paragraph
         self.recite = recite
         self.calls: list[tuple[str, str]] = []
 
@@ -48,6 +48,12 @@ class Scripted(CachingProvider):
         usage = Usage(calls=1, input_tokens=10, output_tokens=5, cost_usd=0.01)
         if "list the propositions" in system:
             text = "1. The chapter withholds its answer.\n2. Abraham is told to take his son."
+        elif "beyond what it asserts" in system:
+            text = (
+                "none"
+                if "Abraham" not in user
+                else 'Second person, a rhetorical question ("what does it ask of you?").'
+            )
         elif "compare an original passage" in system:
             text = json.dumps(
                 {"original": [{"n": 1, "kept": True}, {"n": 2, "kept": True}], "added": []}
@@ -90,9 +96,10 @@ class Scripted(CachingProvider):
                     source = user.split("# The original, in full\n", 1)[1]
                     source = source.split("\n\n# What it asserts", 1)[0]
                 paragraphs = [p.strip() for p in source.split("\n\n") if p.strip()]
-                if self.drop_paragraph:
-                    paragraphs = paragraphs[:1]
                 text = "\n\n".join(p if p.startswith("#") else "Plainly, " + p for p in paragraphs)
+                if self.one_paragraph:  # every prose paragraph merged into one
+                    prose = [p for p in paragraphs if not p.startswith("#")]
+                    text = "Plainly, " + " ".join(prose)
                 if self.lexical_break or (self.break_on and self.break_on in source):
                     text = text.replace("Abraham", "Isaac").replace("Genesis 22", "Exodus 3")
                 if self.pad_words:
@@ -216,14 +223,35 @@ def test_growth_limit_keeps_the_original(fixture_voice, slop_text):
     assert all(c.growth_pct and c.growth_pct > 15 for c in unit.candidates if c.text)
 
 
-def test_coherence_failure_keeps_the_original(fixture_voice, slop_text):
-    a, b, factory = pair(drop_paragraph=True)
+def test_paragraphing_outside_the_voices_range_keeps_the_original(fixture_voice, slop_text):
+    a, b, factory = pair(one_paragraph=True)
     result = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
     unit = result.units[0]
     assert unit.kept_original
     cand = next(c for c in unit.candidates if c.text)
     assert cand.coherence is not None and not cand.coherence.ok
-    assert "paragraphs where the original has" in cand.reason
+    paras = cand.coherence.paragraphs
+    assert paras.after == 1 and paras.band_high and paras.sentences_per_paragraph > paras.band_high
+    assert "this writer's paragraphs run from" in cand.reason and "split paragraphs" in cand.reason
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    assert "merge or split the input's paragraphs freely" in user
+
+
+def test_texture_hints_reach_the_writer_and_never_the_lock(fixture_voice, slop_text):
+    a, b, factory = pair()
+    result = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
+    unit = result.units[0]
+    assert len(unit.texture_by_paragraph) == len(unit.propositions_by_paragraph)
+    hints = [t for t in unit.texture_by_paragraph if t]
+    assert hints and all("rhetorical question" in t for t in hints)
+    assert "" in unit.texture_by_paragraph, "a plain paragraph's 'none' is kept as no hint"
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    assert "also did these things; use them where this writer would: Second person" in user
+    assert "they are hints, not requirements" in user
+    for system, user in a.calls:
+        if "compare an original passage" in system or "Answer four questions" in system:
+            assert "rhetorical question" not in user, "texture reached the lock or the judge"
+    assert all("rhetorical" not in p for p in unit.propositions)
 
 
 def test_a_failing_later_section_reverts_the_whole_document(fixture_voice, slop_text):
@@ -380,7 +408,8 @@ def test_a_candidate_reciting_the_reference_is_rejected_and_the_reference_stays_
     unit = result.units[0]
     assert unit.kept_original and result.max_recitation == 2.0
     cand = unit.candidates[0]
-    assert cand.recitation is not None and cand.recitation.share > 2.0
+    assert cand.recitation is not None and cand.recitation.novel_share > 2.0
+    assert cand.recitation.novel < cand.recitation.covered, "'the', 'a' and 'of' are input words"
     assert cand.recitation.spans[0].startswith("The candle-wood is a hard")
     assert cand.reason.startswith("recitation:")
     assert "resister of force" not in cand.reason, "the span is for the report, not the writer"
@@ -398,6 +427,6 @@ def test_a_candidate_reciting_the_reference_is_rejected_and_the_reference_stays_
         provider_factory=factory,
     )
     assert not loose.units[0].kept_original
-    assert loose.recitation is not None and loose.recitation.share > 2.0
+    assert loose.recitation is not None and loose.recitation.novel_share > 2.0
     plain = apply(slop_text, fixture_voice, n=1, provider_factory=factory)
     assert plain.units[0].candidates[0].recitation is None and plain.recitation is None

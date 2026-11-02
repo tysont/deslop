@@ -2,6 +2,24 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.3.4 - 2026-11-01
+
+- Recitation counts novel words: the limit (`--max-recitation`, the fixture rule) applies to
+  recited words the input (or the propositions) does not contain at all, since eight-word
+  runs reassemble from the input's own words; the raw share is reported alongside.
+  `fixture-check` qualifies a text when the novel share is under 1% of the draft.
+- Texture hints: the extractor also notes, per paragraph, what the original did beyond
+  asserting (person and address, rhetorical questions, images, exclamations, appeals to the
+  reader). The writer sees them as "the original paragraph also did these things; use them
+  where this writer would"; they are never locked, required or treated as propositions.
+- Paragraphing follows the voice: the writer merges or splits the input's paragraphs freely;
+  the coherence checks require the output's sentences per paragraph to sit in the exemplars'
+  10th to 90th percentile instead of matching the input's count; tense drift pairs by
+  position only when the counts agree; the judge's order item ignores paragraph breaks.
+- Materiality: a sentence that depicts a scene, object or action the original does not
+  present is a material addition (category `scene`); restating a stated fact remains
+  permitted.
+
 ## v2.3.3 - 2026-11-01
 
 - Recitation check: with `--reference FILE` every candidate is measured for runs of eight or

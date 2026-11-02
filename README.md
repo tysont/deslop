@@ -109,7 +109,7 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--report-all` | off | judge and report every candidate in full, pass or fail |
 | `--compare PATH` | none | write a self-contained HTML comparison page (reference, input, candidate; sentence-aligned diff; checks pinned to paragraphs) |
 | `--reference FILE` | none | the human text the input was made from: every candidate is checked for recitation of it (it is never shown to a model), and it fills the comparison page's first column |
-| `--max-recitation` | `2` | reject a candidate when more than this percent of its words lie in runs of eight or more words shared with the reference and not with the input |
+| `--max-recitation` | `2` | reject a candidate when more than this percent of its words are recited: in runs of eight or more words shared with the reference and not with the input, and not among the input's words at all (the raw share is reported alongside) |
 | `--n` | `3` | candidates sampled per document (or per section) in rewrite mode |
 | `--chunk-words` | `2500` | longer documents are rewritten section by section |
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
@@ -122,14 +122,18 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 Rewrite mode writes the document as a whole: every paragraph's propositions are extracted
 (cached); `--n` candidates are sampled at temperature 0.9 from the providers in rotation
 with the profile, the rules, the exemplars nearest the piece, the full original and the
-propositions by paragraph, and told to write the piece as this writer would, keep every
-proposition and add none, and keep the author's tense, person, paragraphing and order of
-argument unless the profile says otherwise. Each candidate must pass the content lock
-(nothing locked removed), the length limit (`--max-growth`), the primary-text check, the
-coherence checks (same paragraphing; the dominant tense of each paragraph unchanged; every
-sentence-initial pronoun with an antecedent in the two sentences before it; connective
-openers in the voice's band and near the original's share) and the semantic lock paragraph
-by paragraph (every proposition kept, none added, judged by a different provider). Then a
+propositions by paragraph (each with a texture note: what the original paragraph also did,
+such as its address, questions, images and exclamations, as a hint and never a lock), and
+told to write the piece as this writer would, keep every proposition and add none, adopt the
+writer's person and address, let paragraph length and count follow the exemplars rather than
+the input, and keep the author's tense and order of argument unless the profile says
+otherwise. Each candidate must pass the content lock (nothing locked removed), the length
+limit (`--max-growth`), the primary-text check, the coherence checks (sentences per
+paragraph inside the exemplars' range; the dominant tense unchanged; every sentence-initial
+pronoun with an antecedent in the two sentences before it; connective openers in the voice's
+band and near the original's share) and the semantic lock paragraph by paragraph (every
+proposition kept, nothing material added: no new entity, number, event, unstated cause, or
+scene, object or action the original does not present; judged by a different provider). Then a
 provider that wrote neither text judges it against the original on four items, each
 answered separately: reads as the voice, coherent, consistent tense and person, preserves
 the argument's order and emphasis. A candidate must win or tie on every item; survivors are
@@ -217,15 +221,18 @@ caches them.
 
 Re-score every candidate of a saved `apply --json` result for recitation of a reference text,
 offline: the runs of eight or more words (lowercased, punctuation stripped) it shares with the
-reference and not with the input, their count, the share of the candidate's words they cover
-and the longest three.
+reference and not with the input, their count, the share of the candidate's words they cover,
+the recited words outside the input's vocabulary (the novel share, which the limit applies
+to) and the longest three.
 
 ### `deslop lab fixture-check ORIGINAL.md --voice VOICE [--draft] [--json]`
 
 Can a text serve as a held-out fixture? Its propositions are extracted, one draft is written
 from them alone in the voice (the text itself is never shown; two live calls, cached), and the
-draft is checked for recitation of the text. A text qualifies only under 1% recitation; exit 2
-when it does not. `tests/fixtures/registers/README.md` states the rule for the fixture set.
+draft is checked for recitation of the text. A text qualifies only when the recited words
+outside the propositions' vocabulary are under 1% of the draft (the raw share is reported
+alongside); exit 2 when it does not. `tests/fixtures/registers/README.md` states the rule for
+the fixture set.
 
 ### `deslop lab blind --candidates DIR [--texts DIR] [--n 5] [--seed N] [--min-overlap 0.03] [--export DIR]`
 

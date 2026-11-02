@@ -28,7 +28,9 @@ def recitation_lines(c: dict) -> list[str]:
         return ["Recitation: not checked (no --reference)"]
     out = [
         f"Recitation: {rec['share']:.1f}% of words in {rec['ngrams']} run(s) of 8+ words "
-        f"shared with the reference and not the input ({rec['covered']}/{rec['words']} words)"
+        f"shared with the reference and not the input ({rec['covered']}/{rec['words']} words); "
+        f"novel {rec.get('novel_share', 0.0):.1f}% ({rec.get('novel', 0)} recited words outside "
+        "the input's vocabulary; the limit applies to this)"
     ]
     out.extend(f"- recited ({len(span.split())} words): {span}" for span in rec["spans"])
     return out
@@ -97,12 +99,12 @@ def coherence_lines(c: dict | None, unit: dict) -> list[str]:
 
 
 def _ok(c: dict) -> bool:
-    return (
-        c["paragraphs_before"] == c["paragraphs_after"]
-        and not c["tense"]
-        and not c["antecedents"]
-        and c["connectives"]["ok"]
+    paragraphs_ok = (
+        c["paragraphs"]["ok"]
+        if "paragraphs" in c
+        else (c["paragraphs_before"] == c["paragraphs_after"])
     )
+    return paragraphs_ok and not c["tense"] and not c["antecedents"] and c["connectives"]["ok"]
 
 
 def metric_table(rows: list[dict]) -> list[str]:
@@ -147,7 +149,8 @@ def main(register: str, result_path: Path, out: Path) -> None:
         lines += [
             f"Recitation against {d['reference']} (limit {d['max_recitation']}%): "
             + (
-                f"winner {rec['share']:.1f}% in {rec['ngrams']} shared run(s)"
+                f"winner {rec['share']:.1f}% in {rec['ngrams']} shared run(s), novel "
+                f"{rec.get('novel_share', 0.0):.1f}%"
                 if rec
                 else "no winner"
             ),
@@ -241,6 +244,11 @@ def main(register: str, result_path: Path, out: Path) -> None:
                 lines.append("Judge: not reached")
             lines.append(f"Reason: {c['reason']}")
             lines.append("")
+    textures = unit.get("texture_by_paragraph") or []
+    if any(textures):
+        lines += ["## Texture hints (shown to the writer only; never locked)", ""]
+        lines += [f"- Paragraph {i}: {t or '(none)'}" for i, t in enumerate(textures, 1)]
+        lines.append("")
     lines += ["## Meaning diff", "", "```", d["meaning_diff"], "```", ""]
     lines += ["## Coherence", "", *coherence_lines(d.get("coherence"), unit), ""]
     lines += ["## Judge items per candidate", "", *judge_table(unit), ""]

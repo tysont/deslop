@@ -160,7 +160,10 @@ def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[st
         notes.append(
             {"kind": "coherence", "paragraph": -1, "text": f"connectives: {conn.get('note')}"}
         )
-    if coh and coh.get("paragraphs_before") != coh.get("paragraphs_after"):
+    paras = coh.get("paragraphs") or {}
+    if paras and not paras.get("ok", True):
+        notes.append({"kind": "coherence", "paragraph": -1, "text": f"paragraphs: {paras['note']}"})
+    elif coh and coh.get("paragraphs_before") != coh.get("paragraphs_after"):
         notes.append(
             {
                 "kind": "coherence",
@@ -175,7 +178,9 @@ def candidate_notes(cand: dict[str, Any], paragraphs: list[str]) -> list[dict[st
                 "kind": "recitation",
                 "paragraph": -1,
                 "text": f"recitation: {rec['share']:.1f}% of words in {rec['ngrams']} shared "
-                f"run(s) of {NGRAM}+ words not in the input",
+                f"run(s) of {NGRAM}+ words not in the input; novel "
+                f"{rec.get('novel_share', 0.0):.1f}% ({rec.get('novel', 0)} words outside the "
+                "input's vocabulary)",
             }
         )
         for span in rec.get("spans", []):
@@ -327,7 +332,7 @@ function renderCandidate(i){
   });
   el.innerHTML = out;
   const j = c.judge || {}; const items = Object.keys(j).map(k => k + ' ' + j[k]).join(', ');
-  const rec = c.recitation ? '; recitation ' + c.recitation.share.toFixed(1) + '% (' + c.recitation.ngrams + ' shared runs)' : '';
+  const rec = c.recitation ? '; recitation ' + c.recitation.share.toFixed(1) + '% (' + c.recitation.ngrams + ' shared runs), novel ' + (c.recitation.novel_share || 0).toFixed(1) + '%' : '';
   document.getElementById('candfacts').textContent = 'candidate ' + c.attempt + ' (' + c.model + '): ' + (c.winner ? 'winner' : c.accepted ? 'accepted' : 'rejected') + (items ? '; judge: ' + items : '') + (c.confidence ? ' (' + c.confidence.toFixed(2) + ')' : '') + rec + '; ' + c.reason;
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -367,8 +372,13 @@ def build_page(result: dict[str, Any], *, reference: str | None = None) -> str:
         rec = h.get("recitation")
         facts.append(
             f"recitation vs {h['reference']}: "
-            + (f"{rec['share']:.1f}% ({rec['ngrams']} shared runs)" if rec else "n/a")
-            + f", limit {h.get('max_recitation')}%"
+            + (
+                f"{rec['share']:.1f}% ({rec['ngrams']} shared runs), novel "
+                f"{rec.get('novel_share', 0.0):.1f}%"
+                if rec
+                else "n/a"
+            )
+            + f", limit {h.get('max_recitation')}% novel"
         )
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     return (

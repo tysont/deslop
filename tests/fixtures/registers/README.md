@@ -10,9 +10,12 @@ corpus.
 ## Validity rule
 
 A text qualifies as a fixture original only when `deslop lab fixture-check ORIGINAL.md
---voice <name>.voice` reports under 1% recitation: a draft written from the text's
-propositions alone must share with the text fewer than one word in a hundred in runs of eight
-or more words. A text the writer model can recite from memory is not a test of writing in a
-voice, whatever its author's standing. Prefer little-known authors; the check decides.
+--voice <name>.voice` reports under 1% novel recitation: in a draft written from the text's
+propositions alone, the words that lie in runs of eight or more words shared with the text
+and that the propositions do not contain at all must be fewer than one in a hundred of the
+draft. The raw share (every word in a shared run) is reported alongside but does not decide:
+eight-word runs reassemble from the propositions' own words even for a text no model has
+seen. A text the writer model can recite from memory is not a test of writing in a voice,
+whatever its author's standing. Prefer little-known authors; the check decides.
 
 `paraphrase/` keeps the v2.2.0 paraphrases for reference only.

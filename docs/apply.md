@@ -3,25 +3,42 @@
 `apply` writes a text in a voice. The default, rewrite mode, is generate-then-verify: the
 document is written afresh as a whole several times and each candidate has to prove itself.
 
-1. Every paragraph's propositions are extracted as a numbered list of short claims (cached).
+1. Every paragraph's propositions are extracted as a numbered list of short claims (cached),
+   and apart from them a texture note: what the paragraph does beyond asserting (grammatical
+   person and address, rhetorical questions, images or figures, exclamations, direct appeals
+   to the reader), each quoted briefly. The note is a hint to the writer only: it is never
+   locked, required or treated as a proposition, and the semantic lock never sees it.
 2. `--n` candidates (default 3) are sampled at temperature 0.9 from the configured providers in
    rotation. The writer sees the profile, the rules, the exemplars nearest the piece, the
-   full original and the propositions by paragraph, and is told: write this piece as this
-   writer would; keep every proposition and add none; keep the author's tense, person,
-   paragraphing and order of argument unless the voice's profile says otherwise. Nothing in
-   the prompt mentions metrics, sentence length, openers or citations.
+   full original and the propositions by paragraph (each with "the original paragraph also
+   did these things; use them where this writer would"), and is told: write this piece as
+   this writer would; keep every proposition and add none; adopt this writer's person and
+   address; paragraph length and count follow the exemplars, not the input, so merge or split
+   the input's paragraphs freely; keep the author's tense and order of argument unless the
+   voice's profile says otherwise. Nothing in the prompt mentions metrics, sentence length,
+   openers or citations.
 3. Each candidate is verified without a judge: the content lock (nothing locked removed), the
    length limit (no more than `--max-growth` percent, default 15, longer than the original),
-   the primary-text check (below), and the coherence checks: the same number of paragraphs;
-   the dominant finite-verb tense of each paragraph unchanged; every sentence-initial pronoun
+   the primary-text check (below), and the coherence checks: the output's mean sentences per
+   paragraph inside the exemplars' range (their 10th to 90th percentile; without a range the
+   paragraph count must match the original's); the dominant finite-verb tense of each
+   paragraph unchanged (paired by position, or against the original's dominant tense as a
+   whole when the output is re-paragraphed); every sentence-initial pronoun
    (and this, that, it) with a noun phrase in the two sentences before it; and the share of
    sentences opening with a connective (and, but, so, then, because, since, while, yet)
    inside the voice's band and within half of the original's share.
-4. The semantic lock runs paragraph by paragraph: a different provider checks that every
-   proposition is kept and nothing new is asserted.
+4. The semantic lock runs paragraph by paragraph when the paragraphing is kept, else once
+   over the section: a different provider checks that every proposition is kept and nothing
+   material is added. A material addition is a new named entity, number, event, a causal
+   claim whose cause the original neither states nor implies, or a scene, object or action
+   the original does not present (cattle finding nothing to graze, when the original says
+   only that the fields are now sea at high tide); restating a stated fact in other words is
+   permitted.
 5. A provider that wrote neither text judges the candidate against the original on four
    items, each answered separately: reads as the voice; coherent (each sentence follows
-   from the last); consistent tense and person; preserves the argument's order and emphasis.
+   from the last); consistent tense and person; preserves the argument's order and emphasis
+   (paragraph breaks are not part of it: the same content in the same order, merged or split
+   into different paragraphs, is the same order).
    The candidate must win or tie on every item. Survivors are judged round-robin on the same
    items, giving a win rate; the best win rate, then the linter distance, wins.
 6. If no candidate passes, one retry carries what a reader noticed in the earlier drafts:
@@ -70,11 +87,15 @@ propositions. `--reference FILE` names that original when there is one: it is ne
 to the writer or the judge, only compared against. For each candidate the check collects
 the runs of eight or more words (lowercased, punctuation stripped) shared with the reference
 and not present in the input, and reports their count, the share of the candidate's words
-they cover and the longest three spans. A candidate over `--max-recitation` (2% of its words)
-is rejected for recitation; the retry prompt says only that the draft recited a published
-text, never which words. `deslop lab recitation` re-scores a saved result offline, and
-`deslop lab fixture-check` applies the same measure to a prospective fixture text (under 1%
-to qualify).
+they cover, the longest three spans, and the recited words the input does not contain at all
+(the novel share). Eight-word runs can be reassembled from the input's own words in the
+reference's order, so the raw share has a floor even for a text no model has seen; the novel
+share separates memory of the reference from reassembly of the input, and it is the figure
+the limits apply to. A candidate whose novel share is over `--max-recitation` (2% of its
+words) is rejected for recitation; the retry prompt says only that the draft recited a
+published text, never which words. `deslop lab recitation` re-scores a saved result offline,
+and `deslop lab fixture-check` applies the same measure to a prospective fixture text (the
+novel share under 1% of the draft to qualify; the raw share is reported alongside).
 
 ## Primary texts
 

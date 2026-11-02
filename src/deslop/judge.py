@@ -50,7 +50,9 @@ coherent: in which does each sentence follow from the last, with every pronoun a
 pointing at something already said.
 tense_person: which keeps a consistent tense and grammatical person throughout.
 order: which better preserves the order and emphasis of the argument's content. The presence
-or absence of a title, headings and lists is not part of this item.
+or absence of a title, headings and lists is not part of this item, and nor are paragraph
+breaks: the same content in the same order, merged or split into different paragraphs, is
+the same order.
 
 Give your confidence in the answers as a whole from 0.5 (a coin toss) to 1.0 (certain).
 Answer in JSON only:

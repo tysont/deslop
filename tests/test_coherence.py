@@ -84,6 +84,22 @@ def test_check_coherence_collects_every_failure_as_a_reader_note():
     assert not short.ok and any("paragraphs" in n for n in short.reader_notes())
 
 
+def test_paragraphing_follows_the_voices_range_when_it_has_one():
+    # PAST has two paragraphs of 3 and 2 sentences; merged into one of 5 sentences it keeps
+    # the voice's range and passes, while a range of short paragraphs rejects it
+    merged = PAST.replace("\n\n", " ")
+    wide = check_coherence(PAST, merged, band=None, para_band=Band(low=2.0, high=9.0))
+    assert wide.ok and wide.paragraphs.after == 1 and wide.paragraphs.sentences_per_paragraph == 5
+    narrow = check_coherence(PAST, merged, band=None, para_band=Band(low=1.0, high=3.0))
+    assert not narrow.ok and "split paragraphs" in narrow.reader_notes()[0]
+    split = check_coherence(PAST, PAST.replace(". ", ".\n\n"), band=None, para_band=Band(low=2.0))
+    assert not split.ok and "merge paragraphs" in split.reader_notes()[0]
+    # with the counts apart, tense drift pairs each output paragraph with the original's
+    # dominant tense as a whole: a merged present-tense rewrite drifts from the past
+    drift = check_coherence(PAST, PRESENT.replace("\n\n", " "), band=None, para_band=Band(low=1.0))
+    assert [(d.paragraph, d.before, d.after) for d in drift.tense] == [(1, "past", "present")]
+
+
 def test_mixed_tense_needs_a_majority_and_is_never_drift():
     even = analyze(
         "The road ran north. Nobody walks it now. The miller closed his gate. He lights the lamp."

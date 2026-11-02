@@ -1,5 +1,6 @@
-# ABOUTME: Semantic lock: extracts a unit's propositions, then has a second provider check
-# ABOUTME: that a rewrite keeps every one and adds none, naming any proposition that fails.
+# ABOUTME: Semantic lock: extracts a unit's propositions (and, apart, its texture: what the
+# ABOUTME: paragraph does beyond asserting), then has a second provider check a rewrite keeps every
+# ABOUTME: proposition and adds none, naming any that fails. Texture is a hint, never locked.
 from __future__ import annotations
 
 import json
@@ -31,15 +32,27 @@ aphorisms (restate the idea plainly), and claims attributed to named others ("X 
 claim about X). Do not include questions, instructions to the reader, or citations. Return a
 numbered list, one proposition per line, nothing else."""
 
-PROTECTED = ("fact", "entity", "number", "quotation", "causal", "evaluative", "event")
+TEXTURE_SYSTEM = """You describe what a paragraph does beyond what it asserts: its grammatical
+person and mode of address, rhetorical questions, images or figures of speech, exclamations,
+and any direct appeal to the reader, each quoted briefly. Name only what is present, in one
+short note of a line or two; for a paragraph that does none of these, answer "none". Return
+the note and nothing else."""
+
+PROTECTED = ("fact", "entity", "number", "quotation", "causal", "evaluative", "event", "scene")
 PERMITTED = ("person", "discourse", "emphasis", "figurative", "hedging", "reordering")
 
 MATERIALITY = """An addition is reported only if it introduces a new named entity, a new number or
-quantity, a new event, or a causal or conditional claim whose cause or condition is not stated
-or implied in the original. Restatement, elaboration of a stated claim in other words, and
-making an implicit causal link explicit are not additions."""
+quantity, a new event, a causal or conditional claim whose cause or condition is not stated
+or implied in the original, or a scene, object or action the original does not present (a
+sentence that depicts cattle finding nothing to graze, when the original says only that the
+fields are now sea at high tide, is an addition). Restatement of a stated fact in other words,
+elaboration of a stated claim, and making an implicit causal link explicit are not
+additions."""
 
-REVIEW_QUESTION = "Would a careful reader of the original learn anything new from this sentence?"
+REVIEW_QUESTION = (
+    "Would a careful reader of the original learn anything new from this sentence, or be "
+    "shown a scene, object or action the original does not present?"
+)
 
 CONTEXT_NOTE = """
 The original's neighbouring paragraphs are shown as well, for context only: the rewrite is
@@ -89,12 +102,13 @@ the act of speaking are never additions.
 
 Report each addition with the rewrite's sentence, what is new in it, and its category:
 "entity" (a new named entity), "number" (a new number or quantity), "event" (a new event),
-or "causal" (a causal or conditional claim whose cause or condition the original neither
-states nor implies).
+"causal" (a causal or conditional claim whose cause or condition the original neither
+states nor implies), or "scene" (a scene, object or action depicted that the original does
+not present).
 
 Return exactly: {{"original": [{{"n": 1, "kept": true, "note": ""}}, ...],
 "added": [{{"sentence": "...", "text": "what is new", "category": "entity" | "number" |
-"event" | "causal"}}, ...]}}"""
+"event" | "causal" | "scene"}}, ...]}}"""
 
 
 class PropositionCheck(BaseModel):
@@ -106,7 +120,7 @@ class PropositionCheck(BaseModel):
 class AddedClaim(BaseModel):
     text: str  # what is new (strict mode: the claim)
     kind: str  # claim | permitted | reader_address | citation
-    category: str = ""  # entity | number | event | causal (strict mode: free)
+    category: str = ""  # entity | number | event | causal | scene (strict mode: free)
     sentence: str = ""  # the rewrite sentence it sits in (content mode)
     note: str = ""  # the reviewer's one line, for cleared items
 
@@ -155,6 +169,14 @@ def extract_propositions(
     completion = provider.complete(system, text.strip(), temperature=0.0)
     props = parse_numbered(completion.text)
     return props or [line.strip() for line in completion.text.splitlines() if line.strip()]
+
+
+def extract_texture(text: str, provider: CachingProvider) -> str:
+    """What the paragraph does beyond asserting: person and address, rhetorical questions,
+    figures, exclamations, appeals to the reader, briefly quoted. A hint for the writer; it
+    is never locked, required or treated as a proposition. Deterministic, so cached."""
+    note = " ".join(provider.complete(TEXTURE_SYSTEM, text.strip(), temperature=0.0).text.split())
+    return "" if note.strip(".\"'").lower() in ("", "none") else note
 
 
 def _json_block(text: str) -> dict[str, Any]:

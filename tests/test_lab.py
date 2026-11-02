@@ -90,9 +90,9 @@ def test_fixture_check_drafts_from_propositions_alone_and_measures_recitation(fi
         "The chapter withholds its answer.",
         "Abraham is told to take his son.",
     ]
-    assert check.recitation.share > 1.0 and not check.qualifies
+    assert check.recitation.novel_share > 1.0 and not check.qualifies
     assert check.recitation.spans[0].startswith("The candle-wood")
-    assert check.novel_words == 29, (
+    assert check.recitation.novel == 29, (
         "every recited word but 'the' and 'is' is outside the propositions"
     )
     system, user = next(c for c in reciter.calls if "write prose" in c[0])

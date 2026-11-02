@@ -61,6 +61,19 @@ def test_parse_numbered_accepts_dots_parens_and_bullets():
     assert parse_numbered(text) == ["First claim.", "Second claim.", "Third claim."]
 
 
+def test_extract_texture_is_a_short_note_or_nothing():
+    from deslop.semantic import TEXTURE_SYSTEM, extract_texture
+
+    p = Canned("anthropic", 'Second person ("you"); a rhetorical\nquestion; an exclamation.')
+    assert (
+        extract_texture("text", p)
+        == 'Second person ("you"); a rhetorical question; an exclamation.'
+    )
+    assert "never" not in TEXTURE_SYSTEM and "quoted briefly" in TEXTURE_SYSTEM
+    assert extract_texture("text", Canned("anthropic", "None.")) == ""
+    assert extract_texture("text", Canned("anthropic", "  none ")) == ""
+
+
 def test_extract_propositions_falls_back_to_lines():
     p = Canned("anthropic", "The chapter withholds its answer.\nAbraham obeys.")
     assert extract_propositions("text", p) == [
@@ -229,7 +242,7 @@ def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
             self.systems.append(system)
             self.prompts.append(user)
             if "first reader flagged" in system:
-                new = "1834" in user
+                new = "1834" in user or "cattle" in user
                 text = json.dumps(
                     {
                         "new": new,
@@ -252,6 +265,11 @@ def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
                                 "category": "event",
                             },
                             {"sentence": "See Gen 6:5.", "text": "Gen 6:5", "category": "entity"},
+                            {
+                                "sentence": "The cattle found nothing there to graze.",
+                                "text": "cattle finding nothing to graze",
+                                "category": "scene",
+                            },
                         ],
                     }
                 )
@@ -262,14 +280,19 @@ def test_content_fidelity_runs_two_passes_and_reports_cleared_items():
         "The ship sank in 1830.", "cand", ["The ship sank."], p, fidelity="content"
     )
     assert MATERIALITY in p.systems[0] and "sentence by sentence" in p.systems[0]
-    assert len(p.systems) == 3, (
+    assert "a scene, object or action the original does not present" in MATERIALITY
+    assert len(p.systems) == 4, (
         "pass one, then one review per flagged claim (the citation is exempt)"
     )
     assert REVIEW_QUESTION in p.systems[1] and "ORIGINAL PARAGRAPH:" in p.prompts[1]
-    assert result.failing == ["added (number): 1834"]
+    assert "scene, object or action" in REVIEW_QUESTION
+    assert result.failing == [
+        "added (number): 1834",
+        "added (scene): cattle finding nothing to graze",
+    ]
     assert [c.text for c in result.cleared] == ["went down with the ship"]
     assert result.cleared[0].note == "restates the sinking" and result.cleared[0].sentence
-    assert [a.kind for a in result.added] == ["claim", "citation"]
+    assert [a.kind for a in result.added] == ["claim", "citation", "claim"]
 
 
 def test_strict_fidelity_keeps_the_old_behaviour():

@@ -757,8 +757,9 @@ def apply_cmd(
     max_recitation: float | None = typer.Option(
         None,
         "--max-recitation",
-        help="Reject a candidate when more than PCT of its words lie in runs of 8+ words "
-        "shared with the reference and not with the input (2)",
+        help="Reject a candidate when more than PCT of its words are recited: in runs of 8+ "
+        "words shared with the reference and not with the input, and not among the input's "
+        "words at all (2)",
     ),
     budget: float | None = typer.Option(
         None,
@@ -1015,7 +1016,8 @@ def lab_recitation(
     for r in rows:
         console.print(
             f"candidate {r['attempt']} ({r['status']}): {r['ngrams']} shared run(s), "
-            f"{r['covered']}/{r['words']} words covered, {r['share']:.1f}%"
+            f"{r['covered']}/{r['words']} words covered, {r['share']:.1f}%; "
+            f"{r['novel']} outside the input's words, {r['novel_share']:.1f}%"
         )
         for span in r["spans"]:
             console.print(f"    {len(span.split())} words: {span}", markup=False)
@@ -1036,7 +1038,8 @@ def lab_fixture_check(
 ) -> None:
     """Can this text be a held-out fixture? Its propositions are extracted, one draft is
     written from them alone (the text is never shown), and the draft is checked for
-    recitation of the text. It qualifies only under 1%. Two live calls, cached."""
+    recitation of the text. It qualifies only when the recited words outside the
+    propositions' vocabulary are under 1% of the draft. Two live calls, cached."""
     from deslop.apply import build_models
     from deslop.lab import fixture_check
     from deslop.providers.base import DEFAULT_JUDGE, DEFAULT_WRITER, BudgetExceeded, ProviderError
@@ -1074,11 +1077,15 @@ def lab_fixture_check(
     for span in r.spans:
         console.print(f"    {len(span.split())} words: {span}", markup=False)
     console.print(
-        f"{check.novel_words} of the {r.covered} recited words are outside the propositions' "
-        "vocabulary (reassembly of the propositions gives 0; memory of the text gives more)"
+        f"{r.novel} of the {r.covered} recited words are outside the propositions' vocabulary: "
+        f"{r.novel_share:.1f}% of the draft (reassembly of the propositions gives 0; memory of "
+        "the text gives more)"
     )
     verdict = "qualifies" if check.qualifies else "does not qualify"
-    console.print(f"{verdict} as a fixture (under {check.threshold:.0f}% recitation)")
+    console.print(
+        f"{verdict} as a fixture (recited words outside the propositions under "
+        f"{check.threshold:.0f}% of the draft)"
+    )
     if show_draft:
         console.print("", check.draft, markup=False)
     raise typer.Exit(0 if check.qualifies else 2)

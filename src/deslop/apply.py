@@ -8,7 +8,7 @@ import difflib
 import json
 import math
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -46,7 +46,9 @@ from deslop.semantic import (
     SemanticResult,
     check_meaning,
     extract_propositions,
+    extract_texture,
 )
+from deslop.stats import Band
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
 
@@ -112,6 +114,7 @@ class UnitLog(BaseModel):
     final: str
     propositions: list[str] = Field(default_factory=list)
     propositions_by_paragraph: list[list[str]] = Field(default_factory=list)
+    texture_by_paragraph: list[str] = Field(default_factory=list)  # hints to the writer only
     candidates: list[CandidateLog] = Field(default_factory=list)
     chosen: int | None = None
     kept_original: bool = False
@@ -164,7 +167,8 @@ class Result(BaseModel):
     `cost` totals tokens and USD; `stopped` says why the loop ended; `exemplars_used` is
     False when the voice was packed without exemplars; `draft` holds the section logs when
     a brief was applied; `recitation` is the winner's recitation check against the
-    reference (`reference` names it) under `max_recitation` percent, when one was given.
+    reference (`reference` names it), whose novel share must be under `max_recitation`
+    percent, when one was given.
     """
 
     mode: str
@@ -385,11 +389,14 @@ DOCUMENT_TEMPLATE = """# Exemplars of the voice
 Write {what} as this writer would, from its first paragraph to its last. Keep every
 proposition listed above and add none. Adopt this writer's grammatical person and mode of
 address as shown in the exemplars and profile; the propositions' phrasing is not a constraint
-on person or address. Formatting (title, headings, lists, emphasis) follows the exemplars;
-the input's formatting is not a constraint, and when the exemplars have no headings the
-output has none. Keep the author's tense, paragraphing and order of argument unless the
-voice's profile says otherwise. Keep it about the length of the original. Return {returned}
-and nothing else.{noticed}
+on person or address. Where a paragraph's note says what the original paragraph also did
+(its address, questions, images, exclamations, appeals to the reader), use those where this
+writer would; they are hints, not requirements. Formatting (title, headings, lists, emphasis)
+follows the exemplars; the input's formatting is not a constraint, and when the exemplars
+have no headings the output has none. Paragraph length and count follow the exemplars, not
+the input: merge or split the input's paragraphs freely. Keep the author's tense and order of
+argument unless the voice's profile says otherwise. Keep it about the length of the original.
+Return {returned} and nothing else.{noticed}
 
 Draft {attempt} of {n}."""
 
@@ -597,13 +604,19 @@ def sections_of(a: Analysis, chunk_words: int) -> list[Section]:
     ]
 
 
-def _numbered(propositions: list[list[str]], first: int) -> str:
+TEXTURE_LEAD = "The original paragraph also did these things; use them where this writer would: "
+
+
+def _numbered(propositions: list[list[str]], first: int, textures: Sequence[str] = ()) -> str:
     lines = []
     for i, props in enumerate(propositions, first + 1):
         lines.append(f"Paragraph {i}:")
         lines.extend(f"  {k}. {p}" for k, p in enumerate(props, 1))
         if not props:
             lines.append("  (none)")
+        texture = textures[i - first - 1] if i - first - 1 < len(textures) else ""
+        if texture:
+            lines.append(f"  {TEXTURE_LEAD}{texture}")
     return "\n".join(lines)
 
 
@@ -620,11 +633,13 @@ def document_prompt(
     attempt: int,
     n: int,
     noticed: list[str],
+    textures: Sequence[str] = (),
 ) -> tuple[str, str]:
     """The writer's prompt: profile and rules (system), exemplars nearest the piece, the full
-    original, its propositions by paragraph, and the instruction. A long document adds the
-    section to write with the already-rewritten section before it and the original section
-    after it. `noticed` carries what a reader saw in earlier drafts, for the retry."""
+    original, its propositions by paragraph (each with its texture note, when there is one),
+    and the instruction. A long document adds the section to write with the already-rewritten
+    section before it and the original section after it. `noticed` carries what a reader saw
+    in earlier drafts, for the retry."""
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
     whole = section.count == 1
     block = (
@@ -641,7 +656,7 @@ def document_prompt(
     user = DOCUMENT_TEMPLATE.format(
         exemplars="\n\n".join(exemplars.closest(section_text)) or "(no exemplars in this voice)",
         document=original,
-        propositions=_numbered(propositions, 0 if whole else section.first) or "(none)",
+        propositions=_numbered(propositions, 0 if whole else section.first, textures) or "(none)",
         section_block=block,
         what="this piece" if whole else "this section",
         returned="the whole piece" if whole else "the section",
@@ -887,7 +902,13 @@ def coherence_report(result: Result) -> str:
     else:
         lines.append(
             f"coherence: {'ok' if c.ok else 'FAILED'}; paragraphs {c.paragraphs_before} -> "
-            f"{c.paragraphs_after}; tense drift in {len(c.tense)} paragraph(s); "
+            f"{c.paragraphs_after} ({c.paragraphs.sentences_per_paragraph:.1f} sentences each"
+            + (
+                f"; the voice's run {c.paragraphs.band_low:.1f} to {c.paragraphs.band_high:.1f})"
+                if c.paragraphs.band_high is not None and c.paragraphs.band_low is not None
+                else ")"
+            )
+            + f"; tense drift in {len(c.tense)} paragraph(s); "
             f"{len(c.antecedents)} pronoun(s) without an antecedent; connective openers "
             f"{100 * c.connectives.before:.0f}% -> {100 * c.connectives.after:.0f}%"
             + (f" ({c.connectives.note})" if c.connectives.note else "")
@@ -980,7 +1001,7 @@ def apply(
     by paragraph. Each candidate must pass the content lock (nothing locked removed), the length
     limit (`max_growth` percent), the primary-text check, the semantic lock paragraph by
     paragraph (every proposition kept, none added, checked by the `judge` model) and the
-    coherence checks (same paragraphing, same tense per paragraph, every sentence-initial
+    coherence checks (paragraphing in the voice's range, same tense, every sentence-initial
     pronoun with an antecedent, connective openers in the voice's band and near the original's
     share), then is judged against the original by the `judge` model (a different Anthropic
     model from the writer) on four items (voice, coherence, tense and person, order and
@@ -994,8 +1015,9 @@ def apply(
     without any, added quotations and citations are allowed and listed as unverified.
     `reference` is the human text the input was made from, when there is one: it is never
     shown to the writer or the judge, only compared against, and a candidate whose words are
-    more than `max_recitation` percent covered by runs of eight or more words it shares with
-    the reference but not with the input is rejected for recitation (rewrite mode).
+    more than `max_recitation` percent of its words recited from the reference (words in runs
+    of eight or more shared with the reference and not with the input, and not in the
+    input's vocabulary at all) is rejected for recitation (rewrite mode).
     `provider_factory` maps a provider name to a `CachingProvider` (tests replay a cache with
     it); `budget` is USD. `writer` and `judge` are model names or aliases (`opus`, `sonnet`,
     `haiku`) and must differ; `provider` is `anthropic` (the API) or `claude-cli`, default from
@@ -1169,6 +1191,7 @@ def _rewrite_loop(
         by_paragraph = [
             extract_propositions(p.text, writer0, fidelity=opts.fidelity) for p in a.paragraphs
         ]
+        textures = [extract_texture(p.text, writer0) for p in a.paragraphs]
     except ProviderError as exc:
         kept = [
             UnitLog(
@@ -1219,6 +1242,7 @@ def _rewrite_loop(
             previous=previous,
             following=following,
             report_before=report_before,
+            textures=textures[section.first : section.last + 1],
         )
         logs.append(log)
         if log.kept_original:
@@ -1324,15 +1348,18 @@ def _verify_section(
     if not cand.primary.ok:
         notes.extend(f"{add} is not in the primary text" for add in cand.primary.rejected[:3])
     band = voice.metrics.thresholds.metrics.get("connective_opener_pct")
-    cand.coherence = check_coherence(section_text, candidate, band=band)
+    stat = voice.metrics.metrics.get("para_len_mean")
+    para_band = Band(low=stat.p10, high=stat.p90) if stat is not None else None
+    cand.coherence = check_coherence(section_text, candidate, band=band, para_band=para_band)
     notes.extend(cand.coherence.reader_notes())
     if opts.reference is not None:
         cand.recitation = recitation(candidate, opts.reference, section_text)
-        if cand.recitation.share > opts.max_recitation:
+        if cand.recitation.novel_share > opts.max_recitation:
             # The spans stay in the log for the report; the writer is told only that it recited.
             notes.append(
-                f"recitation: {cand.recitation.share:.1f}% of its words recited a published "
-                f"text in runs of {NGRAM} words or more; it must be put in the writer's own words"
+                f"recitation: {cand.recitation.novel_share:.1f}% of its words recited a "
+                f"published text in runs of {NGRAM} words or more; it must be put in the "
+                "writer's own words"
             )
     return notes
 
@@ -1384,6 +1411,7 @@ def _rewrite_section(
     previous: str,
     following: str,
     report_before: Report,
+    textures: Sequence[str] = (),
 ) -> UnitLog:
     models, n, progress = opts.models, opts.n, opts.progress
     writer, judge = models.writer, models.judge
@@ -1396,6 +1424,7 @@ def _rewrite_section(
         final=section_text,
         propositions=[p for ps in props for p in ps],
         propositions_by_paragraph=props,
+        texture_by_paragraph=list(textures),
     )
     near = exemplars.closest(section_text, 2)
     noticed: list[str] = []
@@ -1415,6 +1444,7 @@ def _rewrite_section(
                 attempt=attempt,
                 n=ROUNDS * n,
                 noticed=noticed,
+                textures=textures,
             )
             try:
                 completion = writer.complete(system, user, temperature=CANDIDATE_TEMPERATURE)

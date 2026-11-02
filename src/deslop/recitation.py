@@ -7,7 +7,7 @@ import re
 from pydantic import BaseModel, Field
 
 NGRAM = 8  # words; a shared run shorter than this is ordinary English, not recitation
-DEFAULT_MAX_RECITATION = 2.0  # percent of candidate words covered by shared runs
+DEFAULT_MAX_RECITATION = 2.0  # percent of candidate words recited from outside the input's words
 FIXTURE_MAX_RECITATION = 1.0  # a text qualifies as a fixture only under this
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:['’][a-z0-9]+)*")
@@ -15,12 +15,17 @@ TOKEN_RE = re.compile(r"[a-z0-9]+(?:['’][a-z0-9]+)*")
 
 class RecitationResult(BaseModel):
     """What a candidate recites: how many of its `NGRAM`-word runs the reference contains and
-    the input does not, how many of its words those runs cover, and the longest three runs."""
+    the input does not, how many of its words those runs cover, how many of those words the
+    input does not contain at all (`novel`: reassembling the input's own words into a run the
+    reference happens to share gives 0; memory of the reference gives more), and the longest
+    three runs. `novel_share` is the figure the limits apply to."""
 
     ngrams: int = 0
     covered: int = 0
+    novel: int = 0
     words: int = 0
     share: float = 0.0  # percent of words covered
+    novel_share: float = 0.0  # percent of words covered and outside the input's vocabulary
     spans: list[str] = Field(default_factory=list)  # the longest three runs
     runs: list[str] = Field(default_factory=list)  # every maximal run, in candidate order
 
@@ -47,16 +52,18 @@ def recitation(
 ) -> RecitationResult:
     """Count the `n`-word runs of `candidate` that `reference` contains and `input_text` does
     not. Case and punctuation are ignored. `covered` is the number of candidate words inside
-    at least one such run, `share` that as a percent of the candidate's words, and `spans`
-    the longest three maximal runs as they appear in the candidate (`runs` has them all)."""
+    at least one such run, `share` that as a percent of the candidate's words, `novel` the
+    covered words the input does not contain anywhere and `novel_share` that as a percent,
+    and `spans` the longest three maximal runs as they appear in the candidate (`runs` has
+    them all)."""
     toks = _tokens(candidate)
     words = [w for w, _, _ in toks]
     result = RecitationResult(words=len(words))
     if len(words) < n:
         return result
-    shared = _ngrams([w for w, _, _ in _tokens(reference)], n) - _ngrams(
-        [w for w, _, _ in _tokens(input_text)], n
-    )
+    input_words = [w for w, _, _ in _tokens(input_text)]
+    shared = _ngrams([w for w, _, _ in _tokens(reference)], n) - _ngrams(input_words, n)
+    vocabulary = set(input_words)
     covered = [False] * len(words)
     count = 0
     for i in range(len(words) - n + 1):
@@ -76,7 +83,11 @@ def recitation(
     spans.sort(key=lambda s: (-(s[1] - s[0]), s[0]))
     result.ngrams = count
     result.covered = sum(covered)
+    result.novel = sum(
+        1 for w, hit in zip(words, covered, strict=True) if hit and w not in vocabulary
+    )
     result.share = 100.0 * result.covered / len(words)
+    result.novel_share = 100.0 * result.novel / len(words)
     result.spans = [candidate[toks[a][1] : toks[b][2]] for a, b in spans[:3]]
     return result
 

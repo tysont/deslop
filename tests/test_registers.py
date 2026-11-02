@@ -20,7 +20,8 @@ def body_of(path: Path) -> str:
 
 def test_fixture_set_states_the_validity_rule():
     readme = (REGISTERS / "README.md").read_text(encoding="utf-8")
-    assert "deslop lab fixture-check" in readme and "under 1% recitation" in readme
+    assert "deslop lab fixture-check" in readme and "under 1% novel recitation" in readme
+    assert "the propositions do not contain at all" in readme
 
 
 @pytest.mark.parametrize("name", NAMES)

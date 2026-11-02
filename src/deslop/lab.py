@@ -13,7 +13,7 @@ from deslop.blind import MIN_WORDS, Pair, Pairing, shown
 from deslop.judge import JudgeCalibration, calibrate_judge
 from deslop.nlp import count_words, is_prose_paragraph, split_paragraphs
 from deslop.providers.base import CachingProvider, ProviderError
-from deslop.recitation import FIXTURE_MAX_RECITATION, RecitationResult, recitation, words_of
+from deslop.recitation import FIXTURE_MAX_RECITATION, RecitationResult, recitation
 from deslop.semantic import extract_propositions
 from deslop.thresholds import split_heldout
 from deslop.voice.collect import collect
@@ -173,19 +173,20 @@ in this order. Keep every proposition and add none. Return the piece and nothing
 
 
 class FixtureCheck(BaseModel):
-    """Whether a text can serve as a held-out fixture: a draft written from its propositions
-    alone must recite under `threshold` percent of it."""
+    """Whether a text can serve as a held-out fixture: in a draft written from its
+    propositions alone, recited words that the propositions do not contain must be under
+    `threshold` percent of the draft (`recitation.novel_share`; the raw share is reported
+    alongside)."""
 
     words: int
     propositions: list[str]
     draft: str
     recitation: RecitationResult
     threshold: float = FIXTURE_MAX_RECITATION
-    novel_words: int = 0  # recited words that are not in the propositions' vocabulary
 
     @property
     def qualifies(self) -> bool:
-        return self.recitation.share < self.threshold
+        return self.recitation.novel_share < self.threshold
 
 
 def fixture_check(
@@ -193,8 +194,9 @@ def fixture_check(
 ) -> FixtureCheck:
     """Extract the text's propositions (one call), write one draft from them alone with the
     writer model (one call, temperature 0, cached), and measure how much of the text the
-    draft recites in runs of eight or more words the propositions do not contain. The text
-    itself is never shown to the writer."""
+    draft recites in runs of eight or more words the propositions do not contain, counting
+    the recited words the propositions do not contain at all. The text itself is never shown
+    to the writer."""
     props = extract_propositions(text, models.writer)
     listed = "\n".join(f"{i}. {p}" for i, p in enumerate(props, 1))
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
@@ -204,15 +206,12 @@ def fixture_check(
         words=count_words(text),
     )
     draft = clean_response(models.writer.complete(system, user, temperature=0.0).text)
-    rec = recitation(draft, text, listed)
-    vocabulary = set(words_of(listed))
     return FixtureCheck(
         words=count_words(text),
         propositions=props,
         draft=draft,
-        recitation=rec,
+        recitation=recitation(draft, text, listed),
         threshold=threshold,
-        novel_words=sum(w not in vocabulary for run in rec.runs for w in words_of(run)),
     )
 
 

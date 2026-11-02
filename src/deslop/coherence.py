@@ -1,5 +1,5 @@
-# ABOUTME: Deterministic coherence checks on a rewrite: tense per paragraph before and after,
-# ABOUTME: sentence-initial pronouns with nothing to refer to, and connective-opened sentences.
+# ABOUTME: Deterministic coherence checks on a rewrite: paragraphing against the voice, tense per
+# ABOUTME: paragraph, sentence-initial pronouns with no antecedent, connective-opened sentences.
 from __future__ import annotations
 
 from collections import Counter
@@ -33,19 +33,24 @@ DOMINANT_SHARE = 0.5  # a tense is dominant when it carries more than half the f
 CONNECTIVE_TOLERANCE = 0.5  # the output's ratio may differ from the original's by this share
 
 
-def paragraph_tense(para: Paragraph) -> str:
-    """The dominant tense of the paragraph's finite verbs: past or present when one carries
-    more than half of them, mixed when none does, none when no finite verb carries a tense."""
+def _dominant_tense(paragraphs: list[Paragraph]) -> str:
     counts: Counter[str] = Counter()
-    for tok in para.doc:
-        if tok.pos_ not in ("VERB", "AUX") or "Fin" not in tok.morph.get("VerbForm", []):
-            continue
-        for tense in tok.morph.get("Tense", []):
-            counts[{"Past": "past", "Pres": "present"}.get(tense, tense.lower())] += 1
+    for para in paragraphs:
+        for tok in para.doc:
+            if tok.pos_ not in ("VERB", "AUX") or "Fin" not in tok.morph.get("VerbForm", []):
+                continue
+            for tense in tok.morph.get("Tense", []):
+                counts[{"Past": "past", "Pres": "present"}.get(tense, tense.lower())] += 1
     if not counts:
         return "none"
     tense, n = counts.most_common(1)[0]
     return tense if n > DOMINANT_SHARE * sum(counts.values()) else "mixed"
+
+
+def paragraph_tense(para: Paragraph) -> str:
+    """The dominant tense of the paragraph's finite verbs: past or present when one carries
+    more than half of them, mixed when none does, none when no finite verb carries a tense."""
+    return _dominant_tense([para])
 
 
 class TenseDrift(BaseModel):
@@ -70,10 +75,15 @@ def _example_in_tense(para: Paragraph, tense: str) -> str:
 
 def tense_drift(before: Analysis, after: Analysis) -> list[TenseDrift]:
     """Paragraphs whose dominant tense changed to a different dominant tense, paired by
-    position; a paragraph that is mixed or has no finite verb on either side is not drift."""
+    position when the paragraph counts agree, else each output paragraph against the
+    original's dominant tense as a whole (a re-paragraphed output has no positions to pair);
+    a paragraph that is mixed or has no finite verb on either side is not drift."""
     out = []
-    for i, (p, q) in enumerate(zip(before.paragraphs, after.paragraphs, strict=False), 1):
-        a, b = paragraph_tense(p), paragraph_tense(q)
+    paired = len(before.paragraphs) == len(after.paragraphs)
+    whole = _dominant_tense(before.paragraphs)
+    for i, q in enumerate(after.paragraphs, 1):
+        a = paragraph_tense(before.paragraphs[i - 1]) if paired else whole
+        b = paragraph_tense(q)
         if a != b and a not in ("none", "mixed") and b not in ("none", "mixed"):
             out.append(TenseDrift(paragraph=i, before=a, after=b, example=_example_in_tense(q, b)))
     return out
@@ -111,6 +121,46 @@ def antecedent_flags(a: Analysis) -> list[AntecedentFlag]:
                 )
             )
     return out
+
+
+class ParagraphCheck(BaseModel):
+    """Paragraphing follows the voice, not the input: the output's mean sentences per
+    paragraph must sit in the exemplars' range when the voice has one; without a range the
+    output must keep the original's paragraph count."""
+
+    before: int  # paragraphs in the original
+    after: int  # paragraphs in the output
+    sentences_per_paragraph: float  # the output's mean
+    band_low: float | None = None  # the exemplars' range, sentences per paragraph
+    band_high: float | None = None
+    ok: bool = True
+    note: str = ""
+
+
+def paragraph_check(before: Analysis, after: Analysis, band: Band | None) -> ParagraphCheck:
+    n_before, n_after = len(before.paragraphs), len(after.paragraphs)
+    per = len(after.sentences) / max(n_after, 1)
+    check = ParagraphCheck(
+        before=n_before,
+        after=n_after,
+        sentences_per_paragraph=per,
+        band_low=band.low if band else None,
+        band_high=band.high if band else None,
+    )
+    if band is None:
+        if n_before != n_after:
+            check.ok = False
+            check.note = f"it has {n_after} paragraphs where the original has {n_before}"
+        return check
+    low, high = band.low if band.low is not None else 0.0, band.high
+    if per < low or (high is not None and per > high):
+        check.ok = False
+        check.note = (
+            f"its {n_after} paragraphs average {per:.1f} sentences; this writer's paragraphs run "
+            f"from {low:.1f} to {high if high is not None else per:.1f} sentences, so "
+            + ("merge paragraphs" if per < low else "split paragraphs")
+        )
+    return check
 
 
 class ConnectiveCheck(BaseModel):
@@ -153,12 +203,14 @@ def connective_check(before: Analysis, after: Analysis, band: Band | None) -> Co
 
 
 class CoherenceResult(BaseModel):
-    """The deterministic coherence checks on one rewrite: paragraph counts, tense drift per
-    paragraph, pronouns without antecedents, and the connective-opener check. `ok` is True
-    only when every check passes; `reader_notes()` phrases each failure for a retry prompt."""
+    """The deterministic coherence checks on one rewrite: paragraphing against the voice,
+    tense drift per paragraph, pronouns without antecedents, and the connective-opener check.
+    `ok` is True only when every check passes; `reader_notes()` phrases each failure for a
+    retry prompt."""
 
     paragraphs_before: int
     paragraphs_after: int
+    paragraphs: ParagraphCheck
     tense: list[TenseDrift] = Field(default_factory=list)
     antecedents: list[AntecedentFlag] = Field(default_factory=list)
     connectives: ConnectiveCheck
@@ -166,19 +218,13 @@ class CoherenceResult(BaseModel):
     @property
     def ok(self) -> bool:
         return (
-            self.paragraphs_before == self.paragraphs_after
-            and not self.tense
-            and not self.antecedents
-            and self.connectives.ok
+            self.paragraphs.ok and not self.tense and not self.antecedents and self.connectives.ok
         )
 
     def reader_notes(self) -> list[str]:
         notes = []
-        if self.paragraphs_before != self.paragraphs_after:
-            notes.append(
-                f"it has {self.paragraphs_after} paragraphs where the original has "
-                f"{self.paragraphs_before}"
-            )
+        if not self.paragraphs.ok:
+            notes.append(self.paragraphs.note)
         for d in self.tense:
             notes.append(
                 f"paragraph {d.paragraph} shifts from the {d.before} tense to the {d.after}: "
@@ -199,16 +245,19 @@ def check_coherence(
     candidate: str,
     *,
     band: Band | None,
+    para_band: Band | None = None,
     before: Analysis | None = None,
     after: Analysis | None = None,
 ) -> CoherenceResult:
     """Run every deterministic check on `candidate` against `original`. `band` is the voice's
-    band for `connective_opener_pct`, if it has one."""
+    band for `connective_opener_pct` and `para_band` the exemplars' range of sentences per
+    paragraph, when the voice has them."""
     before = before or analyze(original)
     after = after or analyze(candidate)
     return CoherenceResult(
         paragraphs_before=len(before.paragraphs),
         paragraphs_after=len(after.paragraphs),
+        paragraphs=paragraph_check(before, after, para_band),
         tense=tense_drift(before, after),
         antecedents=antecedent_flags(after),
         connectives=connective_check(before, after, band),
