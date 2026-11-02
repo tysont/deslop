@@ -63,6 +63,30 @@ deslop lab blind --candidates examples --n 3
 Without a key, `make example` runs the apply step from the cache committed under
 `tests/cache`.
 
+## What apply does, and its ceiling
+
+`deslop apply` rewrites an input into a voice while preserving the input's propositions:
+every claim the input makes survives, and nothing material is added. That is the whole of
+the job, and the limits follow from it.
+
+- It cannot restore what the input lacks. Content, address, questions to the reader and
+  images that an earlier rewrite stripped out are gone; the propositions and the texture
+  hints are taken from the input, so an input flattened by a model comes back in the voice
+  but without what the model removed.
+- It declines rather than returning a partial. When no candidate passes every check (the
+  content lock, the semantic lock, the coherence checks, the judge) the result is the input
+  unchanged, with the report saying why each candidate failed. There is no best effort.
+- Its ceiling is the voice. The writer sees the voice's profile, rules and exemplars, and
+  the judge compares against those exemplars; the output can be no closer to the writer
+  than the exemplars are, and no more particular than the profile. Both are the user's to
+  choose and edit (`deslop voice edit`), and a voice built from three documents sets a lower
+  ceiling than one built from thirty.
+
+`apply` on a human original in its own voice should keep the original, or select a
+candidate that changes little on a marginal verdict; a run that "improves" a human original
+is the case to scrutinise, since the judge is then preferring something to the writer's own
+prose.
+
 ## Command reference
 
 Every command reads `deslop.yaml` (see Configuration file) and takes `--json` for machine

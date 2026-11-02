@@ -1,55 +1,52 @@
 ---
-title: The Open Window (Beasts and Super-Beasts)
-author: Saki (H. H. Munro)
-source: https://www.gutenberg.org/ebooks/269
+title: A Drama of Three (Balcony Stories)
+author: Grace Elizabeth King
+source: https://www.gutenberg.org/ebooks/11514
 license: Public domain (Project Gutenberg)
-note: Excerpt: the opening of the story, cut at a paragraph boundary near 960 words.
+note: Excerpt: the opening of the story; chosen by `deslop lab fixture-check` over Aumonier (0.1% novel) and Brown (0.3%): 1.8% raw, 0.0% novel; replaces Saki (54.6% raw, 14.9% novel, retired to contaminated/), cut at a paragraph boundary near 1120 words.
 register: fiction
 ---
-# The Open Window
 
-"My aunt will be down presently, Mr. Nuttel," said a very self-possessed young lady of fifteen; "in the meantime you must try and put up with me."
+# A Drama Of Three
 
-Framton Nuttel endeavoured to say the correct something which should duly flatter the niece of the moment without unduly discounting the aunt that was to come. Privately he doubted more than ever whether these formal visits on a succession of total strangers would do much towards helping the nerve cure which he was supposed to be undergoing.
+It was a regular dramatic performance every first of the month in the little cottage of the old General and Madame B----.
 
-"I know how it will be," his sister had said when he was preparing to migrate to this rural retreat; "you will bury yourself down there and not speak to a living soul, and your nerves will be worse than ever from moping. I shall just give you letters of introduction to all the people I know there. Some of them, as far as I can remember, were quite nice."
+It began with the waking up of the General by his wife, standing at the bedside with a cup of black coffee.
 
-Framton wondered whether Mrs. Sappleton, the lady to whom he was presenting one of the letters of introduction, came into the nice division.
+"Hé! Ah! Oh, Honorine! Yes; the first of the month, and affairs--affairs to be transacted."
 
-"Do you know many of the people round here?" asked the niece, when she judged that they had had sufficient silent communion.
+On those mornings when affairs were to be transacted there was not much leisure for the household; and it was Honorine who constituted the household. Not the old dressing-gown and slippers, the old, old trousers, and the antediluvian neck-foulard of other days! Far from it. It was a case of warm water (with even a fling of cologne in it), of the trimming of beard and mustache by Honorine, and the black broadcloth suit, and the brown satin stock, and that _je ne sais quoi de dégagé_ which no one could possess or assume like the old General. Whether he possessed or assumed it is an uncertainty which hung over the fine manners of all the gentlemen of his day, who were kept through their youth in Paris to cultivate _bon ton_ and an education.
 
-"Hardly a soul," said Framton. "My sister was staying here, at the rectory, you know, some four years ago, and she gave me letters of introduction to some of the people here."
+It was also something of a gala-day for Madame la Générale too, as it must be a gala-day for all old wives to see their husbands pranked in the manners and graces that had conquered their maidenhood, and exhaling once more that ambrosial fragrance which once so well incensed their compelling presence.
 
-He made the last statement in a tone of distinct regret.
+Ah, to the end a woman loves to celebrate her conquest! It is the last touch of misfortune with her to lose in the old, the ugly, and the commonplace her youthful lord and master. If one could look under the gray hairs and wrinkles with which time thatches old women, one would be surprised to see the flutterings, the quiverings, the thrills, the emotions, the coals of the heart-fires which death alone extinguishes, when he commands the tenant to vacate.
 
-"Then you know practically nothing about my aunt?" pursued the self-possessed young lady.
+Honorine's hands chilled with the ice of sixteen as she approached scissors to the white mustache and beard. When her finger-tips brushed those lips, still well formed and roseate, she felt it, strange to say, on her lips. When she asperged the warm water with cologne,--it was her secret delight and greatest effort of economy to buy this cologne,--she always had one little moment of what she called faintness--that faintness which had veiled her eyes, and chained her hands, and stilled her throbbing bosom, when as a bride she came from the church with him. It was then she noticed the faint fragrance of the cologne bath. Her lips would open as they did then, and she would stand for a moment and think thoughts to which, it must be confessed, she looked forward from month to month. What a man he had been! In truth he belonged to a period that would accept nothing less from Nature than physical beauty; and Nature is ever subservient to the period. If it is to-day all small men, and to-morrow gnomes and dwarfs, we may know that the period is demanding them from Nature.
 
-"Only her name and address," admitted the caller. He was wondering whether Mrs. Sappleton was in the married or widowed state. An undefinable something about the room seemed to suggest masculine habitation.
+When the General had completed--let it be called no less than the ceremony of--his toilet, he took his chocolate and his _pain de Paris_. Honorine could not imagine him breakfasting on anything but _pain de Paris._ Then he sat himself in his large arm-chair before his escritoire, and began transacting his affairs with the usual--
 
-"Her great tragedy happened just three years ago," said the child; "that would be since your sister's time."
+"But where is that idiot, that dolt, that sluggard, that snail, with my mail?" Honorine, busy in the breakfast-room:
 
-"Her tragedy?" asked Framton; somehow in this restful country spot tragedies seemed out of place.
+"In a moment, husband. In a moment."
 
-"You may wonder why we keep that window wide open on an October afternoon," said the niece, indicating a large French window that opened on to a lawn.
+"But he should be here now. It is the first of the month, it is nine o'clock, I am ready; he should be here."
 
-"It is quite warm for the time of the year," said Framton; "but has that window got anything to do with the tragedy?"
+"It is not yet nine o'clock, husband."
 
-"Out through that window, three years ago to a day, her husband and her two young brothers went off for their day's shooting. They never came back. In crossing the moor to their favourite snipe-shooting ground they were all three engulfed in a treacherous piece of bog. It had been that dreadful wet summer, you know, and places that were safe in other years gave way suddenly without warning. Their bodies were never recovered. That was the dreadful part of it." Here the child's voice lost its self-possessed note and became falteringly human. "Poor aunt always thinks that they will come back some day, they and the little brown spaniel that was lost with them, and walk in at that window just as they used to do. That is why the window is kept open every evening till it is quite dusk. Poor dear aunt, she has often told me how they went out, her husband with his white waterproof coat over his arm, and Ronnie, her youngest brother, singing 'Bertie, why do you bound?' as he always did to tease her, because she said it got on her nerves. Do you know, sometimes on still, quiet evenings like this, I almost get a creepy feeling that they will all walk in through that window—"
+"Not yet nine! Not yet nine! Am I not up? Am I not dressed? Have I not breakfasted before nine?"
 
-She broke off with a little shudder. It was a relief to Framton when the aunt bustled into the room with a whirl of apologies for being late in making her appearance.
+"That is so, husband. That is so." Honorine's voice, prompt in cheerful acquiescence, came from the next room, where she was washing his cup, saucer, and spoon.
 
-"I hope Vera has been amusing you?" she said.
+"It is getting worse and worse every day. I tell you, Honorine, Pompey must be discharged. He is worthless. He is trifling. Discharge him! Discharge him! Do not have him about! Chase him out of the yard! Chase him as soon as he makes his appearance! Do you hear, Honorine?"
 
-"She has been very interesting," said Framton.
+"You must have a little patience, husband."
 
-"I hope you don't mind the open window," said Mrs. Sappleton briskly; "my husband and brothers will be home directly from shooting, and they always come in this way. They've been out for snipe in the marshes to-day, so they'll make a fine mess over my poor carpets. So like you men-folk, isn't it?"
+It was perhaps the only reproach one could make to Madame Honorine, that she never learned by experience.
 
-She rattled on cheerfully about the shooting and the scarcity of birds, and the prospects for duck in the winter. To Framton it was all purely horrible. He made a desperate but only partially successful effort to turn the talk on to a less ghastly topic; he was conscious that his hostess was giving him only a fragment of her attention, and her eyes were constantly straying past him to the open window and the lawn beyond. It was certainly an unfortunate coincidence that he should have paid his visit on this tragic anniversary.
+"Patience! Patience! Patience is the invention of dullards and sluggards. In a well-regulated world there should be no need of such a thing as patience. Patience should be punished as a crime, or at least as a breach of the peace. Wherever patience is found police investigation should be made as for smallpox. Patience! Patience! I never heard the word--I assure you, I never heard the word in Paris. What do you think would be said there to the messenger who craved patience of you? Oh, they know too well in Paris--a rataplan from the walking-stick on his back, that would be the answer; and a, 'My good fellow, we are not hiring professors of patience, but legs.'"
 
-"The doctors agree in ordering me complete rest, an absence of mental excitement, and avoidance of anything in the nature of violent physical exercise," announced Framton, who laboured under the tolerably widespread delusion that total strangers and chance acquaintances are hungry for the least detail of one's ailments and infirmities, their cause and cure. "On the matter of diet they are not so much in agreement," he continued.
+"But, husband, you must remember we do not hire Pompey. He only does it to oblige us, out of his kindness."
 
-"No?" said Mrs. Sappleton, in a voice which only replaced a yawn at the last moment. Then she suddenly brightened into alert attention—but not to what Framton was saying.
+"Oblige us! Oblige me! Kindness! A negro oblige me! Kind to me! That is it; that is it. That is the way to talk under the new régime. It is favor, and oblige, and education, and monsieur, and madame, now. What child's play to call this a country--a government! I would not be surprised"--jumping to his next position on this ever-recurring first of the month theme--"I would not be surprised if Pompey has failed to find the letter in the box. How do I know that the mail has not been tampered with? From day to day I expect to hear it. What is to prevent? Who is to interpose? The honesty of the officials? Honesty of the officials--that is good! What a farce--honesty of officials! That is evidently what has happened. The thought has not occurred to me in vain. Pompey has gone. He has not found the letter, and--well; that is the end."
 
-"Here they are at last!" she cried. "Just in time for tea, and don't they look as if they were muddy up to the eyes!"
-
-Framton shivered slightly and turned towards the niece with a look intended to convey sympathetic comprehension. The child was staring out through the open window with dazed horror in her eyes. In a chill shock of nameless fear Framton swung round in his seat and looked in the same direction.
+But the General had still another theory to account for the delay in the appearance of his mail which he always posed abruptly after the exhaustion of the arraignment of the post-office.

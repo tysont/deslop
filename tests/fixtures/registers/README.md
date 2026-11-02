@@ -18,4 +18,6 @@ eight-word runs reassemble from the propositions' own words even for a text no m
 seen. A text the writer model can recite from memory is not a test of writing in a voice,
 whatever its author's standing. Prefer little-known authors; the check decides.
 
-`paraphrase/` keeps the v2.2.0 paraphrases for reference only.
+`paraphrase/` keeps the v2.2.0 paraphrases for reference only. `contaminated/` keeps the
+originals the rule retired (Stevenson's essay, Saki's story) with the numbers that retired
+them; they are never used as fixtures.

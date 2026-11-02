@@ -53,7 +53,8 @@ def mean_abs_z(text: str, stats: dict[str, MetricStat]) -> float:
     return sum(zs) / len(zs) if zs else 0.0
 
 
-def main(provider_name: str = "anthropic") -> None:
+def main(provider_name: str = "anthropic", only: str | None = None) -> None:
+    """Write slop.md and propositions.json for every register, or for `only`."""
     spend.set_context(command="build_register_slop")
     spend.set_budget(CAP)
     provider = get_provider(provider_name)
@@ -61,6 +62,8 @@ def main(provider_name: str = "anthropic") -> None:
     total = 0.0
     results = []
     for register, kind in KINDS.items():
+        if only and register != only:
+            continue
         original = body_of(REGISTERS / register / "original.md")
         props = extract_propositions(original, provider)  # temperature 0, cached
         words = len(original.split())
@@ -102,4 +105,4 @@ def main(provider_name: str = "anthropic") -> None:
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:2])
+    main(*sys.argv[1:3])

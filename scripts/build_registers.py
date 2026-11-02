@@ -128,13 +128,15 @@ CORPORA = {
 # (register, gutenberg id, author, title, start marker, end marker, word cap, note)
 ORIGINALS = {
     "essay": (
-        386,
-        "Robert Louis Stevenson",
-        "An Apology for Idlers (Virginibus Puerisque)",
-        "AN APOLOGY FOR IDLERS",
-        "EL DORADO",
-        1000,
-        "the opening of the essay",
+        25969,
+        "Charles S. Brooks",
+        "Chimney-Pot Papers, I: The Chimney-Pots",
+        "^My windows look across the roofs",
+        "THE QUEST OF THE LOST DIGAMMA",
+        1050,
+        "the opening of the first paper; chosen by `deslop lab fixture-check` over Holliday "
+        "(0.2% novel) and Crothers (0.3%): 2.9% raw, 0.0% novel; replaces Stevenson (18.4% raw, "
+        "4.2% novel, retired to contaminated/)",
     ),
     "explainer": (
         65307,
@@ -147,13 +149,15 @@ ORIGINALS = {
         "and Munro (lowest recitation); the Faraday lecture it replaces recited at 4.9%",
     ),
     "fiction": (
-        269,
-        "Saki (H. H. Munro)",
-        "The Open Window (Beasts and Super-Beasts)",
-        "THE OPEN WINDOW",
-        "THE COBWEB",
-        960,
-        "the opening of the story",
+        11514,
+        "Grace Elizabeth King",
+        "A Drama of Three (Balcony Stories)",
+        "A DRAMA OF THREE",
+        "LA GRANDE DEMOISELLE",
+        1120,
+        "the opening of the story; chosen by `deslop lab fixture-check` over Aumonier (0.1% "
+        "novel) and Brown (0.3%): 1.8% raw, 0.0% novel; replaces Saki (54.6% raw, 14.9% novel, "
+        "retired to contaminated/)",
     ),
 }
 
