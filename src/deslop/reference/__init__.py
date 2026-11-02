@@ -27,13 +27,24 @@ class CitationScheme(BaseModel):
     name: str
     pattern: str
     bare_pattern: str | None = None
+    coarse_pattern: str | None = None  # a coarser form (a whole chapter, a whole book)
 
     def matches(self, citation: str) -> bool:
         item = citation.strip()
-        return any(pat and re.fullmatch(pat, item) for pat in (self.pattern, self.bare_pattern))
+        return any(
+            pat and re.fullmatch(pat, item)
+            for pat in (self.pattern, self.bare_pattern, self.coarse_pattern)
+        )
+
+    def is_coarse(self, citation: str) -> bool:
+        """Matched by the coarse form and not by the fine ones."""
+        item = citation.strip()
+        if not self.coarse_pattern or not re.fullmatch(self.coarse_pattern, item):
+            return False
+        return not any(pat and re.fullmatch(pat, item) for pat in (self.pattern, self.bare_pattern))
 
     def finditer(self, text: str) -> Iterable[re.Match[str]]:
-        for pat in (self.pattern, self.bare_pattern):
+        for pat in (self.pattern, self.bare_pattern, self.coarse_pattern):
             if pat:
                 yield from re.finditer(pat, text)
 
@@ -269,22 +280,29 @@ class PrimaryText:
     def has_bare_scheme(self) -> bool:
         return any(s.bare_pattern for s in self.schemes)
 
-    def example_label(self, scheme: CitationScheme) -> str:
-        """A sidecar label the scheme recognises, or empty when none does."""
+    def example_label(self, scheme: CitationScheme, *, coarse: bool = False) -> str:
+        """A sidecar label the scheme's fine forms recognise (or, with `coarse`, its coarse
+        form), or empty when none does."""
         for seg in self.segments:
-            if scheme.matches(seg.ref):
+            if scheme.is_coarse(seg.ref) == coarse and scheme.matches(seg.ref):
                 return seg.ref
         return ""
 
+    def is_coarse(self, citation: str) -> bool:
+        return any(s.is_coarse(citation) for s in self.schemes)
+
     def passages_for(self, citation: str) -> list[Passage]:
-        """The verbatim spans a citation of this text entitles the writer to quote: the cited
-        span; for a text with a bare (chapter:verse style) scheme the whole chapter, meaning
-        every span whose label shares the text before the last colon; for a paragraph-labelled
-        text the cited span and one on either side. Empty when the citation does not resolve."""
+        """The verbatim spans a citation of this text entitles the writer to quote: a coarse
+        citation's span as it is; for a fine one, in a text with a bare (chapter:verse style)
+        scheme the whole chapter, meaning every span whose label shares the text before the
+        last colon; in a paragraph-labelled text the cited span and one on either side. Empty
+        when the citation does not resolve."""
         ref = self.resolve(citation)
         if ref is None:
             return []
         target = self._labels[canonical_label(ref)]
+        if self.is_coarse(citation):
+            return [Passage(self.name, target.ref, self.raw[target.raw_start : target.raw_end])]
         spans = self.spans()
         index = next(
             (
@@ -351,6 +369,8 @@ def quotable_passages(
                 if key in seen:
                     continue
                 if total + passage.words > limit_words:
+                    if t.is_coarse(citation):
+                        break  # a coarse span over the cap is left out, not truncated
                     return chosen
                 seen.add(key)
                 chosen.append(passage)
@@ -365,10 +385,17 @@ def citation_guidance(texts: Sequence[PrimaryText]) -> list[str]:
     lines = []
     for t in texts:
         for scheme in t.schemes:
-            example = t.example_label(scheme)
+            fine = t.example_label(scheme)
+            coarse = t.example_label(scheme, coarse=True)
             labels = t.spans()
-            if example:
-                lines.append(f'{t.name}: cite by {scheme.name}, as in "{example}".')
+            if fine:
+                extra = f', or coarsely as in "{coarse}"' if coarse else ""
+                lines.append(f'{t.name}: cite by {scheme.name}, as in "{fine}"{extra}.')
+            elif coarse:
+                lines.append(
+                    f'{t.name}: cite coarsely by {scheme.name}, as in "{coarse}"; finer '
+                    f"{scheme.name} citations do not resolve in this edition and will be rejected."
+                )
             elif labels:
                 lines.append(
                     f'{t.name}: this edition locates passages as "{labels[0].ref}"; {scheme.name} '
@@ -423,11 +450,12 @@ class Addition(BaseModel):
     where: str = ""  # label and text name when verified
     note: str = ""  # "not in any primary text" / "no primary text given" / "unresolved"
     nearest: str = ""  # for a rejected quotation, the closest run of a primary text
+    coarse: bool = False  # a citation matched by a scheme's coarse form (a chapter, a book)
 
     def __str__(self) -> str:
         label = f'"{self.text}"' if self.kind == "quote" else self.text
         if self.verified:
-            return f"{label} ({self.where})"
+            return f"{label} ({self.where}{', coarse' if self.coarse else ''})"
         near = f'; nearest: "{self.nearest}"' if self.nearest else ""
         return f"{label}: {self.note}{near}"
 
@@ -524,6 +552,7 @@ def verify_additions(original: str, candidate: str, texts: list[PrimaryText]) ->
                     where = t.resolve(c)
                     if where:
                         add.verified, add.where, add.note = True, _place(t, where), ""
+                        add.coarse = t.is_coarse(c)
                         break
         check.additions.append(add)
     return check

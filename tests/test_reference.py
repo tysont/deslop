@@ -221,3 +221,51 @@ def test_passages_for_a_paragraph_text_offer_the_neighbours_and_warn(tmp_path):
         'Dialogue: this edition locates passages as "ch. 1 ¶1"; stephanus citations of this '
         "kind do not resolve in this edition and will be rejected.",
     ]
+    coarse_only = CitationScheme(
+        name="stephanus",
+        pattern=r"\b\d{3}[a-e]\b",
+        coarse_pattern=r"\bch\. \d+\b",
+    )
+    (tmp_path / "dialogue.locs.json").write_text(
+        json.dumps(
+            [{"ref": "ch. 1 ¶1", "start": 0, "end": 12}, {"ref": "ch. 1", "start": 0, "end": 55}]
+        ),
+        encoding="utf-8",
+    )
+    e = PrimaryText.load(p, schemes=[coarse_only], title="Dialogue")
+    assert citation_guidance([e]) == [
+        'Dialogue: cite coarsely by stephanus, as in "ch. 1"; finer stephanus citations do '
+        "not resolve in this edition and will be rejected."
+    ]
+
+
+def test_coarse_citations_resolve_offer_their_span_and_are_marked(tmp_path):
+    from deslop.reference import quotable_passages
+
+    p = scripture(tmp_path)
+    locs = json.loads((tmp_path / "book.locs.json").read_text())["locations"]
+    start = min(x["start"] for x in locs)
+    end = max(x["end"] for x in locs)
+    locs.append({"ref": "Book 6", "start": start, "end": end})
+    (tmp_path / "book.locs.json").write_text(json.dumps({"locations": locs}), encoding="utf-8")
+    scheme = VERSE.model_copy(update={"coarse_pattern": r"\b(?:Book|Bk)\.?\s+\d{1,3}(?![:\d])"})
+    t = PrimaryText.load(p, schemes=[scheme], title="Book")
+    assert scheme.is_coarse("Book 6") and not scheme.is_coarse("Book 6:5")
+    assert t.resolve("Book 6") == "Book 6" and t.resolve("Book 7") is None
+    assert [x.ref for x in t.passages_for("Book 6")] == ["Book 6"]
+    assert t.passages_for("Book 6")[0].words == 58, "the chapter span, gaps included"
+    offered = quotable_passages("As Book 6 tells it.", [t])
+    assert [(x.ref, x.words) for x in offered] == [("Book 6", 58)]
+    assert quotable_passages("As Book 6 tells it.", [t], limit_words=30) == [], (
+        "over the cap: left out"
+    )
+    check = verify_additions("x", "See Book 6 and 6:18.", [t])
+    coarse = next(a for a in check.additions if a.text == "Book 6")
+    fine = next(a for a in check.additions if a.text == "6:18")
+    assert coarse.verified and coarse.coarse and str(coarse) == "Book 6 (Book 6, coarse)"
+    assert fine.verified and not fine.coarse and str(fine) == "6:18 (Book 6:18)"
+    from deslop.reference import citation_guidance
+
+    assert citation_guidance([t]) == [
+        'Book: cite by verse, as in "Book 6:5", or coarsely as in "Book 6".'
+    ]

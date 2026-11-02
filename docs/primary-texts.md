@@ -37,7 +37,11 @@ know what any text is or what its citations mean. It knows three files.
    ```
 
    `pattern` matches a citation that names the text; `bare_pattern` (optional) matches a
-   bare location whose text is known from context. On the command line the same object is
+   bare location whose text is known from context; `coarse_pattern` (optional) matches a
+   coarser form, such as a whole chapter or a whole book, which resolves against sidecar
+   labels like any other (the sidecar supplies labels for those larger spans). A coarse
+   citation offers its span to the writer as it is, is reported as coarse under verified
+   additions, and never satisfies `--allow-primary-facts`, which needs a fine location. On the command line the same object is
    `--citation-scheme '{"name": "verse", "pattern": "...", "bare_pattern": "..."}'`, applied
    to every `--primary-text` given with it.
 

@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash  # bash -eo pipefail: a piped exit code cannot hide
     strategy:
       fail-fast: false
       matrix:

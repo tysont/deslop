@@ -2,6 +2,14 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## Unreleased
+
+- Coarse citations: a scheme may carry `coarse_pattern` (a chapter- or book-level form);
+  coarse matches resolve against sidecar labels like any other, offer their span to the
+  writer (left out when over `--quote-context-words`), are reported as coarse under verified
+  additions, and never satisfy `--allow-primary-facts`.
+- Makefile runs under `bash -eu -o pipefail`; CI steps too.
+
 ## v2.4.3 - 2026-11-02
 
 - Quotable passages: with primary texts declared, every citation the input makes is resolved

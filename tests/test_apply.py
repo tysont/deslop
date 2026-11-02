@@ -332,6 +332,13 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
                 Addition(kind="citation", text="6:15", verified=True, where="Scripture 6:15"),
                 Addition(kind="citation", text="6:18", verified=True, where="Scripture 6:18"),
                 Addition(
+                    kind="citation",
+                    text="Scripture 6",
+                    verified=True,
+                    where="Scripture 6",
+                    coarse=True,
+                ),
+                Addition(
                     kind="quote",
                     text="I will establish my covenant with you",
                     verified=True,
@@ -374,6 +381,12 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
                     category="number",
                     sentence="The covenant is given (6:18).",
                 ),
+                AddedClaim(
+                    text="The vessel has three decks",
+                    kind="claim",
+                    category="number",
+                    sentence="The vessel has three decks (Scripture 6).",
+                ),
             ]
         )
         return cand
@@ -383,6 +396,7 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
     assert [a.text for a in cand.semantic.added] == [
         "The vessel is 300 by 50 by 30 cubits",
         "Names the Epic and cites 24.527",
+        "The vessel has three decks",
     ]
     assert [a.note for a in cand.semantic.cleared] == [
         "a citation that resolves in a declared primary text",
@@ -394,7 +408,10 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
 
     cand = candidate()
     permit_primary(cand, [gen], allow_facts=True, original="Noah is told to build.")
-    assert [a.text for a in cand.semantic.added] == ["Names the Epic and cites 24.527"]
+    assert [a.text for a in cand.semantic.added] == [
+        "Names the Epic and cites 24.527",
+        "The vessel has three decks",
+    ], "a coarse citation alone never admits a fact"
     assert [a.note for a in cand.semantic.cleared][-2:] == [
         "a fact verifiable at Scripture 6:15",
         "a citation that resolves in a declared primary text",
@@ -402,7 +419,7 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
 
     bare = candidate()
     permit_primary(bare, [], allow_facts=True, original="Noah is told to build.")
-    assert len(bare.semantic.added) == 6, "no primary text, no permission"
+    assert len(bare.semantic.added) == 7, "no primary text, no permission"
 
 
 def test_texture_hints_reach_the_writer_and_never_the_lock(fixture_voice, slop_text):

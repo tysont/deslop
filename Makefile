@@ -1,5 +1,8 @@
 # ABOUTME: Build, test, and run entry points for deslop.
 # ABOUTME: Use these targets instead of invoking tools directly.
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+
 .PHONY: install test cov lint fmt typecheck check build docs docs-serve example llm-reference english-generic registers register-fixtures
 
 install:

@@ -915,7 +915,7 @@ def _meaning_diff(units: list[UnitLog]) -> str:
         lines.extend(f"  · {q['text']} {q['ref']} ({q['words']} words)" for _, q in offered)
     verified = _verified(units)
     if verified:
-        lines.append("verified additions (resolved in a primary text):")
+        lines.append("verified additions (resolved in a primary text; coarse ones say so):")
         lines.extend(f"  ✓ {u}" for u in verified)
     unverified = _unverified(units)
     if unverified:
@@ -1285,7 +1285,7 @@ def _primary_permission(
     if item.text and item.text[:1].isupper() and tokens and item.text.startswith(tokens[0]):
         tokens = tokens[1:]  # a sentence-initial capital is not a name
     keys = [t.lower() for t in tokens if t.lower() not in FUNCTION_WORDS]
-    cites = [a for a in verified if a.kind == "citation" and a.text in sentence]
+    cites = [a for a in verified if a.kind == "citation" and a.text in sentence and not a.coarse]
     cited = {canonical_label(a.text) for a in verified if a.kind == "citation"}
     cited |= {canonical_label(a.text.split()[-1]) for a in verified if a.kind == "citation"}
     if (
