@@ -94,10 +94,18 @@ def test_paragraphing_follows_the_voices_range_when_it_has_one():
     assert not narrow.ok and "split paragraphs" in narrow.reader_notes()[0]
     split = check_coherence(PAST, PAST.replace(". ", ".\n\n"), band=None, para_band=Band(low=2.0))
     assert not split.ok and "merge paragraphs" in split.reader_notes()[0]
-    # with the counts apart, tense drift pairs each output paragraph with the original's
-    # dominant tense as a whole: a merged present-tense rewrite drifts from the past
+    # with the counts apart, an output paragraph drifts only into a tense no paragraph of
+    # the original is dominated by: a merged present-tense rewrite of all-past text drifts,
+    # while a past paragraph split out of a text with past and present paragraphs does not
     drift = check_coherence(PAST, PRESENT.replace("\n\n", " "), band=None, para_band=Band(low=1.0))
     assert [(d.paragraph, d.before, d.after) for d in drift.tense] == [(1, "past", "present")]
+    mixed_original = PRESENT  # present paragraph, then past paragraph
+    regrouped = (
+        PRESENT.split("\n\n")[0] + "\n\nHis daughter watched the window.\n\nShe counted the carts."
+    )
+    assert (
+        check_coherence(mixed_original, regrouped, band=None, para_band=Band(low=1.0)).tense == []
+    )
 
 
 def test_mixed_tense_needs_a_majority_and_is_never_drift():

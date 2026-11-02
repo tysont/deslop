@@ -75,15 +75,22 @@ def _example_in_tense(para: Paragraph, tense: str) -> str:
 
 def tense_drift(before: Analysis, after: Analysis) -> list[TenseDrift]:
     """Paragraphs whose dominant tense changed to a different dominant tense, paired by
-    position when the paragraph counts agree, else each output paragraph against the
-    original's dominant tense as a whole (a re-paragraphed output has no positions to pair);
-    a paragraph that is mixed or has no finite verb on either side is not drift."""
+    position when the paragraph counts agree. A re-paragraphed output has no positions to
+    pair, so there a paragraph drifts only into a tense that no paragraph of the original is
+    dominated by (the original's dominant tense as a whole is reported as `before`); a
+    paragraph that is mixed or has no finite verb on either side is not drift."""
     out = []
     paired = len(before.paragraphs) == len(after.paragraphs)
     whole = _dominant_tense(before.paragraphs)
+    present = {paragraph_tense(p) for p in before.paragraphs} - {"none", "mixed"}
     for i, q in enumerate(after.paragraphs, 1):
-        a = paragraph_tense(before.paragraphs[i - 1]) if paired else whole
         b = paragraph_tense(q)
+        if paired:
+            a = paragraph_tense(before.paragraphs[i - 1])
+        elif b in present or whole in ("none", "mixed"):
+            continue
+        else:
+            a = whole
         if a != b and a not in ("none", "mixed") and b not in ("none", "mixed"):
             out.append(TenseDrift(paragraph=i, before=a, after=b, example=_example_in_tense(q, b)))
     return out

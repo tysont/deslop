@@ -15,7 +15,9 @@ All notable changes to deslop. Dates are release dates; versions are git tags.
 - Paragraphing follows the voice: the writer merges or splits the input's paragraphs freely;
   the coherence checks require the output's sentences per paragraph to sit in the exemplars'
   10th to 90th percentile instead of matching the input's count; tense drift pairs by
-  position only when the counts agree; the judge's order item ignores paragraph breaks.
+  position only when the counts agree (a re-paragraphed output drifts only into a tense no
+  paragraph of the original is dominated by); the judge's order item ignores paragraph
+  breaks.
 - Materiality: a sentence that depicts a scene, object or action the original does not
   present is a material addition (category `scene`); restating a stated fact remains
   permitted.
