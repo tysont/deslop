@@ -1230,6 +1230,7 @@ def permit_primary(
 
 
 STRUCTURE_WORDS = {"book", "books", "chapter", "chapters", "verse", "verses", "part"}
+FUNCTION_WORDS = {"the", "a", "an", "it", "this", "that", "and", "but", "in", "of", "as", "its"}
 ROMAN_RE = re.compile(r"^[IVXLC]+$")
 
 
@@ -1245,7 +1246,7 @@ def _primary_permission(
     tokens = [t for t in KEY_TOKEN_RE.findall(item.text)]
     if item.text and item.text[:1].isupper() and tokens and item.text.startswith(tokens[0]):
         tokens = tokens[1:]  # a sentence-initial capital is not a name
-    keys = [t.lower() for t in tokens]
+    keys = [t.lower() for t in tokens if t.lower() not in FUNCTION_WORDS]
     cites = [a for a in verified if a.kind == "citation" and a.text in sentence]
     cited = {canonical_label(a.text) for a in verified if a.kind == "citation"}
     cited |= {canonical_label(a.text.split()[-1]) for a in verified if a.kind == "citation"}

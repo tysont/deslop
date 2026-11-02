@@ -294,7 +294,7 @@ def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts
                     text="6:15", kind="claim", category="entity", sentence="The ark (6:15)."
                 ),
                 AddedClaim(
-                    text="Names the work as Scripture and places it in chapter 6.",
+                    text="The work is named as Scripture. The original never names the text.",
                     kind="claim",
                     category="entity",
                     sentence="Scripture, chapter 6, says so.",
