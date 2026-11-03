@@ -8,7 +8,8 @@ from collections.abc import Callable
 from pydantic import BaseModel
 
 from deslop.cli.config import Config, ConfigError, resolve_voice
-from deslop.pricing import home, load_pricing
+from deslop.home import deslop_home
+from deslop.pricing import load_pricing
 
 PRICING_MAX_AGE_DAYS = 90
 
@@ -101,7 +102,7 @@ def check_pricing(today: dt.date | None = None) -> Check:
     except ValueError:
         return Check(name="pricing", status="warn", detail="pricing.yaml has no fetched date")
     age = (today - fetched).days
-    override = home() / "pricing.yaml"
+    override = deslop_home() / "pricing.yaml"
     extra = f"; override {override} in use" if override.is_file() else ""
     if age > PRICING_MAX_AGE_DAYS:
         return Check(

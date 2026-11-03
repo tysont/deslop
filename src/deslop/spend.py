@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from deslop.home import deslop_home
 
 if TYPE_CHECKING:
     from deslop.providers.base import Usage
@@ -17,7 +18,7 @@ DEFAULT_MAX_CALLS = 200  # live calls per invocation, so subscription runs have 
 
 
 def spend_path() -> Path:
-    return Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "spend.jsonl"
+    return deslop_home() / "spend.jsonl"
 
 
 @dataclass

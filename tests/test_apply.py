@@ -7,10 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from deslop.apply import Models, apply, build_models, coherence_report, sections_of
+from deslop.apply import apply
 from deslop.nlp import analyze
 from deslop.providers.base import CachingProvider, Completion, Usage
+from deslop.providers.roles import Models, build_models
 from deslop.reference import PrimaryText
+from deslop.result import coherence_report
+from deslop.units import sections_of
 
 
 class Scripted(CachingProvider):
@@ -312,8 +315,9 @@ def test_quotable_passages_reach_the_writer_with_the_rule(fixture_voice, slop_te
 
 
 def test_primary_policy_permits_resolved_citations_and_verbatim_quotes_not_facts(tmp_path):
-    from deslop.apply import CandidateLog, permit_primary
+    from deslop.citations import permit_primary
     from deslop.reference import Addition, CitationScheme, PrimaryCheck, PrimaryText
+    from deslop.result import CandidateLog
     from deslop.semantic import AddedClaim, SemanticResult
 
     raw = (
@@ -629,8 +633,9 @@ def test_a_candidate_reciting_the_reference_is_rejected_and_the_reference_stays_
 
 
 def test_retry_notes_follow_the_judge():
-    from deslop.apply import CandidateLog, _retry_notes
+    from deslop.apply import _retry_notes
     from deslop.judge import DocumentVerdict
+    from deslop.result import CandidateLog
 
     cand = CandidateLog(attempt=1, text="x", provider="p", model="m", lexical_ok=True)
     cand.advisories = ["its 6 paragraphs average 9 sentences"]
@@ -663,7 +668,7 @@ def test_connective_band_never_rejects_on_its_own(fixture_voice, slop_text):
 
 
 def test_citations_keep_and_none_reproduce_the_inputs_citations(fixture_voice, slop_text):
-    from deslop.apply import Options, citation_policy_notes
+    from deslop.citations import citation_policy_notes
 
     cited = slop_text.replace(
         "Abraham is told to take his", "Abraham is told (Gen 22:2) to take his", 1
@@ -686,41 +691,34 @@ def test_citations_keep_and_none_reproduce_the_inputs_citations(fixture_voice, s
     system, user = next(c for c in a.calls[::-1] if "write prose" in c[0])
     assert "Reproduce exactly" not in user and verified.citations == "verified"
 
-    def opts(mode):
-        o = Options.__new__(Options)
-        o.texts, o.citations = [], mode
-        return o
-
     original = 'He is told (Gen 22:2) to go, "a question it asks" twice (Gen 22:2).'
-    assert citation_policy_notes(original, "anything", opts("verified")) == []
-    notes = citation_policy_notes(
-        original, 'He goes (Gen 22:2), "a question it asks".', opts("keep")
-    )
+    assert citation_policy_notes(original, "anything", [], "verified") == []
+    notes = citation_policy_notes(original, 'He goes (Gen 22:2), "a question it asks".', [], "keep")
     assert notes == ["the citation Gen 22:2 must appear exactly as written (2x, found 1)"]
     notes = citation_policy_notes(
-        original, 'He goes (Gen 22:2; Gen 22:2) "a question he asks".', opts("keep")
+        original, 'He goes (Gen 22:2; Gen 22:2) "a question he asks".', [], "keep"
     )
     assert notes == ['the quotation "a question it asks" must be reproduced exactly as written']
     exact = 'He is told to go (Gen 22:2), "a question it asks" twice (Gen 22:2).'
-    assert citation_policy_notes(original, exact, opts("keep")) == []
+    assert citation_policy_notes(original, exact, [], "keep") == []
     moved = (
         "Abraham rises early and saddles the donkey (Gen 22:2). Gen 22:2 appears again. "
         '"a question it asks" is quoted.'
     )
-    notes = citation_policy_notes(original, moved, opts("keep"))
+    notes = citation_policy_notes(original, moved, [], "keep")
     assert notes and notes[0].startswith(
         "the citation Gen 22:2 appears, but not in the sentence that makes the same point"
     )
     added = exact + ' See Gen 22:3 and "another phrase here".'
-    assert citation_policy_notes(original, added, opts("keep")) == []
-    assert citation_policy_notes(original, added, opts("none")) == [
+    assert citation_policy_notes(original, added, [], "keep") == []
+    assert citation_policy_notes(original, added, [], "none") == [
         "the citation Gen 22:3 is not in the original; add no citations",
         'the quotation "another phrase here" is not in the original; add no quotations',
     ]
 
 
 def test_round_two_hears_only_the_notes_its_own_draft_earned(fixture_voice, slop_text):
-    from deslop.apply import NOTICED_TEMPLATE
+    from deslop.prompts import NOTICED_TEMPLATE
 
     a, b, factory = pair(break_on="the chapter")  # round one fails, so round two runs
     result = apply(slop_text, fixture_voice, n=2, provider_factory=factory, report_all=True)

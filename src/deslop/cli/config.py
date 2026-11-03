@@ -8,16 +8,14 @@ from typing import Any
 
 import yaml
 
+from deslop.home import deslop_home
+
 PROJECT_FILES = ("deslop.yaml", "deslop.yml", ".deslop.yaml")
 _MISSING = object()
 
 
 class ConfigError(Exception):
     pass
-
-
-def home() -> Path:
-    return Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop"))
 
 
 class Config:
@@ -56,7 +54,7 @@ def find_config() -> Path | None:
         candidate = Path.cwd() / name
         if candidate.is_file():
             return candidate
-    candidate = home() / "config.yaml"
+    candidate = deslop_home() / "config.yaml"
     return candidate if candidate.is_file() else None
 
 

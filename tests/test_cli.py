@@ -23,8 +23,8 @@ def flat(r) -> str:
 
 def scripted_factory(monkeypatch, providers=None, **kw):
     providers = providers or {"anthropic": Scripted("anthropic", **kw)}
-    # `deslop.apply` names the function in the package namespace; patch the module itself.
-    for module in ("deslop.apply", "deslop.providers.base"):
+    # build_models looks get_provider up in its own module, so patch it there too.
+    for module in ("deslop.providers.roles", "deslop.providers.base"):
         monkeypatch.setattr(
             sys.modules[module],
             "get_provider",
@@ -444,7 +444,7 @@ def test_apply_budget_aborts_with_best_so_far_and_logs_spend(
     assert r.exit_code == 0, r.output
     import inspect
 
-    from deslop.cli.app import lab_blind, lab_calibrate_judge, lab_export
+    from deslop.cli.lab import lab_blind, lab_calibrate_judge, lab_export
 
     for command in (lab_blind, lab_calibrate_judge, lab_export):
         assert "budget" in inspect.signature(command).parameters
@@ -458,7 +458,7 @@ def test_apply_writer_and_judge_flags(fixture_voice, slop_text, tmp_path, monkey
     sample.write_text(slop_text)
     seen = []
     monkeypatch.setattr(
-        sys.modules["deslop.apply"],
+        sys.modules["deslop.providers.roles"],
         "get_provider",
         lambda name, **_: seen.append(name) or Scripted("anthropic"),
     )

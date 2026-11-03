@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import random
 from collections import Counter
 from pathlib import Path
@@ -12,12 +11,18 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from deslop.home import deslop_home
 from deslop.nlp import WORD_RE, count_words, is_prose_paragraph, split_paragraphs
 from deslop.voice.collect import collect
 from deslop.voice.exemplars import parse_exemplars
 from deslop.voice.model import Voice
 
-BLIND_DIR = Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "blind"
+
+def blind_dir() -> Path:
+    """Where blind-test answers are appended: $DESLOP_HOME/blind."""
+    return deslop_home() / "blind"
+
+
 MIN_WORDS = 40
 LENGTH_WINDOW = 0.25
 MIN_OVERLAP = 0.03
@@ -195,7 +200,7 @@ def record(
         "correct": guess.upper() == pair.candidate_position,
         "reason": reason.strip(),
     }
-    target = log_path or (BLIND_DIR / f"{voice}.jsonl")
+    target = log_path or (blind_dir() / f"{voice}.jsonl")
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -205,7 +210,7 @@ def record(
 def summarize(
     voice: str, session: list[dict[str, Any]], *, log_path: Path | None = None
 ) -> Summary:
-    target = log_path or (BLIND_DIR / f"{voice}.jsonl")
+    target = log_path or (blind_dir() / f"{voice}.jsonl")
     history = []
     if target.exists():
         history = [json.loads(ln) for ln in target.read_text(encoding="utf-8").splitlines() if ln]

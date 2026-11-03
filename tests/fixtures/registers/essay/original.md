@@ -3,7 +3,7 @@ title: Chimney-Pot Papers, I: The Chimney-Pots
 author: Charles S. Brooks
 source: https://www.gutenberg.org/ebooks/25969
 license: Public domain (Project Gutenberg)
-note: Excerpt: the opening of the first paper; chosen by `deslop lab fixture-check` over Holliday (0.2% novel) and Crothers (0.3%): 2.9% raw, 0.0% novel; replaces Stevenson (18.4% raw, 4.2% novel, retired to contaminated/), cut at a paragraph boundary near 1050 words.
+note: Excerpt: the opening of the first paper; chosen by `deslop lab fixture-check` over Holliday (0.2% novel) and Crothers (0.3%): 2.9% raw, 0.0% novel, cut at a paragraph boundary near 1050 words.
 register: essay
 ---
 # The Chimney-Pots

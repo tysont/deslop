@@ -1,13 +1,17 @@
-# ABOUTME: Chooses verbatim corpus excerpts that are typical of the voice (near the metric
-# ABOUTME: centroid) and diverse (far from each other), with a per-author cap.
+# ABOUTME: Chooses a voice's exemplars (verbatim excerpts, typical and diverse, per-author cap)
+# ABOUTME: and finds the exemplars nearest a passage for the writer's prompt.
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from deslop.metrics import compute_all
 from deslop.nlp import WORD_RE, Analysis, analyze
 from deslop.stats import MetricsProfile, subset_analysis
+
+if TYPE_CHECKING:
+    from deslop.voice.model import Voice
 
 MIN_WORDS = 80
 MAX_WORDS = 350
@@ -163,3 +167,62 @@ def parse_exemplars(markdown: str) -> list[str]:
     if current:
         bodies.append("\n".join(current).strip())
     return [b for b in bodies if b and not b.startswith("Verbatim excerpts")]
+
+
+def _registers(markdown: str) -> list[str]:
+    out = []
+    for line in markdown.splitlines():
+        if line.startswith("## "):
+            start, end = line.rfind("(register"), line.rfind(")")
+            out.append(line[start + 1 : end] if start > 0 and end > start else "")
+    return out
+
+
+class ExemplarIndex:
+    """Exemplar bodies with their register, metric vector and content words, for choosing
+    the three nearest a unit: cluster-proportionally and by lexical overlap, not metrics alone."""
+
+    def __init__(self, voice: Voice):
+        self.names = [n for n, s in voice.metrics.metrics.items() if s.std > 0]
+        self.voice = voice
+        self.bodies = parse_exemplars(voice.exemplars)
+        self.registers = _registers(voice.exemplars)
+        self.vectors = [
+            _zvector(compute_all(analyze(b)), voice.metrics, self.names) for b in self.bodies
+        ]
+        self.contents = [_content(b) for b in self.bodies]
+
+    @property
+    def available(self) -> bool:
+        return bool(self.bodies)
+
+    def closest(self, paragraph_text: str, k: int = 3) -> list[str]:
+        if not self.bodies:
+            return []
+        content = _content(paragraph_text)
+        v = _zvector(compute_all(analyze(paragraph_text)), self.voice.metrics, self.names)
+        scores = []
+        for i in range(len(self.bodies)):
+            overlap = len(content & self.contents[i]) / max(len(content | self.contents[i]), 1)
+            metric = math.sqrt(
+                sum((x - y) ** 2 for x, y in zip(v, self.vectors[i], strict=True))
+            ) / max(len(self.names), 1)
+            scores.append((-(overlap * 10.0) + metric, i))
+        scores.sort()
+        # One exemplar from each register first, in proportion to register size, then the
+        # remaining nearest ones.
+        chosen: list[int] = []
+        seen_registers: set[str] = set()
+        for _, i in scores:
+            reg = self.registers[i] if i < len(self.registers) else ""
+            if reg not in seen_registers:
+                chosen.append(i)
+                seen_registers.add(reg)
+            if len(chosen) >= k:
+                break
+        for _, i in scores:
+            if len(chosen) >= k:
+                break
+            if i not in chosen:
+                chosen.append(i)
+        return [self.bodies[i] for i in chosen[:k]]

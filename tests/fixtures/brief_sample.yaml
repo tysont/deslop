@@ -1,4 +1,4 @@
-# A brief for `deslop draft`: one claim per section, with the references and quotations each
+# A brief for `deslop apply --brief`: one claim per section, with the references and quotations each
 # section must use verbatim. Everything here is from Johnson's Preface to Shakespeare (1765),
 # which is public domain and included in tests/fixtures/corpus_small.
 title: What Johnson Asked of Shakespeare

@@ -12,6 +12,8 @@ from typing import Any, Protocol
 
 from dotenv import load_dotenv
 
+from deslop.home import deslop_home
+
 load_dotenv(override=True)  # a project .env beats stale shell exports
 
 
@@ -20,7 +22,7 @@ def default_cache_dir() -> Path:
     explicit = os.environ.get("DESLOP_CACHE_DIR")
     if explicit:
         return Path(explicit)
-    return Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop")) / "cache"
+    return deslop_home() / "cache"
 
 
 DEFAULT_MODELS = {

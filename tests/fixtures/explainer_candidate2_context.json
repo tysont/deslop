@@ -1,5 +1,5 @@
 {
- "run": "reports/registers/explainer.v2.3.2.json candidate 2, paragraph 13",
+ "run": "explainer register, candidate 2, paragraph 13",
  "original_before": "The first is suet, which is the fat of the ox. The speaker believes Russian tallow is used to make dips. A significant advance came when Gay-Lussac, or someone who shared the knowledge with him, converted tallow into stearin. The practical difference is visible in use. Modern candles are clean rather than greasy like ordinary tallow candles. The drips from a modern candle can be scraped off and powdered without soiling anything.",
  "original": "The conversion proceeds in stages:",
  "original_after": "1. **Saponification.** Tallow is first boiled with quicklime to make a soap.\n2. **Acid decomposition.** The soap is then decomposed with sulphuric acid, which removes the lime. This decomposition leaves the fat rearranged as stearic acid.\n3. **By-product.** Glycerin is produced at the same time as the stearic acid. Glycerin is a sugar, or a substance similar to sugar, and it comes out of the tallow during this chemical change.\n4. **Pressing.** The oil is then pressed out of the stearic acid. As the pressure increases, the oily part carries the impurities out with it.\n5. **Casting.** The substance left after pressing is melted and cast into candles.",

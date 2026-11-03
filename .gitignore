@@ -1,13 +1,21 @@
+# Python and tooling
 .venv/
 __pycache__/
 *.pyc
-dist/
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
 htmlcov/
-.env
-*.egg-info/
-.cache/
-examples/build/
+
+# Build outputs
+dist/
 site/
+examples/build/
+
+# Local data: Gutenberg downloads, register-run reports, credentials
+.cache/
+reports/
+.env
+.DS_Store

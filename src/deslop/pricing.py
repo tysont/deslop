@@ -2,7 +2,6 @@
 # ABOUTME: answers cost questions by longest-prefix match on the model name.
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -12,9 +11,7 @@ from typing import Any
 
 import yaml
 
-
-def home() -> Path:
-    return Path(os.environ.get("DESLOP_HOME", Path.home() / ".deslop"))
+from deslop.home import deslop_home
 
 
 @dataclass
@@ -40,7 +37,7 @@ def _read(path: Path) -> dict[str, Any]:
 def load_pricing() -> Pricing:
     """Packaged table, with entries from $DESLOP_HOME/pricing.yaml added or overriding."""
     packaged = _read(Path(str(resources.files("deslop") / "pricing.yaml")))
-    override_path = home() / "pricing.yaml"
+    override_path = deslop_home() / "pricing.yaml"
     override = _read(override_path) if override_path.exists() else {}
     table = Pricing(
         sources=dict(packaged.get("sources", {})),

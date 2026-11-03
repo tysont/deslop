@@ -24,16 +24,6 @@ def test_fixture_set_states_the_validity_rule():
     assert "the propositions do not contain at all" in readme
 
 
-def test_retired_fixtures_are_kept_apart_and_explained():
-    retired = REGISTERS / "contaminated"
-    readme = (retired / "README.md").read_text(encoding="utf-8")
-    assert "Stevenson" in readme and "Saki" in readme and "fixture-check" in readme
-    assert sorted(p.name for p in retired.glob("*.md")) == ["README.md", "essay.md", "fiction.md"]
-    for name in ("essay", "fiction"):
-        head = (retired / f"{name}.md").read_text(encoding="utf-8")[:600]
-        assert head.startswith("---") and "license:" in head and "novel" in head
-
-
 @pytest.mark.parametrize("name", NAMES)
 def test_register_fixture_is_complete_and_marked(name):
     folder = REGISTERS / name

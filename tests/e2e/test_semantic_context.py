@@ -1,5 +1,5 @@
-# ABOUTME: Replays the semantic lock on the paragraph that cost candidate 2 of the v2.3.2
-# ABOUTME: explainer run: with the neighbouring paragraphs shown, the judge no longer flags it.
+# ABOUTME: Replays the semantic lock on a list-intro paragraph whose facts sit in its neighbours:
+# ABOUTME: judged alone it is flagged, and with the neighbouring paragraphs shown it passes.
 from __future__ import annotations
 
 import json

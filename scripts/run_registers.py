@@ -1,5 +1,5 @@
-# ABOUTME: Runs apply on each register's model-prose version against its small voice and writes
-# ABOUTME: reports/registers/<name>.md: original, slop and output as paragraphs, plus the checks.
+# ABOUTME: Runs apply on each register fixture's model prose against its small voice and writes
+# ABOUTME: reports/registers/<name>.json and <name>.html (the three-column comparison page).
 from __future__ import annotations
 
 import json
@@ -7,38 +7,23 @@ import sys
 from pathlib import Path
 
 from deslop import Voice, apply
-from deslop.apply import coherence_report
+from deslop.compare_page import build_page
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTERS = ROOT / "tests" / "fixtures" / "registers"
 OUT = ROOT / "reports" / "registers"
+NAMES = ["essay", "explainer", "product", "fiction"]
+ESTIMATE_PER_DOCUMENT = 2.0  # USD per document at n=3, about $2.75 per 1,000 words
 
 
 def body_of(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
-    if text.startswith("---"):
-        text = text.split("---", 2)[2]
-    return text.strip()
+    return text.split("---", 2)[2].strip() if text.startswith("---") else text.strip()
 
 
-def metric_lines(result) -> list[str]:
-    lines = [
-        "| metric | before | after | band low | band high | before | after |",
-        "| --- | ---: | ---: | ---: | ---: | --- | --- |",
-    ]
-    for r in result.metric_table:
-        if r.band_low is None and r.band_high is None:
-            continue
-        lo = "-" if r.band_low is None else f"{r.band_low:.2f}"
-        hi = "-" if r.band_high is None else f"{r.band_high:.2f}"
-        lines.append(
-            f"| {r.name} | {r.before:.2f} | {r.after:.2f} | {lo} | {hi} | "
-            f"{r.status_before} | {r.status_after} |"
-        )
-    return lines
-
-
-def run(register: str, budget: float, n: int, models: tuple[str, ...]) -> dict:
+def run(register: str, budget: float, n: int) -> dict[str, object]:
+    """Apply the register's voice to its model prose, with the human original as the
+    recitation reference, and write the result JSON and the comparison page."""
     voice = Voice.load(REGISTERS / register / f"{register}.voice")
     original = body_of(REGISTERS / register / "original.md")
     slop = body_of(REGISTERS / register / "slop.md")
@@ -47,81 +32,25 @@ def run(register: str, budget: float, n: int, models: tuple[str, ...]) -> dict:
         voice,
         n=n,
         budget=budget,
-        models=models,
+        reference=original,
+        report_all=True,
         progress=lambda m: print(f"  {m}", file=sys.stderr),
     )
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / f"{register}.json").write_text(result.to_json(), encoding="utf-8")
-    before, after = result.report_before, result.report_after
-    unit = result.units[0] if result.units else None
-    lines = [
-        f"# {register}: original, model prose, and the v2.2 rewrite",
-        "",
-        f"Voice: {voice.name} ({voice.meta.document_count} documents, "
-        f"{voice.meta.total_words} words). Distance {before.distance:.0f} -> "
-        f"{after.distance:.0f} ({before.verdict} -> {after.verdict}); growth "
-        f"{result.growth_pct:+.0f}%; cost ${result.cost.usd:.3f} over {result.cost.calls} "
-        f"call(s); stopped: {result.stopped}.",
-        "",
-        f"{result.judge_gate}",
-        "",
-        "## Original (human)",
-        "",
-        original,
-        "",
-        "## Model prose (the input to apply)",
-        "",
-        slop,
-        "",
-        "## v2.2 output"
-        + (" (the original was kept: no candidate passed)" if unit and unit.kept_original else ""),
-        "",
-        result.text.strip(),
-        "",
-        "## Coherence and judge",
-        "",
-        coherence_report(result),
-        "",
-    ]
-    if unit:
-        lines.append(f"Unit: {unit.reason}")
-        lines.append("")
-        for c in unit.candidates:
-            judge = "n/a" if c.judge_ok is None else ("ok" if c.judge_ok else "no")
-            coherence = "n/a" if c.coherence is None else ("ok" if c.coherence.ok else "failed")
-            lines.append(
-                f"- candidate {c.attempt} ({c.provider}): "
-                f"{'accepted' if c.accepted else 'rejected'}; win rate "
-                f"{c.win_rate if c.win_rate is not None else 'n/a'}; judge {judge}; "
-                f"coherence {coherence}; {c.reason}"
-            )
-        lines.append("")
-    lines += [
-        "## Metrics against the voice's band",
-        "",
-        *metric_lines(result),
-        "",
-        "## Meaning",
-        "",
-        "```",
-        result.meaning_diff,
-        "```",
-        "",
-    ]
-    (OUT / f"{register}.md").write_text("\n".join(lines), encoding="utf-8")
+    payload = result.to_json()
+    (OUT / f"{register}.json").write_text(payload, encoding="utf-8")
+    page = build_page(json.loads(payload), reference=original)
+    (OUT / f"{register}.html").write_text(page, encoding="utf-8")
     return {
         "register": register,
-        "before": before.distance,
-        "after": after.distance,
-        "verdict": after.verdict,
-        "kept": bool(unit and unit.kept_original),
+        "before": result.report_before.distance,
+        "after": result.report_after.distance,
+        "verdict": result.report_after.verdict,
+        "kept": bool(result.units and result.units[0].kept_original),
         "cost": result.cost.usd,
         "calls": result.cost.calls,
         "stopped": result.stopped,
     }
-
-
-ESTIMATE_PER_DOCUMENT = 2.0  # USD at n=3, from the v2.1 pilot (about $2.75 per 1,000 words)
 
 
 def projection(registers: list[str], n: int, budget: float) -> tuple[float, str]:
@@ -138,15 +67,10 @@ def projection(registers: list[str], n: int, budget: float) -> tuple[float, str]
 
 
 def main() -> None:
-    """usage: run_registers.py [BUDGET] [N] [--models claude,gpt] [--max-cost USD] [--confirm]
-    [REGISTER...]. This fans out over several documents, so it refuses to run without
-    --confirm (Makefile: CONFIRM=1) and when the projection exceeds --max-cost."""
+    """usage: run_registers.py [BUDGET] [N] [--max-cost USD] [--confirm] [REGISTER...]. This
+    fans out over several documents, so it refuses to run without --confirm (Makefile:
+    CONFIRM=1) and when the projection exceeds --max-cost."""
     args = sys.argv[1:]
-    models: tuple[str, ...] = ("claude", "gpt")
-    if "--models" in args:
-        i = args.index("--models")
-        models = tuple(args[i + 1].split(","))
-        del args[i : i + 2]
     max_cost: float | None = None
     if "--max-cost" in args:
         i = args.index("--max-cost")
@@ -156,7 +80,7 @@ def main() -> None:
     args = [a for a in args if a != "--confirm"]
     budget = float(args[0]) if args else 5.0
     n = int(args[1]) if len(args) > 1 else 3
-    only = args[2:] or ["essay", "explainer", "product", "fiction"]
+    only = args[2:] or NAMES
     total, line = projection(only, n, budget)
     print(line, file=sys.stderr)
     if max_cost is None:
@@ -176,10 +100,10 @@ def main() -> None:
     rows = []
     for register in only:
         print(f"== {register}", file=sys.stderr)
-        rows.append(run(register, budget, n, models))
+        rows.append(run(register, budget, n))
         print(json.dumps(rows[-1]), file=sys.stderr)
     (OUT / "summary.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
-    print(f"total ${sum(r['cost'] for r in rows):.3f}")
+    print(f"total ${sum(float(str(r['cost'])) for r in rows):.3f}; pages in {OUT}")
 
 
 if __name__ == "__main__":

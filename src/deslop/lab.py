@@ -8,16 +8,17 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from deslop.apply import SYSTEM_TEMPLATE, ExemplarIndex, Models, clean_response
 from deslop.blind import MIN_WORDS, Pair, Pairing, shown
 from deslop.judge import JudgeCalibration, calibrate_judge
 from deslop.nlp import count_words, is_prose_paragraph, split_paragraphs
+from deslop.prompts import SYSTEM_TEMPLATE, clean_response
 from deslop.providers.base import CachingProvider, ProviderError
+from deslop.providers.roles import Models
 from deslop.recitation import FIXTURE_MAX_RECITATION, RecitationResult, recitation
 from deslop.semantic import extract_propositions
 from deslop.thresholds import split_heldout
 from deslop.voice.collect import collect
-from deslop.voice.exemplars import parse_exemplars
+from deslop.voice.exemplars import ExemplarIndex, parse_exemplars
 from deslop.voice.model import Voice
 
 

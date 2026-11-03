@@ -3,7 +3,7 @@ title: A Drama of Three (Balcony Stories)
 author: Grace Elizabeth King
 source: https://www.gutenberg.org/ebooks/11514
 license: Public domain (Project Gutenberg)
-note: Excerpt: the opening of the story; chosen by `deslop lab fixture-check` over Aumonier (0.1% novel) and Brown (0.3%): 1.8% raw, 0.0% novel; replaces Saki (54.6% raw, 14.9% novel, retired to contaminated/), cut at a paragraph boundary near 1120 words.
+note: Excerpt: the opening of the story; chosen by `deslop lab fixture-check` over Aumonier (0.1% novel) and Brown (0.3%): 1.8% raw, 0.0% novel, cut at a paragraph boundary near 1120 words.
 register: fiction
 ---
 

@@ -18,9 +18,10 @@ from __future__ import annotations
 
 __version__ = "2.5.0"
 
-from deslop.apply import Result, apply
+from deslop.apply import apply
 from deslop.draft import Brief, load_brief
 from deslop.report import Report
+from deslop.result import Result
 from deslop.score import score
 from deslop.voice import Voice
 
