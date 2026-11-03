@@ -119,6 +119,30 @@ spans the input's own citations resolve to (the whole chapter when it fits under
 `--quote-context-words`), told to quote only from them, and told how each text is cited. Without a primary text everything
 added is listed as unverified and nothing is rejected.
 
+## Sections of a longer work
+
+`--preceding FILE` names the already-converted section immediately before the input, and
+`--following FILE` the unconverted section after it. Both are read only. The writer sees the
+preceding section as "the section that comes immediately before; continue it" and the
+following one as "what comes after; do not rewrite it". Neither is rewritten, and neither
+counts in the meaning diff.
+
+The preceding section adds hard continuity checks, like tense and antecedents:
+
+- terminology: every proper noun and every one of its top 20 content nouns is rendered the
+  same way in the candidate (a changed hyphen, space or join, or a name spelled one or two
+  letters differently, is a failure);
+- tense and person: the dominant tense and person of its last paragraph and the
+  candidate's first must match (a paragraph without a dominant tense is not compared);
+- no re-introduction: a name it introduced with an appositive or an epithet ("the
+  philosopher Xenophanes") is not introduced that way again.
+
+The judge answers a fifth item, "same writer continuing", on the preceding section's last
+two paragraphs followed by the first two of each text; it must be a win or a tie. The report
+gives a rhythm distance to the preceding section (the mean, over the rhythm metrics, of the
+difference divided by the voice's spread) beside the distance to the voice. The following
+section has no checks.
+
 ## The comparative judge
 
 The judge sees the original and two texts, A and B, in a fixed but arbitrary order, plus two

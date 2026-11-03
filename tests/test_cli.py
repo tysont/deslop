@@ -611,6 +611,52 @@ def test_apply_uses_the_voices_declared_primary_texts(
     assert json.loads(r.stdout)["citations"] == "keep"
 
 
+def test_apply_takes_preceding_and_following_sections(fixture_voice, tmp_path, monkeypatch):
+    from pathlib import Path as _Path
+
+    continuity = _Path(__file__).parent / "fixtures" / "continuity"
+    voice = fixture_voice.save(tmp_path / "f.voice")
+    scripted_factory(monkeypatch)
+    r = runner.invoke(
+        app,
+        [
+            "apply",
+            str(continuity / "chapter2.md"),
+            "--voice",
+            str(voice),
+            "--n",
+            "1",
+            "--json",
+            "--preceding",
+            str(continuity / "chapter1.md"),
+            "--following",
+            str(continuity / "chapter3.md"),
+        ],
+    )
+    assert r.exit_code in (0, 2), r.output
+    data = json.loads(r.stdout)
+    assert data["preceding_given"] and data["following_given"]
+    assert data["continuity"] is not None and "rhythm_distance" in data["continuity"]
+    assert "Beersheba" not in data["text"] and "rises early" not in data["text"]
+
+
+def test_voice_add_tells_writes_a_voice_with_the_missing_tell(fixture_voice, tmp_path):
+    from pathlib import Path as _Path
+
+    from deslop.voice import Voice
+
+    v = fixture_voice.model_copy(deep=True)
+    v.metrics.tells.pop("T16", None)
+    v.metrics.thresholds.tells.pop("T16", None)
+    old = v.save(tmp_path / "old.voice")
+    corpus = _Path(__file__).parent / "fixtures" / "corpus_small"
+    out = tmp_path / "new.voice"
+    r = runner.invoke(app, ["voice", "add-tells", str(old), str(corpus), "-o", str(out)])
+    assert r.exit_code == 0, r.output
+    assert "T16:" in r.output and "limit" in r.output
+    assert "T16" in Voice.load(out).metrics.tells
+
+
 def test_lab_slop_writes_model_prose_with_provenance(tmp_path, monkeypatch):
     ref = tmp_path / "piece.md"
     ref.write_text("---\ntitle: piece\n---\n\nAbraham is told to take his son.\n")

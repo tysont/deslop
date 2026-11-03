@@ -62,6 +62,21 @@ Answer in JSON only:
 "order": "A"|"B"|"tie", "confidence": 0.5-1.0, "note": "one sentence naming what decided it"}"""
 
 JUDGE_ITEMS = ("voice", "coherent", "tense_person", "order")
+CONTINUING_ITEM = "continuing"
+DOCUMENT_SYSTEM_CONTINUING = (
+    DOCUMENT_SYSTEM.replace("Answer four questions separately", "Answer five questions separately")
+    .replace(
+        "Give your confidence in the answers",
+        "continuing: which reads more like the same writer continuing THE SECTION BEFORE: judge "
+        "the last two paragraphs of that section followed by the first two paragraphs of A, "
+        "against the same two followed by the first two paragraphs of B (terms, tense, person "
+        "and manner carried across the seam).\n\nGive your confidence in the answers",
+    )
+    .replace(
+        '"order": "A"|"B"|"tie", "confidence"',
+        '"order": "A"|"B"|"tie", "continuing": "A"|"B"|"tie", "confidence"',
+    )
+)
 GATE_CONFIDENCE = 0.7
 CALIBRATION_MIN_ACCURACY = 0.8
 
@@ -271,11 +286,14 @@ def compare_document(
     *,
     exemplars: list[str],
     against: str = "original",
+    preceding: str | None = None,
 ) -> DocumentVerdict:
     """Ask `provider` to compare `candidate` with `other` on the four `JUDGE_ITEMS`, with
-    `original` shown as the reference for order and emphasis. The pair is shown in a
-    deterministic order; the verdict is reported from the candidate's side. `provider` must
-    not have written the candidate."""
+    `original` shown as the reference for order and emphasis; with `preceding` (the last two
+    paragraphs of the already-converted section before) a fifth item, `continuing`, asks
+    which reads more like the same writer carrying on. The pair is shown in a deterministic
+    order; the verdict is reported from the candidate's side. `provider` must not have
+    written the candidate."""
     candidate_is_a = _order(candidate, other)
     a, b = (candidate, other) if candidate_is_a else (other, candidate)
     samples = "\n\n".join(f"SAMPLE {i}:\n{e.strip()}" for i, e in enumerate(exemplars[:2], 1))
@@ -283,11 +301,16 @@ def compare_document(
         f"THE VOICE:\n{voice.profile.strip()}\n\n{samples or '(no samples available)'}\n\n"
         f"THE ORIGINAL:\n{original.strip()}\n\nTEXT A:\n{a.strip()}\n\nTEXT B:\n{b.strip()}"
     )
-    data, completion = _complete_json(provider, DOCUMENT_SYSTEM, user)
+    system: str = DOCUMENT_SYSTEM
+    wanted: tuple[str, ...] = JUDGE_ITEMS
+    if preceding:
+        user = f"THE SECTION BEFORE (its last two paragraphs):\n{preceding.strip()}\n\n" + user
+        system, wanted = DOCUMENT_SYSTEM_CONTINUING, (*JUDGE_ITEMS, CONTINUING_ITEM)
+    data, completion = _complete_json(provider, system, user)
     mine = "A" if candidate_is_a else "B"
     items: dict[str, str] = {}
     if data is not None:
-        for item in JUDGE_ITEMS:
+        for item in wanted:
             pick = str(data.get(item, "")).strip().lower()[:3]
             if pick == "tie":
                 items[item] = "tie"
@@ -298,7 +321,7 @@ def compare_document(
         confidence = _confidence(data.get("confidence"))
         note = str(data.get("note", ""))[:300]
     else:
-        items = dict.fromkeys(JUDGE_ITEMS, "loss")
+        items = dict.fromkeys(wanted, "loss")
         confidence, note = 0.5, "judge gave no JSON"
     return DocumentVerdict(
         against=against,

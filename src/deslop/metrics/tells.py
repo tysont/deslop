@@ -144,7 +144,10 @@ def text_as_agent(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalo
     verbs = set(pattern.params.get("verbs", []))
     hits = []
     for tok in sent.span:
-        if tok.pos_ not in ("VERB", "AUX") or tok.lemma_.lower() not in verbs:
+        is_about = tok.lemma_.lower() == "be" and any(
+            c.dep_ == "prep" and c.lower_ == "about" for c in tok.children
+        )  # "the verse is about X": the text as the agent of a topic
+        if tok.pos_ not in ("VERB", "AUX") or (tok.lemma_.lower() not in verbs and not is_about):
             continue
         subj = subject_of(tok)
         if subj is None:
@@ -154,8 +157,117 @@ def text_as_agent(a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalo
             c.dep_ == "det" and c.lower_ == "the" for c in subj.children
         )
         if is_text_noun or is_titled:
-            hits.append(_token_hit(pattern, sent, subj, tok, note=tok.lower_))
+            note = f"{tok.lower_} about" if is_about else tok.lower_
+            hits.append(_token_hit(pattern, sent, subj, tok, note=note))
     return hits
+
+
+PSEUDO_CLEFT_RE = re.compile(r"^\W*What\b[^.?!;:]{2,90}?\b(?:is|was|are|were)\b", re.IGNORECASE)
+IT_CLEFT_RE = re.compile(
+    r"\bIt\s+(?:is|was)\s+(?P<focus>(?:(?!\bto\b)[^\s,;:.?!]+\s+){1,7}?)(?:that|who|whom)\b"
+)
+REVERSE_CLEFT_RE = re.compile(r"\b(?:is|was|are|were)\s+(?:what|why|how|where)\b", re.IGNORECASE)
+FRONTED_DEPS = {"det", "amod", "compound", "poss", "nummod", "nmod"}
+OBJECT_DEPS = {"dobj", "obj", "attr", "oprd", "acomp", "dative"}
+CLAUSE_OBJECT_DEPS = {"ccomp", "xcomp"}
+
+
+@sentence_detector("cleft_inversion")
+def cleft_inversion(
+    a: Analysis, sent: Sentence, pattern: Pattern, catalog: Catalog
+) -> list[TellHit]:
+    """Clefts and inversions that hold the point back: a pseudo-cleft ("What X is Y"), an
+    it-cleft ("It is X that Y"; not "It is clear that", which is extraposition), a reverse
+    pseudo-cleft ("X is what/why Y"), and a fronted object ("Grief Plato will not allow"). A
+    question is none of these."""
+    text = sent.text.strip()
+    if text.endswith("?"):
+        return []
+    hits: list[TellHit] = []
+    m = PSEUDO_CLEFT_RE.search(text)
+    if m:
+        after_what = next((t for t in sent.span if t.lower_ == "what"), None)
+        nxt = (
+            sent.span.doc[after_what.i + 1]
+            if after_what is not None and after_what.i + 1 < len(sent.span.doc)
+            else None
+        )
+        if nxt is not None and (nxt.lower_ in ("a", "an") or nxt.pos_ in ("NOUN", "ADJ")):
+            m = None  # "What a dreadful image is this", "What pictures are these": exclamations
+    if m:
+        start = sent.text.find(text)
+        hits.append(
+            _hit(
+                pattern,
+                sent,
+                sent.start + start + m.start(),
+                sent.start + start + m.end(),
+                m.group(0).strip(),
+                "pseudo-cleft",
+            )
+        )
+    for m in IT_CLEFT_RE.finditer(sent.text):
+        focus_char = sent.span.start_char + m.start("focus")
+        first = next((t for t in sent.span if t.idx >= focus_char), None)
+        if first is None or first.pos_ in ("ADJ", "ADV", "PART", "VERB") or first.lower_ == "not":
+            continue  # "It is clear that", "It is not that": extraposition, not a cleft
+        hits.append(
+            _hit(
+                pattern, sent, sent.start + m.start(), sent.start + m.end(), m.group(0), "it-cleft"
+            )
+        )
+    for m in REVERSE_CLEFT_RE.finditer(sent.text):
+        hits.append(
+            _hit(
+                pattern,
+                sent,
+                sent.start + m.start(),
+                sent.start + m.end(),
+                m.group(0),
+                "reverse cleft",
+            )
+        )
+    hits.extend(_fronted_object(a, sent, pattern, int(pattern.params.get("max_fronted", 5))))
+    return hits
+
+
+def _fronted_object(
+    a: Analysis, sent: Sentence, pattern: Pattern, max_fronted: int
+) -> list[TellHit]:
+    """A noun phrase before the subject that is the verb's missing object: "Grief Plato
+    will not allow". The parser often files the fronted noun as a compound of a named
+    subject, so the test is on the surface: a short run of nominal tokens, then the
+    subject's own core, then a transitive verb (not "be") with no object after it."""
+    tokens = [t for t in sent.span if not t.is_punct]
+    root = next((t for t in sent.span if t.dep_ == "ROOT"), None)
+    if root is None or root.pos_ != "VERB" or root.lemma_.lower() == "be":
+        return []
+    subj = subject_of(root)
+    if subj is None or subj.pos_ not in ("PROPN", "PRON"):
+        return []
+    for c in root.children:
+        if c.i <= root.i:
+            continue
+        if c.dep_ in OBJECT_DEPS:
+            return []
+        between = sent.span.doc[root.i + 1 : c.left_edge.i]
+        if c.dep_ in CLAUSE_OBJECT_DEPS and not any(t.text == "," for t in between):
+            return []  # a clause after a comma is a mis-attached adverbial, not the object
+    core = [subj] + [c for c in subj.children if c.dep_ in ("det", "poss") and c.i < subj.i]
+    core_start = min(t.i for t in core)
+    prefix = [t for t in tokens if t.i < core_start]
+    if not 1 <= len(prefix) <= max_fronted:
+        return []
+    if any(t.pos_ not in ("NOUN", "PROPN", "ADJ", "DET") for t in prefix):
+        return []
+    head = prefix[-1]
+    if head.pos_ not in ("NOUN", "PROPN"):
+        return []
+    if head.pos_ == "PROPN" and not re.search(rf"\b{re.escape(head.lower_)}\b", a.text):
+        # The parser capitalises a sentence-initial common noun into a name ("Grief Plato");
+        # it counts as a fronted common noun only when the document writes it in lower case.
+        return []
+    return [_token_hit(pattern, sent, prefix[0], root, note="fronted object")]
 
 
 @sentence_detector("triad")

@@ -186,3 +186,27 @@ def test_a_voice_records_its_corpus_relative_to_itself_or_not_at_all(tmp_path):
     meta["corpus_path"] = "/home/someone/corpus"
     (work / "voice.yaml").write_text(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
     assert Voice.load(work).meta.corpus_path is None
+
+
+def test_add_tells_measures_only_the_tells_a_voice_predates(tmp_path, fixture_voice):
+    from deslop.voice.calibrate import add_tells
+    from deslop.voice.collect import collect
+
+    v = fixture_voice.model_copy(deep=True)
+    before = {k: x.rate_per_1k for k, x in v.metrics.tells.items()}
+    limits = dict(v.metrics.thresholds.tells)
+    v.metrics.tells.pop("T16", None)
+    v.metrics.thresholds.tells.pop("T16", None)
+    v.lexicon.patterns = [x for x in v.lexicon.patterns if x.id != "T16"]
+    corpus, _ = collect([FIXTURES], name="critics")
+    assert add_tells(v, corpus) == ["T16"]
+    assert v.metrics.tells["T16"].rate_per_1k >= 0
+    assert v.metrics.thresholds.tells["T16"] >= 2.0, "the starting floor a build would give it"
+    assert any(x.id == "T16" for x in v.lexicon.patterns)
+    for k, rate in before.items():
+        if k != "T16":
+            assert (
+                v.metrics.tells[k].rate_per_1k == rate
+                and v.metrics.thresholds.tells[k] == limits[k]
+            )
+    assert add_tells(v, corpus) == [], "nothing left to add"

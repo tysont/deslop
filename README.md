@@ -139,6 +139,8 @@ Write FILE (or stdin) in the voice. Exit 0 when the result scores PASS, 2 when F
 | `--max-growth` | `15` | reject a candidate more than this percent longer than its paragraph |
 | `--primary-text` | the voice's declared texts | a primary text (a text file with an optional `NAME.locs.json` sidecar of labelled spans, or a directory of them) added quotations and citations must verify against; repeatable; a voice declares its own in `voice.yaml` under `primary_texts` (see docs/primary-texts.md) |
 | `--citation-scheme` | none | JSON `{"name", "pattern", "bare_pattern"}`: the regex shape of citations of the command-line primary texts; repeatable |
+| `--preceding FILE` | none | the already-converted section immediately before the input: the writer continues it; hard continuity checks (terms rendered the same way, the same tense and person across the seam, no name introduced again) and a fifth judge item, "same writer continuing", which must be a win or a tie; a rhythm distance to it is reported beside the distance to the voice; never rewritten or counted in the meaning diff |
+| `--following FILE` | none | the unconverted section after the input: shown to the writer as context, never rewritten or checked |
 | `--citations` | `verified` | `keep`: every citation string a declared scheme (or, without a primary text, the generic citation shapes) recognises in the input must reappear exactly as written and as often, and every input quotation byte-identically; the writer sees them under "reproduce exactly"; `verified`: additions must verify against the primary texts; `none`: as keep, and nothing may be added |
 | `--quote-context-words` | `1500` | cap on the verbatim primary-text passages offered to the writer: every citation the input makes is resolved and its span shown under "Passages you may quote", with the whole chapter for a chapter:verse text when it fits, or the cited paragraphs and their neighbours for a paragraph-labelled text; the writer may quote only from these, verbatim |
 | `--allow-primary-facts` | off | a fact the input lacks is not an addition when its numbers and names are all at a cited, resolved location of a primary text; off, it remains a material addition |
@@ -225,6 +227,13 @@ separation achieved, and the rules.
 
 Metric deltas with their direction, tell and ban changes, lexicon and author-share changes,
 and a diff of `rules.md`.
+
+### `deslop voice add-tells VOICE CORPUS... -o OUT.voice`
+
+Measure, on the voice's own corpus, the tells it predates (a pattern added to the catalog
+after the voice was built) and add only those: the corpus rate, the starting limit a build
+would give it, and the lexicon's comparison with the LLM reference. Offline; every other
+measurement, band, threshold and prose file is left as it is.
 
 ### `deslop voice validate VOICE [--json]`
 
@@ -453,7 +462,7 @@ added there or in a file passed with `--patterns`.
 
 | id | name | definition |
 | --- | --- | --- |
-| T1 | `text_as_agent` | A text noun is the subject of an intentional verb (the chapter asks, the passage insists) |
+| T1 | `text_as_agent` | A text noun is the subject of an intentional verb (the chapter asks, the passage insists, the sentence turns on, the verse rests on, the verse is about) |
 | T2 | `negative_parallelism` | Contrastive framing by negation (not X; Y / not X but Y / X, not Y / rather than / less X than Y) |
 | T3 | `balance_markers` | Words that assert a poised both-ness instead of taking a side |
 | T4 | `triad` | Three or more parallel clauses or predicates, or three abstract nouns, adjectives or adverbs in rhetorical parallel; an enumeration of concrete nouns (gravel, chalk and clay) is not a triad |
@@ -468,6 +477,7 @@ added there or in a file passed with `--patterns`.
 | T13 | `colon_reveal` | A colon followed by a single abstract noun phrase as the reveal |
 | T14 | `tidy_summary_close` | Final paragraph restates earlier paragraphs with no new anchors |
 | T15 | `monotone_run` | Three or more consecutive sentences whose word counts all fall within five of each other |
+| T16 | `cleft_inversion` | A cleft or inversion that holds the point back: "What X is Y", "It is X that Y" (not "It is clear that"), "X is what/why Y", and a fronted object ("Grief Plato will not allow"); rated against the voice's own rate |
 
 ## Exit codes
 

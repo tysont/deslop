@@ -22,6 +22,9 @@ lexicons:
     - stanza
     - sentence
     - paragraph
+    - word
+    - phrase
+    - clause
     - image
     - metaphor
     - ending
@@ -184,7 +187,7 @@ lexicons:
 patterns:
   - id: T1
     name: text_as_agent
-    description: A text noun is the subject of an intentional verb (the chapter asks, the passage insists).
+    description: A text noun is the subject of an intentional verb (the chapter asks, the passage insists, the sentence turns on, the verse is about).
     detector: dep-pattern
     function: text_as_agent
     params:
@@ -194,6 +197,11 @@ patterns:
         - hold
         - hinge
         - turn
+        - center
+        - centre
+        - rest
+        - depend
+        - concern
         - spend
         - soften
         - name
@@ -374,6 +382,13 @@ patterns:
     params:
       min_paragraphs: 3
       min_overlap: 0.75
+  - id: T16
+    name: cleft_inversion
+    description: A cleft or inversion that withholds the point for effect ("What moves the flood is...", "It is grief that...", "That is why...", a fronted object as in "Grief Plato will not allow").
+    detector: dep-pattern
+    function: cleft_inversion
+    params:
+      max_fronted: 5
   - id: T15
     name: monotone_run
     description: Three or more consecutive sentences whose word counts all fall within five of each other.

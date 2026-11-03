@@ -2,6 +2,23 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## v2.5.0 - 2026-11-02
+
+- T1 text-as-agent covers word, phrase and clause as subjects and turn on, hinge on, center
+  on, rest on, depend on, concern and "is about" as verbs.
+- T16 cleft_inversion: pseudo-clefts ("What X is Y"), it-clefts ("It is X that"; not "It is
+  clear that"), reverse clefts ("X is what/why Y") and fronted objects ("Grief Plato will not
+  allow"), rated against the voice like any other tell. The LLM reference gains its rate
+  (2.36 per 1k words) from the cached essays (`scripts/build_llm_reference.py --add-tells`,
+  which adds only missing tells); `deslop voice add-tells` measures it on a voice's corpus.
+- Round-two retries carry only the notes the retried draft earned; nothing is pooled.
+- `--citations keep` and `none` also require each kept citation to sit in a sentence that
+  makes the same point as the input sentence carrying it.
+- `--preceding FILE` and `--following FILE`: continue an already-converted section, with
+  hard continuity checks (terms, tense and person across the seam, no re-introduction), a
+  fifth judge item ("same writer continuing") and a rhythm distance to the preceding
+  section; the following section is context only.
+
 ## v2.4.4 - 2026-11-02
 
 - The connective-opener band is advisory: reported, told to the writer on retry only when

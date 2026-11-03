@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from deslop.coherence import CoherenceResult, check_coherence
+from deslop.continuity import ContinuityResult, check_continuity, last_paragraphs
 from deslop.draft import Brief, SectionLog, draft_sections
 from deslop.judge import (
     DocumentVerdict,
@@ -81,7 +82,7 @@ def pairs_dir() -> Path:
 
 CANDIDATE_TEMPERATURE = 0.9
 DEFAULT_MAX_GROWTH = 15.0  # percent by which a candidate may outgrow the original
-ROUNDS = 2  # the first round, then one retry carrying what a reader noticed
+ROUNDS = 2  # the first round, then one retry per draft carrying what a reader noticed in it
 ADVISORY_PARAGRAPHS = 10  # under this many input paragraphs the paragraph band only advises
 DEFAULT_QUOTE_CONTEXT_WORDS = 1500  # cap on the verbatim passages offered to the writer
 Citations = Literal["keep", "verified", "none"]
@@ -113,6 +114,7 @@ class CandidateLog(BaseModel):
     reader_notes: list[str] = Field(default_factory=list)  # what the retry prompt was told
     advisories: list[str] = Field(default_factory=list)  # noted to the writer, never a rejection
     connective_note: str = ""  # the connective band, told to the writer only on a coherence loss
+    continuity: ContinuityResult | None = None  # the seam with --preceding, when given
     accepted: bool = False
     reason: str = ""
 
@@ -227,6 +229,9 @@ class Result(BaseModel):
     max_recitation: float = DEFAULT_MAX_RECITATION
     allow_primary_facts: bool = False
     citations: str = "verified"
+    continuity: ContinuityResult | None = None  # the winner's seam with --preceding
+    preceding_given: bool = False
+    following_given: bool = False
     recitation: RecitationResult | None = None
 
     def to_json(self, indent: int | None = 1) -> str:
@@ -454,6 +459,14 @@ QUOTE_RULE = (
     "Quote only from the passages listed above and only verbatim; do not quote from memory; "
     "if a passage you want is not there, paraphrase it without quotation marks. "
 )
+
+CONTINUITY_BLOCK = """
+# The section that comes immediately before (already in the voice; continue it, do not rewrite it)
+{preceding}
+
+# What comes after (not yet converted; context only, do not rewrite it)
+{following}
+"""
 
 SECTION_BLOCK = """
 # The section to write now (paragraphs {first} to {last} of the original)
@@ -703,7 +716,14 @@ def document_prompt(
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
     whole = section.count == 1
     block = (
-        ""
+        (
+            CONTINUITY_BLOCK.format(
+                preceding=previous or "(nothing comes before)",
+                following=following or "(nothing comes after)",
+            )
+            if previous or following
+            else ""
+        )
         if whole
         else SECTION_BLOCK.format(
             first=section.first + 1,
@@ -1009,6 +1029,21 @@ def coherence_report(result: Result) -> str:
             )
         for f in c.antecedents:
             lines.append(f'  antecedent: "{f.text[:100]}" ({f.word})')
+    k = result.continuity
+    if k is not None:
+        rhythm = (
+            f"; rhythm distance to the section before {k.rhythm_distance:.2f}"
+            if k.rhythm_distance is not None
+            else ""
+        )
+        lines.append(
+            f"continuity with the section before: {'ok' if k.ok else 'FAILED'}; tense "
+            f"{k.tense_before or '-'} -> {k.tense_after or '-'}, person {k.person_before} -> "
+            f"{k.person_after}; {len(k.terms)} term(s) rendered differently; "
+            f"{len(k.reintroductions)} name(s) introduced again{rhythm} "
+            f"(distance to the voice {result.report_after.distance:.1f})"
+        )
+        lines.extend(f"  {n}" for n in k.reader_notes())
     if result.judge_items:
         lines.append(
             "judge vs original: " + ", ".join(f"{k} {v}" for k, v in result.judge_items.items())
@@ -1080,6 +1115,8 @@ def apply(
     allow_primary_facts: bool = False,
     quote_context_words: int = DEFAULT_QUOTE_CONTEXT_WORDS,
     citations: Citations = "verified",
+    preceding: str | None = None,
+    following: str | None = None,
     max_iter: int = 4,
     preserve_length: float = 0.15,
     patterns: tuple[str, ...] = (),
@@ -1157,6 +1194,8 @@ def apply(
         allow_primary_facts=allow_primary_facts,
         quote_context_words=quote_context_words,
         citations=citations,
+        preceding=preceding.strip() if preceding else None,
+        following=following.strip() if following else None,
     )
 
     if mode == "edit":
@@ -1214,6 +1253,9 @@ def apply(
         chunk_words=chunk_words,
         growth_pct=growth_of(text, final_text),
         coherence=winner.coherence if winner is not None else None,
+        continuity=winner.continuity if winner is not None else None,
+        preceding_given=preceding is not None,
+        following_given=following is not None,
         judge_items=dict(vs.items) if vs is not None else {},
         metric_table=metric_table(report_before, report_after),
         unverified_additions=_unverified(units),
@@ -1250,6 +1292,8 @@ class Options:
     allow_primary_facts: bool = False  # facts verifiable in a primary text are not additions
     quote_context_words: int = DEFAULT_QUOTE_CONTEXT_WORDS
     citations: Citations = "verified"  # keep | verified | none
+    preceding: str | None = None  # the converted section before; never rewritten
+    following: str | None = None  # the unconverted section after; context only
 
 
 def _load_texts(
@@ -1421,11 +1465,11 @@ def _rewrite_loop(
             )
         section_text = text[section.start : section.end]
         props = by_paragraph[section.first : section.last + 1]
-        previous = pieces[-1] if pieces else ""
+        previous = pieces[-1] if pieces else (opts.preceding or "")
         following = (
             text[sections[section.index + 1].start : sections[section.index + 1].end]
             if section.index + 1 < len(sections)
-            else ""
+            else (opts.following or "")
         )
         log = _rewrite_section(
             section,
@@ -1442,6 +1486,7 @@ def _rewrite_loop(
             following=following,
             report_before=report_before,
             textures=textures[section.first : section.last + 1],
+            seam=opts.preceding if section.index == 0 else None,
         )
         logs.append(log)
         if log.kept_original:
@@ -1578,11 +1623,25 @@ def input_citations(text: str, opts: Options) -> list[str]:
     return primary_citations(text, opts.texts)
 
 
+SENTENCE_SPLIT_RE = re.compile(r"(?:(?<=[.!?])|(?<=[.!?][\"”’)]))\s+(?=[A-Z\"“(])")
+CONTENT_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]{3,}")
+SAME_POINT_OVERLAP = 0.3  # share of the input sentence's content words the output sentence keeps
+
+
+def _content_words(sentence: str) -> set[str]:
+    return {w.lower() for w in CONTENT_WORD_RE.findall(sentence)}
+
+
+def _sentences_with(text: str, needle: str) -> list[str]:
+    return [s for s in SENTENCE_SPLIT_RE.split(text) if needle in s]
+
+
 def citation_policy_notes(section_text: str, candidate: str, opts: Options) -> list[str]:
     """`--citations keep` and `none`: every citation the input carries must appear in the
-    output exactly as written and as often, and every input quotation byte-identically;
-    under `none` the output may add no citation or quotation either. `verified` leaves this
-    to the primary-text check."""
+    output exactly as written and as often, each in a sentence that makes the same point as
+    the input sentence carrying it (it keeps at least `SAME_POINT_OVERLAP` of that sentence's
+    content words), and every input quotation byte-identically; under `none` the output may
+    add no citation or quotation either. `verified` leaves this to the primary-text check."""
     if opts.citations == "verified":
         return []
     notes = []
@@ -1591,6 +1650,24 @@ def citation_policy_notes(section_text: str, candidate: str, opts: Options) -> l
         want, have = before.count(c), candidate.count(c)
         if have < want:
             notes.append(f"the citation {c} must appear exactly as written ({want}x, found {have})")
+            continue
+        for source in _sentences_with(section_text, c):
+            words = _content_words(source)
+            if not words:
+                continue
+            best = max(
+                (
+                    len(words & _content_words(out)) / len(words)
+                    for out in _sentences_with(candidate, c)
+                ),
+                default=0.0,
+            )
+            if best < SAME_POINT_OVERLAP:
+                notes.append(
+                    f"the citation {c} appears, but not in the sentence that makes the same point "
+                    f'("{source.strip()[:70]}")'
+                )
+                break
     for q in quoted_spans(section_text):
         if q not in candidate:
             notes.append(f'the quotation "{q[:60]}" must be reproduced exactly as written')
@@ -1653,6 +1730,7 @@ def _rewrite_section(
     following: str,
     report_before: Report,
     textures: Sequence[str] = (),
+    seam: str | None = None,
 ) -> UnitLog:
     models, n, progress = opts.models, opts.n, opts.progress
     writer, judge = models.writer, models.judge
@@ -1682,11 +1760,12 @@ def _rewrite_section(
             + ", ".join(f"{p.text_name} {p.ref}" for p in passages[:6])
             + (" ..." if len(passages) > 6 else "")
         )
-    noticed: list[str] = []
+    noticed_by_draft: list[list[str]] = []  # round two's draft k hears only draft k's notes
     for round_index in range(ROUNDS):
         eligible: list[CandidateLog] = []
         for k in range(n):
             attempt = round_index * n + k + 1
+            noticed = noticed_by_draft[k] if k < len(noticed_by_draft) else []
             system, user = document_prompt(
                 section,
                 text,
@@ -1729,6 +1808,10 @@ def _rewrite_section(
             )
             log.candidates.append(cand)
             notes = _verify_section(section_text, candidate, cand, document, voice, opts)
+            if seam:
+                spreads = {k: v.std for k, v in voice.metrics.metrics.items()}
+                cand.continuity = check_continuity(seam, candidate, spreads=spreads)
+                notes.extend(cand.continuity.reader_notes())
             if not notes or opts.report_all:
                 try:
                     cand.semantic = _check_meaning_by_paragraph(
@@ -1769,7 +1852,13 @@ def _rewrite_section(
             try:
                 cand.verdicts.append(
                     compare_document(
-                        candidate, section_text, section_text, voice, judge, exemplars=near
+                        candidate,
+                        section_text,
+                        section_text,
+                        voice,
+                        judge,
+                        exemplars=near,
+                        preceding=last_paragraphs(seam) if seam else None,
                     )
                 )
             except ProviderError as exc:
@@ -1805,6 +1894,7 @@ def _rewrite_section(
                         judge,
                         exemplars=near,
                         against=f"candidate {y.attempt}",
+                        preceding=last_paragraphs(seam) if seam else None,
                     )
                 except ProviderError:
                     continue  # the pair stays uncompared
@@ -1828,12 +1918,8 @@ def _rewrite_section(
                 progress(f"  {section.kind}: {log.reason}")
             return log
         if round_index + 1 < ROUNDS:
-            seen: list[str] = []
-            for c in log.candidates:
-                for note in c.reader_notes:
-                    if note not in seen:
-                        seen.append(note)
-            noticed = seen[-12:]
+            this_round = log.candidates[round_index * n : (round_index + 1) * n]
+            noticed_by_draft = [list(dict.fromkeys(c.reader_notes))[-12:] for c in this_round]
     log.kept_original = True
     log.reason = "no candidate passed: " + "; ".join(
         f"{c.attempt}: {c.reason[:80]}" for c in log.candidates

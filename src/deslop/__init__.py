@@ -16,7 +16,7 @@ The public API is five names:
 
 from __future__ import annotations
 
-__version__ = "2.4.4"
+__version__ = "2.5.0"
 
 from deslop.apply import Result, apply
 from deslop.draft import Brief, load_brief

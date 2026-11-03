@@ -312,3 +312,68 @@ def recalibrate_metrics(voice: Voice, *, max_share: float | None = None) -> Voic
 
 def load_voice(path: Path | str) -> Voice:
     return Voice.load(path)
+
+
+def add_tells(
+    voice: Voice,
+    corpus: Corpus,
+    *,
+    patterns: tuple[str, ...] = (),
+    ban_ratio: float | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> list[str]:
+    """Measure on `corpus` every tell the catalog has and `voice` predates, and add only those:
+    the voice's rate (author-capped like a build), the starting limit a build would give it,
+    and the lexicon's rate against the LLM reference, banned by the same rule. Every other
+    measurement, band, threshold and prose file is left as it is. Returns the ids added."""
+    from deslop.thresholds import TELL_FLOORS, TELL_STEPS
+    from deslop.voice.lexicon import MIN_LLM_RATE_TO_BAN
+    from deslop.voice.model import PatternRate
+
+    catalog = load_catalog(patterns)
+    missing = [p for p in catalog.patterns if p.id not in voice.metrics.tells]
+    if not missing:
+        return []
+    chunk = voice.metrics.chunk_words
+    per_author: dict[str, AuthorSamples] = {}
+    for doc in corpus.documents():
+        if progress:
+            progress(f"sampling {doc.entry.author}: {doc.entry.title}")
+        samples = sample_text(doc.text, chunk_words=chunk, catalog=catalog)
+        samples.weight = doc.entry.weight
+        author = doc.entry.author
+        per_author[author] = (
+            merge_samples(per_author[author], samples) if author in per_author else samples
+        )
+        per_author[author].weight = doc.entry.weight
+    profile = aggregate(per_author, max_share=voice.meta.max_share, chunk_words=chunk)
+    llm = llm_reference() if has_baseline("llm_reference") else None
+    ratio_limit = ban_ratio if ban_ratio is not None else voice.lexicon.ban_ratio
+    added = []
+    for pattern in missing:
+        stat = profile.tells.get(pattern.id)
+        if stat is None:
+            continue
+        voice.metrics.tells[pattern.id] = stat
+        voice.metrics.thresholds.tells[pattern.id] = max(
+            stat.rate_per_1k * TELL_STEPS[0], TELL_FLOORS[0]
+        )
+        llm_rate = llm.tells[pattern.id].rate_per_1k if llm and pattern.id in llm.tells else None
+        ratio = None
+        banned = False
+        if llm_rate is not None:
+            ratio = llm_rate / stat.rate_per_1k if stat.rate_per_1k > 0 else 999.0
+            banned = ratio > ratio_limit and llm_rate >= MIN_LLM_RATE_TO_BAN
+        voice.lexicon.patterns = [x for x in voice.lexicon.patterns if x.id != pattern.id]
+        voice.lexicon.patterns.append(
+            PatternRate(
+                id=pattern.id,
+                name=pattern.name,
+                corpus_per_1k=round(stat.rate_per_1k, 3),
+                llm_per_1k=None if llm_rate is None else round(llm_rate, 3),
+                ratio=None if ratio is None else round(min(ratio, 999.0), 2),
+                banned=banned,
+            )
+        )
+        added.append(pattern.id)
+    return added

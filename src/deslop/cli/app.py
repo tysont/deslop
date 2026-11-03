@@ -522,6 +522,42 @@ def voice_diff(
         console.print("no differences")
 
 
+@voice_app.command("add-tells")
+def voice_add_tells(
+    ctx: typer.Context,
+    voice: Path = typer.Argument(..., help="The voice to extend"),
+    paths: list[Path] = typer.Argument(..., help="Its corpus: text files or directories"),
+    out: Path = typer.Option(..., "--out", "-o", help="NAME.voice to write"),
+    author_map: Path | None = typer.Option(None, "--author-map"),
+    patterns: list[Path] = typer.Option([], "--patterns", help="Extra pattern catalog yaml"),
+) -> None:
+    """Measure, on the voice's own corpus, the tells it predates (a pattern added to the
+    catalog after the voice was built) and add only those: rate, starting limit and the
+    lexicon's comparison with the LLM reference. Offline; nothing else changes."""
+    from deslop.voice.calibrate import add_tells
+    from deslop.voice.collect import collect, load_author_map
+
+    s = Settings(ctx, "voice")
+    v = load_voice(voice)
+    try:
+        amap = load_author_map(author_map)
+    except (OSError, ValueError) as exc:
+        fail(str(exc))
+    corpus, _ = collect(list(paths), name=v.name, author_map=amap)
+    added = add_tells(
+        v, corpus, patterns=tuple(str(p) for p in patterns), progress=s.progress(False)
+    )
+    v.save(out)
+    if not added:
+        console.print(f"{voice}: no tell to add; wrote {out} unchanged")
+        return
+    for tid in added:
+        rate = v.metrics.tells[tid].rate_per_1k
+        limit = v.metrics.thresholds.tells[tid]
+        console.print(f"{tid}: {rate:.2f} per 1k words in the corpus, limit {limit:.2f}")
+    console.print(f"wrote {out}")
+
+
 @voice_app.command("validate")
 def voice_validate(voice: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Schema and checksum, calibrated thresholds, and the exemplars' own score."""
@@ -822,6 +858,17 @@ def apply_cmd(
         help='A citation scheme for the command-line primary texts, as JSON: {"name": "verse", '
         '"pattern": "<regex>", "bare_pattern": "<regex or null>"}; repeatable',
     ),
+    preceding: Path | None = typer.Option(
+        None,
+        "--preceding",
+        help="The already-converted section immediately before the input: the writer continues "
+        "it, the continuity checks and the judge's fifth item hold the seam; never rewritten",
+    ),
+    following: Path | None = typer.Option(
+        None,
+        "--following",
+        help="The unconverted section after the input: context only, never rewritten or checked",
+    ),
     citations: str | None = typer.Option(
         None,
         "--citations",
@@ -868,6 +915,10 @@ def apply_cmd(
     if citation_mode not in ("keep", "verified", "none"):
         fail("--citations must be keep, verified or none")
     citation_policy: Any = citation_mode
+    preceding_path = s.path("preceding", preceding)
+    following_path = s.path("following", following)
+    preceding_text = split_frontmatter(read_input(preceding_path))[1] if preceding_path else None
+    following_text = split_frontmatter(read_input(following_path))[1] if following_path else None
     limit = arm_budget(
         s,
         budget,
@@ -903,6 +954,8 @@ def apply_cmd(
             citation_schemes=schemes,
             quote_context_words=int(s.get("quote_context_words", quote_context_words, 1500)),
             citations=citation_policy,
+            preceding=preceding_text,
+            following=following_text,
             allow_primary_facts=bool(
                 s.get("allow_primary_facts", allow_primary_facts or None, False)
             ),

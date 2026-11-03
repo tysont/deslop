@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from deslop.apply import Models, apply, build_models, sections_of
+from deslop.apply import Models, apply, build_models, coherence_report, sections_of
 from deslop.nlp import analyze
 from deslop.providers.base import CachingProvider, Completion, Usage
 from deslop.reference import PrimaryText
@@ -29,6 +30,7 @@ class Scripted(CachingProvider):
         add_quote: str = "",
         one_paragraph: bool = False,
         recite: str = "",
+        loses_continuing: bool = False,
     ):
         super().__init__(use_cache=False, cache_only=False)
         self.name = name
@@ -41,6 +43,7 @@ class Scripted(CachingProvider):
         self.add_quote = add_quote
         self.one_paragraph = one_paragraph
         self.recite = recite
+        self.loses_continuing = loses_continuing
         self.calls: list[tuple[str, str]] = []
 
     def _raw_complete(self, system: str, user: str, model: str, temperature: float) -> Completion:
@@ -58,7 +61,7 @@ class Scripted(CachingProvider):
             text = json.dumps(
                 {"original": [{"n": 1, "kept": True}, {"n": 2, "kept": True}], "added": []}
             )
-        elif "Answer four questions" in system:
+        elif "Answer four questions" in system or "Answer five questions" in system:
             a = user.split("TEXT A:\n", 1)[1].split("\n\nTEXT B:", 1)[0]
             b = user.split("TEXT B:\n", 1)[1]
             marked = ("Plainly," in a, "Plainly," in b)
@@ -68,16 +71,18 @@ class Scripted(CachingProvider):
                 pick = "A" if marked[0] else "B"
                 if self.loses:
                     pick = "B" if pick == "A" else "A"
-            text = json.dumps(
-                {
-                    "voice": pick,
-                    "coherent": pick,
-                    "tense_person": "tie",
-                    "order": pick,
-                    "confidence": self.confidence,
-                    "note": "the marked text reads as the writer",
-                }
-            )
+            answer = {
+                "voice": pick,
+                "coherent": pick,
+                "tense_person": "tie",
+                "order": pick,
+                "confidence": self.confidence,
+                "note": "the marked text reads as the writer",
+            }
+            if "Answer five questions" in system:
+                flip = {"A": "B", "B": "A", "tie": "tie"}
+                answer["continuing"] = flip[pick] if self.loses_continuing else pick
+            text = json.dumps(answer)
         elif "demanding editor" in system:
             para = user.split("PARAGRAPH:\n", 1)[-1]
             v = 5 if para.startswith(("Plainly,", "Rewritten:")) else 2
@@ -696,11 +701,111 @@ def test_citations_keep_and_none_reproduce_the_inputs_citations(fixture_voice, s
         original, 'He goes (Gen 22:2; Gen 22:2) "a question he asks".', opts("keep")
     )
     assert notes == ['the quotation "a question it asks" must be reproduced exactly as written']
-    exact = 'He goes (Gen 22:2), then (Gen 22:2), "a question it asks".'
+    exact = 'He is told to go (Gen 22:2), "a question it asks" twice (Gen 22:2).'
     assert citation_policy_notes(original, exact, opts("keep")) == []
+    moved = (
+        "Abraham rises early and saddles the donkey (Gen 22:2). Gen 22:2 appears again. "
+        '"a question it asks" is quoted.'
+    )
+    notes = citation_policy_notes(original, moved, opts("keep"))
+    assert notes and notes[0].startswith(
+        "the citation Gen 22:2 appears, but not in the sentence that makes the same point"
+    )
     added = exact + ' See Gen 22:3 and "another phrase here".'
     assert citation_policy_notes(original, added, opts("keep")) == []
     assert citation_policy_notes(original, added, opts("none")) == [
         "the citation Gen 22:3 is not in the original; add no citations",
         'the quotation "another phrase here" is not in the original; add no quotations',
     ]
+
+
+def test_round_two_hears_only_the_notes_its_own_draft_earned(fixture_voice, slop_text):
+    from deslop.apply import NOTICED_TEMPLATE
+
+    a, b, factory = pair(break_on="the chapter")  # round one fails, so round two runs
+    result = apply(slop_text, fixture_voice, n=2, provider_factory=factory, report_all=True)
+    unit = result.units[0]
+    first, second = unit.candidates[0], unit.candidates[1]
+    prompts = [u for s, u in a.calls if "write prose" in s]
+    assert len(prompts) == 4, "two drafts a round, two rounds"
+    assert first.reader_notes and second.reader_notes, "both drafts earned notes"
+    lead = NOTICED_TEMPLATE.split("{notes}")[0].strip()
+    for draft, prior in ((prompts[2], first), (prompts[3], second)):
+        heard = draft.split(lead, 1)[1] if lead in draft else ""
+        for note in prior.reader_notes:
+            assert f"- {note}" in heard
+        other = second if prior is first else first
+        for note in set(other.reader_notes) - set(prior.reader_notes):
+            assert f"- {note}" not in heard, "nothing pooled from the other draft"
+
+
+CONTINUITY = Path(__file__).parent / "fixtures" / "continuity"
+
+
+def _body(name: str) -> str:
+    text = (CONTINUITY / name).read_text(encoding="utf-8")
+    return text.split("---", 2)[2].strip()
+
+
+def test_preceding_and_following_frame_the_writer_and_hold_the_seam(fixture_voice):
+    chapter1, chapter2, chapter3 = (_body(f"chapter{i}.md") for i in (1, 2, 3))
+    a, b, factory = pair()
+    result = apply(
+        chapter2,
+        fixture_voice,
+        n=1,
+        preceding=chapter1,
+        following=chapter3,
+        provider_factory=factory,
+    )
+    system, user = next(c for c in a.calls if "write prose" in c[0])
+    assert "# The section that comes immediately before (already in the voice; continue it" in user
+    assert "The patriarch Abraham rises early" in user
+    assert "# What comes after (not yet converted; context only, do not rewrite it)" in user
+    assert "they go together to Beersheba" in user
+    judged = [u for s, u in a.calls if "Answer five questions" in s]
+    assert judged and judged[0].startswith("THE SECTION BEFORE (its last two paragraphs):")
+    assert "On the third day he lifts up his eyes" in judged[0]
+    unit = result.units[0]
+    assert not unit.kept_original, unit.reason
+    winner = unit.candidates[unit.chosen]
+    assert winner.vs_original.items["continuing"] == "win"
+    assert result.continuity is not None and result.continuity.ok
+    assert isinstance(result.continuity.rhythm_distance, float)
+    assert "continuity with the section before: ok" in coherence_report(result)
+    assert "rhythm distance to the section before" in coherence_report(result)
+    assert "Rises early" not in result.text and "Beersheba" not in result.text, "never rewritten"
+    assert result.preceding_given and result.following_given
+
+    a, b, factory = pair(loses_continuing=True)
+    lost = apply(chapter2, fixture_voice, n=1, preceding=chapter1, provider_factory=factory)
+    assert lost.units[0].kept_original, "a loss on continuing is a loss"
+    assert "continuing" in lost.units[0].candidates[0].reason
+
+
+def test_continuity_checks_catch_each_kind_of_seam_break():
+    from deslop.continuity import check_continuity
+
+    chapter1 = _body("chapter1.md")
+    good = (
+        "Abraham builds the altar and lays the wood for the burnt-offering in order. "
+        "He binds his son."
+    )
+    assert check_continuity(chapter1, good).ok
+    spelling = (
+        "Abraham builds the altar and lays the wood for the burnt offering. He binds his son."
+    )
+    r = check_continuity(chapter1, spelling)
+    assert [(t.term, t.found) for t in r.terms] == [("burnt-offering", "burnt offering")]
+    tense = (
+        "Abraham built the altar and laid the wood in order. He bound his son and laid him there."
+    )
+    r = check_continuity(chapter1, tense)
+    assert (r.tense_before, r.tense_after, r.tense_ok) == ("present", "past", False)
+    person = "We watch Abraham build the altar. We see him bind his son, and we wait."
+    r = check_continuity(chapter1, person)
+    assert (r.person_before, r.person_after, r.person_ok) == ("third", "first", False)
+    again = "The patriarch Abraham builds the altar. He binds his son."
+    r = check_continuity(chapter1, again)
+    assert [x.name for x in r.reintroductions] == ["Abraham"] and not r.ok
+    assert any("introduces it again" in n for n in r.reader_notes())

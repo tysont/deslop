@@ -188,3 +188,35 @@ def test_every_catalog_pattern_has_detector(pid):
         assert p.function in DOCUMENT_DETECTORS
     else:
         assert p.params["patterns"]
+
+
+def test_T1_covers_turning_resting_and_being_about():
+    assert ids("The sentence on which the chapter turns is about God's inner life.", "T1")
+    assert [h.note for h in ids("The verse is about grief.", "T1")] == ["is about"]
+    assert ids("The verse rests on a single word.", "T1")
+    assert ids("Everything in the clause depends on its last word. The clause depends on it.", "T1")
+    assert not ids("God sees that every imagination of the heart is only evil.", "T1")
+    assert not ids("The farmer rests on the seventh day.", "T1")
+
+
+def test_T16_cleft_inversion_both_ways():
+    def notes(text):
+        return [h.note for h in ids(text, "T16")]
+
+    assert notes("What moves the flood is a maker's sorrow.") == ["pseudo-cleft"]
+    assert notes("It is the grief that gives the judgment its character.") == ["it-cleft"]
+    assert notes("This is why the city needs soldiers.") == ["reverse cleft"]
+    fronted = "Grief Plato will not allow at all, since to be grieved is to be changed. His grief is real."
+    assert notes(fronted) == ["fronted object"]
+    for plain in (
+        "What a dreadful image is this of the gods!",
+        "What pictures are these of the old stories.",
+        "It is clear that the flood has a reason.",
+        "It is easy to see what happened.",
+        "What moves the flood?",
+        "Plato will not allow grief at all.",
+        "Socrates builds his city from need.",
+        "Sea erosion washes away the cliffs.",
+        "Yesterday Plato said nothing.",
+    ):
+        assert notes(plain) == [], plain

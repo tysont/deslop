@@ -187,6 +187,9 @@ def main() -> None:
     if "--from-cache" in sys.argv:
         build(cached_texts())
         return
+    if "--add-tells" in sys.argv:
+        add_tells(cached_texts())
+        return
     sources = working_sources()
     if not sources:
         print("no working providers (set ANTHROPIC_API_KEY and/or OPENAI_API_KEY)", file=sys.stderr)
@@ -207,6 +210,28 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         texts = list(pool.map(run, assigned))
     build(texts)
+
+
+def add_tells(texts: list[tuple[str, str, str]]) -> None:
+    """Measure, on the cached essays, every tell the catalog has and the stored baseline
+    lacks, and add only those rates; everything already in the baseline is left as it is."""
+    ref = ReferenceProfile.load(baseline_path("llm_reference"))
+    per_source = {}
+    words = 0
+    for name, model, text in texts:
+        n = len(text.split())
+        if n < 200 or words >= TARGET_WORDS:
+            continue
+        words += n
+        key = f"{name}:{model}"
+        samples = sample_text(text)
+        per_source[key] = merge_samples(per_source[key], samples) if key in per_source else samples
+    profile = aggregate(per_source, max_share=1.0, chunk_words=500)
+    added = {k: v for k, v in profile.tells.items() if k not in ref.tells}
+    ref.tells.update(added)
+    ref.save(baseline_path("llm_reference"))
+    print(f"added {sorted(added)} to {baseline_path('llm_reference')} from {words} cached words")
+    print(json.dumps({k: round(v.rate_per_1k, 2) for k, v in added.items()}, indent=1))
 
 
 def build(texts: list[tuple[str, str, str]]) -> None:
