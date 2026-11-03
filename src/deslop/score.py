@@ -21,17 +21,6 @@ from deslop.thresholds import metric_deviation, raw_distance, rescale
 from deslop.voice.model import Voice
 
 
-def slop_z(z: float, side: str) -> float:
-    """Signed deviation toward the slop side; zero when on the safe side."""
-    if side == "high":
-        return max(z, 0.0)
-    if side == "low":
-        return max(-z, 0.0)
-    if side == "both":
-        return abs(z)
-    return 0.0
-
-
 def score(
     text: str,
     voice: Voice,

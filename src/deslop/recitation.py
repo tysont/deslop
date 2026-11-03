@@ -38,11 +38,6 @@ def _tokens(text: str) -> list[tuple[str, int, int]]:
     ]
 
 
-def words_of(text: str) -> list[str]:
-    """The words of `text` as the check sees them: lowercased, punctuation stripped."""
-    return [w for w, _, _ in _tokens(text)]
-
-
 def _ngrams(words: list[str], n: int) -> set[tuple[str, ...]]:
     return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
 
@@ -98,5 +93,4 @@ __all__ = [
     "NGRAM",
     "RecitationResult",
     "recitation",
-    "words_of",
 ]

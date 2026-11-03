@@ -7,9 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from deslop.judge import (
-    JudgeCalibration,
-)
+from deslop.judge import JudgeCalibration
 from deslop.providers.base import (
     DEFAULT_JUDGE,
     DEFAULT_WRITER,
@@ -24,7 +22,7 @@ ProviderFactory = Callable[[str], CachingProvider]
 
 @dataclass
 class Models:
-    """The writer and the judge: two different Anthropic models served by one provider. The
+    """The writer and the judge: two different models served by one provider. The
     judge also runs the semantic lock. A model never judges its own output."""
 
     writer: CachingProvider

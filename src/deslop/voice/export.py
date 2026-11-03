@@ -1,4 +1,4 @@
-# ABOUTME: Fine-tuning export: accepted convert pairs plus summarized corpus chunks, written as
+# ABOUTME: Fine-tuning export: accepted apply pairs plus summarized corpus chunks, written as
 # ABOUTME: OpenAI chat-format or plain JSONL, with a token count and a cost estimate. Never trains.
 from __future__ import annotations
 

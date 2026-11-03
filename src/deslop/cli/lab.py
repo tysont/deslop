@@ -23,7 +23,8 @@ from deslop.cli.common import (
 from deslop.providers.base import Usage
 
 lab_app = typer.Typer(
-    help="Experiments: blind tests, exports, threshold calibration.", no_args_is_help=True
+    help="Calibration, recitation and fixture checks, blind tests and fine-tuning exports.",
+    no_args_is_help=True,
 )
 
 
@@ -149,8 +150,11 @@ def lab_calibrate_judge(
             f"position bias {cal.position_bias:+.2f}; {verdict}"
         )
     if results and not any(c.usable for c in results.values()):
-        console.print("[yellow]no provider reached 80%; apply will not gate on the judge[/]")
-    console.print(f"written to {target}" if target else "not written (read-only voice; use --out)")
+        console.print(
+            "[yellow]no judge reached 80%; apply will still use it and mark its verdicts "
+            "unreliable[/]"
+        )
+    console.print(f"written to {target}")
 
 
 @lab_app.command("recitation")

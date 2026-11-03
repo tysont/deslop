@@ -132,13 +132,14 @@ def antecedent_flags(a: Analysis) -> list[AntecedentFlag]:
 
 class ParagraphCheck(BaseModel):
     """Paragraphing follows the voice, not the input: the output's mean sentences per
-    paragraph must sit in the exemplars' range when the voice has one; without a range the
-    output must keep the original's paragraph count."""
+    paragraph must sit in the voice's range (its 10th to 90th percentile) when the voice has
+    one; without a range the output must keep the original's paragraph count. apply makes
+    the range advisory for short inputs."""
 
     before: int  # paragraphs in the original
     after: int  # paragraphs in the output
     sentences_per_paragraph: float  # the output's mean
-    band_low: float | None = None  # the exemplars' range, sentences per paragraph
+    band_low: float | None = None  # the voice's range, sentences per paragraph
     band_high: float | None = None
     ok: bool = True
     note: str = ""
@@ -183,8 +184,9 @@ class ConnectiveCheck(BaseModel):
 
 
 def connective_check(before: Analysis, after: Analysis, band: Band | None) -> ConnectiveCheck:
-    """The output's share of connective-opened sentences must sit in the voice's band and
-    within half of the original's share either way, with one sentence of slack."""
+    """Whether the output's share of connective-opened sentences sits in the voice's band and
+    within half of the original's share either way, with one sentence of slack. apply treats
+    a miss as advisory."""
     b, c = connective_opener_ratio(before), connective_opener_ratio(after)
     slack = 1.0 / max(len(after.sentences), 1)
     low, high = b * (1 - CONNECTIVE_TOLERANCE) - slack, b * (1 + CONNECTIVE_TOLERANCE) + slack
@@ -215,8 +217,8 @@ def connective_check(before: Analysis, after: Analysis, band: Band | None) -> Co
 class CoherenceResult(BaseModel):
     """The deterministic coherence checks on one rewrite: paragraphing against the voice,
     tense drift per paragraph, pronouns without antecedents, and the connective-opener check.
-    `ok` is True only when every check passes; `reader_notes()` phrases each failure for a
-    retry prompt."""
+    `ok` when tense and antecedents pass and the paragraph and connective checks pass or are
+    advisory; `reader_notes()` phrases each failure for a retry prompt."""
 
     paragraphs_before: int
     paragraphs_after: int
@@ -235,8 +237,8 @@ class CoherenceResult(BaseModel):
         )
 
     def reader_notes(self) -> list[str]:
-        """What a reader would say about the failures; an advisory paragraph band is left
-        out, since it is a note to the writer and not a rejection."""
+        """What a reader would say about the failures; advisory paragraph and connective notes
+        are left out, since they are notes to the writer and not rejections."""
         notes = []
         if not self.paragraphs.ok and not self.paragraphs.advisory:
             notes.append(self.paragraphs.note)
@@ -265,7 +267,7 @@ def check_coherence(
     after: Analysis | None = None,
 ) -> CoherenceResult:
     """Run every deterministic check on `candidate` against `original`. `band` is the voice's
-    band for `connective_opener_pct` and `para_band` the exemplars' range of sentences per
+    band for `connective_opener_pct` and `para_band` the voice's range of sentences per
     paragraph, when the voice has them."""
     before = before or analyze(original)
     after = after or analyze(candidate)

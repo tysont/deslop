@@ -9,16 +9,10 @@ from pydantic import BaseModel, Field
 from deslop.coherence import CoherenceResult
 from deslop.continuity import ContinuityResult
 from deslop.draft import SectionLog
-from deslop.judge import (
-    DocumentVerdict,
-)
-from deslop.providers.base import (
-    Usage,
-)
+from deslop.judge import DocumentVerdict
+from deslop.providers.base import Usage
 from deslop.recitation import DEFAULT_MAX_RECITATION, RecitationResult
-from deslop.reference import (
-    PrimaryCheck,
-)
+from deslop.reference import PrimaryCheck
 from deslop.report import MetricResult, Report
 from deslop.semantic import (
     AddedClaim,
@@ -58,11 +52,6 @@ class CandidateLog(BaseModel):
     @property
     def vs_original(self) -> DocumentVerdict | None:
         return next((v for v in self.verdicts if v.against == "original"), None)
-
-    @property
-    def confidence_vs_original(self) -> float:
-        v = self.vs_original
-        return v.confidence if v is not None else 0.0
 
 
 class UnitLog(BaseModel):
@@ -124,17 +113,17 @@ class Result(BaseModel):
     `text` is the output (the input where nothing was accepted); `report_before` and
     `report_after` score both; `diff` is a unified diff and `meaning_diff` lists every
     paragraph's propositions with whether the output kept them plus its added quotations and
-    citations; `coherence` holds the winner's tense, antecedent and connective checks and
-    `judge_items` its item-by-item verdict against the original; `metric_table` has every
+    citations; `coherence` holds the winner's paragraph, tense, antecedent and connective checks
+    and `judge_items` its item-by-item verdict against the original; `metric_table` has every
     metric before and after against the voice's band; `unverified_additions` are the added
     quotations and citations no primary text confirmed; `growth_pct` is the document's
-    word-count growth; `units` logs each unit's candidates, verdicts, win rates and the
-    winner; `judge_gate` says which providers judged; `iterations` is filled in edit mode;
-    `cost` totals tokens and USD; `stopped` says why the loop ended; `exemplars_used` is
-    False when the voice was packed without exemplars; `draft` holds the section logs when
-    a brief was applied; `recitation` is the winner's recitation check against the
-    reference (`reference` names it), whose novel share must be under `max_recitation`
-    percent, when one was given.
+    word-count growth; `units` logs each unit's candidates, verdicts, win rates and the winner;
+    `judge_gate` names the writer and judge models, the judge's calibration and the provider;
+    `iterations` is filled in edit mode; `cost` totals tokens and USD; `stopped` says why the
+    loop ended; `exemplars_used` is False when the voice was packed without exemplars; `draft`
+    holds the section logs when a brief was applied; `recitation` is the winner's recitation
+    check against the reference (`reference` names it), whose novel share must be under
+    `max_recitation` percent, when one was given.
     """
 
     mode: str

@@ -27,9 +27,6 @@ class ValidationResult(BaseModel):
     def ok(self) -> bool:
         return all(c.ok for c in self.checks)
 
-    def by_name(self, name: str) -> Check:
-        return next(c for c in self.checks if c.name == name)
-
     def to_json(self, indent: int | None = 1) -> str:
         data = self.model_dump()
         data["ok"] = self.ok

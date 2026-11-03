@@ -15,9 +15,7 @@ from deslop.reference import (
     quoted_spans,
 )
 from deslop.result import CandidateLog
-from deslop.semantic import (
-    AddedClaim,
-)
+from deslop.semantic import AddedClaim
 
 Citations = Literal["keep", "verified", "none"]
 
@@ -126,7 +124,7 @@ def citation_policy_notes(
     section_text: str, candidate: str, texts: list[PrimaryText], policy: Citations
 ) -> list[str]:
     """`--citations keep` and `none`: every citation the input carries must appear in the
-    output exactly as written and as often, each in a sentence that makes the same point as
+    output exactly as written and at least as often, each in a sentence that makes the same point as
     the input sentence carrying it (it keeps at least `SAME_POINT_OVERLAP` of that sentence's
     content words), and every input quotation byte-identically; under `none` the output may
     add no citation or quotation either. `verified` leaves this to the primary-text check."""

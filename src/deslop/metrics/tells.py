@@ -102,10 +102,6 @@ def subject_of(verb: Token) -> Token | None:
     return None
 
 
-def noun_phrase_text(tok: Token) -> str:
-    return " ".join(t.lower_ for t in tok.subtree if t.i <= tok.i)
-
-
 @lru_cache(maxsize=256)
 def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern, re.IGNORECASE | re.MULTILINE)
@@ -167,7 +163,6 @@ IT_CLEFT_RE = re.compile(
     r"\bIt\s+(?:is|was)\s+(?P<focus>(?:(?!\bto\b)[^\s,;:.?!]+\s+){1,7}?)(?:that|who|whom)\b"
 )
 REVERSE_CLEFT_RE = re.compile(r"\b(?:is|was|are|were)\s+(?:what|why|how|where)\b", re.IGNORECASE)
-FRONTED_DEPS = {"det", "amod", "compound", "poss", "nummod", "nmod"}
 OBJECT_DEPS = {"dobj", "obj", "attr", "oprd", "acomp", "dative"}
 CLAUSE_OBJECT_DEPS = {"ccomp", "xcomp"}
 

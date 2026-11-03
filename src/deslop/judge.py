@@ -1,4 +1,4 @@
-# ABOUTME: LLM judges: a document-level pairwise comparison on four named items that gates apply,
+# ABOUTME: LLM judges: a document-level pairwise comparison on named items that gates apply,
 # ABOUTME: the paragraph comparison used for judge calibration, and an absolute 1-5 rubric kept
 # ABOUTME: as a secondary trend score. All are cached like any provider call.
 from __future__ import annotations
@@ -77,7 +77,6 @@ DOCUMENT_SYSTEM_CONTINUING = (
         '"order": "A"|"B"|"tie", "continuing": "A"|"B"|"tie", "confidence"',
     )
 )
-GATE_CONFIDENCE = 0.7
 CALIBRATION_MIN_ACCURACY = 0.8
 
 
@@ -140,7 +139,7 @@ class DocumentVerdict(BaseModel):
 
 
 class JudgeCalibration(BaseModel):
-    """How well a provider told held-out corpus paragraphs from LLM-reference paragraphs when
+    """How well a judge model told held-out corpus paragraphs from LLM-reference paragraphs when
     used as the comparative judge; stored in voice.yaml and read by apply."""
 
     provider: str
@@ -248,35 +247,6 @@ def compare(
     )
 
 
-def compare_with(
-    candidate: str,
-    other: str,
-    voice: Voice,
-    judges: list[CachingProvider],
-    *,
-    exemplars: list[str],
-    against: str = "original",
-) -> PairVerdict:
-    """One verdict from one or more judges. With several (when no single provider is clear of
-    both writers) the candidate wins only if every judge picks it, and the confidence is the
-    mean; one judge is the usual case."""
-    verdicts = [
-        compare(candidate, other, voice, j, exemplars=exemplars, against=against) for j in judges
-    ]
-    if len(verdicts) == 1:
-        return verdicts[0]
-    return PairVerdict(
-        against=against,
-        wins=all(v.wins for v in verdicts),
-        picked_as_model=any(v.picked_as_model for v in verdicts),
-        confidence=round(sum(v.confidence for v in verdicts) / len(verdicts), 3),
-        shown_as=verdicts[0].shown_as,
-        provider="+".join(v.provider for v in verdicts),
-        model="+".join(v.model for v in verdicts),
-        note=" / ".join(v.note for v in verdicts if v.note)[:300],
-    )
-
-
 def compare_document(
     candidate: str,
     other: str,
@@ -292,8 +262,8 @@ def compare_document(
     `original` shown as the reference for order and emphasis; with `preceding` (the last two
     paragraphs of the already-converted section before) a fifth item, `continuing`, asks
     which reads more like the same writer carrying on. The pair is shown in a deterministic
-    order; the verdict is reported from the candidate's side. `provider` must not have
-    written the candidate."""
+    order; the verdict is reported from the candidate's side. `provider`'s model must not
+    have written the candidate."""
     candidate_is_a = _order(candidate, other)
     a, b = (candidate, other) if candidate_is_a else (other, candidate)
     samples = "\n\n".join(f"SAMPLE {i}:\n{e.strip()}" for i, e in enumerate(exemplars[:2], 1))
@@ -340,17 +310,6 @@ def document_win_rate(verdicts: list[DocumentVerdict]) -> float | None:
         return None
     points = sum(1.0 if v.net > 0 else 0.5 if v.net == 0 else 0.0 for v in verdicts)
     return round(points / len(verdicts), 3)
-
-
-def win_rate(pairs: list[PairVerdict]) -> float | None:
-    if not pairs:
-        return None
-    return round(sum(1 for p in pairs if p.wins) / len(pairs), 3)
-
-
-def beats_original(pairs: list[PairVerdict], min_confidence: float = GATE_CONFIDENCE) -> bool:
-    """The acceptance gate: picked over the original with at least `min_confidence`."""
-    return any(p.against == "original" and p.wins and p.confidence >= min_confidence for p in pairs)
 
 
 def calibrate_judge(
@@ -410,8 +369,8 @@ def judge_paragraph(
     exemplars: list[str],
     propositions: list[str] | None = None,
 ) -> JudgeScores:
-    """Absolute 1-5 rubric scores for trend tracking; not a gate. `provider` should not be
-    the provider that wrote the paragraph."""
+    """Absolute 1-5 rubric scores for trend tracking; not a gate. `provider` should not
+    serve the model that wrote the paragraph."""
     samples = "\n\n".join(f"SAMPLE {i}:\n{e.strip()}" for i, e in enumerate(exemplars[:2], 1))
     props = "\n".join(f"{i}. {p}" for i, p in enumerate(propositions or [], 1)) or "(none listed)"
     user = (
@@ -451,16 +410,12 @@ def _clamp(value: object) -> int:
 __all__ = [
     "CALIBRATION_MIN_ACCURACY",
     "DocumentVerdict",
-    "GATE_CONFIDENCE",
     "JUDGE_ITEMS",
     "JudgeCalibration",
     "PairVerdict",
-    "beats_original",
     "calibrate_judge",
     "compare",
     "compare_document",
-    "compare_with",
     "document_win_rate",
     "judge_paragraph",
-    "win_rate",
 ]

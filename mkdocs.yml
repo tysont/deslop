@@ -30,7 +30,9 @@ nav:
       - Personal voice: personal-voice.md
       - Primary texts: primary-texts.md
   - Examples: examples.md
-  - API reference: api.md
+  - Reference:
+      - Commands: reference.md
+      - Python API: api.md
 
 plugins:
   - search

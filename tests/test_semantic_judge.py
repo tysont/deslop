@@ -6,12 +6,9 @@ import json
 
 from deslop.judge import (
     JudgeCalibration,
-    beats_original,
     calibrate_judge,
     compare,
-    compare_with,
     judge_paragraph,
-    win_rate,
 )
 from deslop.providers.base import CachingProvider, Completion, Usage
 from deslop.semantic import check_meaning, extract_propositions, parse_numbered
@@ -119,35 +116,6 @@ def test_compare_reports_from_the_candidates_side_whatever_the_order(fixture_voi
 def test_compare_without_json_is_a_loss_at_coin_toss(fixture_voice):
     v = compare("a", "b", fixture_voice, Canned("openai", "no"), exemplars=[])
     assert not v.wins and v.confidence == 0.5 and "no JSON" in v.note
-
-
-def test_win_rate_and_gate():
-    pairs = [
-        compare("Plainly, x.", "x.", _voice(), PicksMarked(confidence=0.8), exemplars=[]),
-        compare(
-            "Plainly, x.",
-            "Plainly, y.",
-            _voice(),
-            PicksMarked(),
-            exemplars=[],
-            against="candidate 2",
-        ),
-    ]
-    assert win_rate(pairs) in (0.5, 1.0)
-    assert beats_original(pairs, 0.7)
-    assert not beats_original(pairs, 0.85)
-    assert win_rate([]) is None and not beats_original([])
-
-
-def test_compare_with_several_judges_needs_agreement(fixture_voice):
-    agree = compare_with(
-        "Plainly, x.", "x.", fixture_voice, [PicksMarked("a"), PicksMarked("b", 0.7)], exemplars=[]
-    )
-    assert agree.wins and agree.confidence == 0.8 and agree.provider == "a+b"
-    disagree = compare_with(
-        "Plainly, x.", "x.", fixture_voice, [PicksMarked("a"), Canned("b", "{}")], exemplars=[]
-    )
-    assert not disagree.wins
 
 
 def test_calibrate_judge_measures_accuracy(fixture_voice):

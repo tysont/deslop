@@ -66,7 +66,7 @@ class SectionLog(BaseModel):
     stripped: list[str] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------- A6 unlisted_citation
+# ---------------------------------------------------------------- unlisted quotations and citations
 
 
 def _norm(text: str) -> str:
@@ -243,14 +243,13 @@ def draft_sections(
             progress(f"drafting: {section.heading} via {provider.key}")
         best: SectionLog | None = None
         missing: list[str] = []
-        attempt_provider = provider
         for attempt in range(1, 3):
             system, user = build_section_prompt(brief, section, voice, previous, missing)
             try:
-                completion = attempt_provider.complete(system, user, temperature=0.7)
+                completion = provider.complete(system, user, temperature=0.7)
             except ProviderError as exc:
                 if progress:
-                    progress(f"  {attempt_provider.key} failed: {exc}")
+                    progress(f"  {provider.key} failed: {exc}")
                 continue
             text, stripped = strip_unlisted(
                 clean_section(completion.text), refs=section.refs, quotes=section.quotes

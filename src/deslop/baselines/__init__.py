@@ -2,11 +2,9 @@
 # ABOUTME: Both share the ReferenceProfile schema; only stats are stored, never source text.
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -58,7 +56,3 @@ def llm_reference() -> ReferenceProfile:
 
 def has_baseline(name: str) -> bool:
     return baseline_path(name).exists()
-
-
-def dump_json(data: dict[str, Any], path: Path) -> None:
-    path.write_text(json.dumps(data, indent=1), encoding="utf-8")

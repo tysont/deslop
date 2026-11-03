@@ -185,34 +185,43 @@ def apply(
 ) -> Result:
     """Write `text_or_brief` in `voice` and return a [`Result`][deslop.Result].
 
-    Rewrite mode (default) writes the document as a whole: every paragraph's propositions are
-    extracted (cached), then `n` candidates are sampled from the `writer` model with the
-    profile, the rules, the exemplars nearest the piece, the full original and the propositions
-    by paragraph. Each candidate must pass the content lock (nothing locked removed), the length
-    limit (`max_growth` percent), the primary-text check, the semantic lock paragraph by
-    paragraph (every proposition kept, none added, checked by the `judge` model) and the
-    coherence checks (paragraphing in the voice's range, same tense, every sentence-initial
-    pronoun with an antecedent, connective openers in the voice's band and near the original's
-    share), then is judged against the original by the `judge` model (a different Anthropic
-    model from the writer) on four items (voice, coherence, tense and person, order and
-    emphasis) and must win or tie on every one. Survivors are judged round-robin; the best win
-    rate wins. If no candidate passes, one retry carries what a reader noticed; if that fails
-    too the result is the original with the report. A document longer than `chunk_words` is
-    rewritten section by section, each with the already-rewritten section before it in context
-    and the original section after it visible. Edit mode rewrites only flagged sentences under
-    the same locks. A `Brief` is drafted section by section first, then rewritten.
-    `primary_texts` (files, directories, `PrimaryTextSpec`s or loaded `PrimaryText`s) are
-    supplied by the caller, with `citation_schemes` for items that declare none;
-    without any, added quotations and citations are allowed and listed as unverified.
-    `reference` is the human text the input was made from, when there is one: it is never
-    shown to the writer or the judge, only compared against, and a candidate whose words are
-    more than `max_recitation` percent of its words recited from the reference (words in runs
-    of eight or more shared with the reference and not with the input, and not in the
-    input's vocabulary at all) is rejected for recitation (rewrite mode).
-    `provider_factory` maps a provider name to a `CachingProvider` (tests replay a cache with
-    it); `budget` is USD. `writer` and `judge` are model names or aliases (`opus`, `sonnet`,
-    `haiku`) and must differ; `provider` is `anthropic` (the API) or `claude-cli`, default from
-    DESLOP_PROVIDER.
+    Rewrite mode (the default) writes the document as a whole. Every paragraph's
+    propositions are extracted (cached), then `n` candidates are sampled from the `writer`
+    model, which sees the profile, the rules, the exemplars nearest the piece, the full
+    original and the propositions by paragraph. A candidate must pass:
+
+    - the content lock (nothing locked is removed) and the length limit (`max_growth`
+      percent);
+    - the primary-text check, and the `citations` policy;
+    - the semantic lock, paragraph by paragraph, run by the `judge` model: every proposition
+      kept and nothing material added;
+    - the coherence checks: the same tense, and every sentence-initial pronoun with an
+      antecedent (the paragraph band is enforced only from `ADVISORY_PARAGRAPHS` input
+      paragraphs, and the connective band only advises);
+    - recitation of `reference`, when given;
+    - the continuity checks against `preceding`, when given;
+    - the `judge` model's comparison with the original on four items (voice, coherence,
+      tense and person, order and emphasis), plus "same writer continuing" when `preceding`
+      is given: a win or a tie on every one.
+
+    Survivors are judged round-robin and the best win rate wins. If none passes, a second
+    round redrafts each candidate with only the notes that draft earned; if that fails too,
+    the result is the original with the report. A document longer than `chunk_words` is
+    rewritten section by section.
+
+    Edit mode rewrites only the flagged sentences, under the content lock and the
+    primary-text check, with the meaning checked when the lock sees additions. A `Brief` is
+    drafted section by section first, then rewritten.
+
+    `primary_texts` (files, directories, `PrimaryTextSpec`s or loaded `PrimaryText`s) come
+    with `citation_schemes` for those that declare none; without any, added quotations and
+    citations are allowed and listed as unverified. `reference` is the human text the input
+    was made from: it is never shown to a model, only compared against. `preceding` is the
+    already-converted section before the input and `following` the unconverted one after it;
+    both are context and neither is rewritten. `writer` and `judge` are model names or
+    aliases (`opus`, `sonnet`, `haiku`) and must differ; `provider` is `anthropic` (the API)
+    or `claude-cli`, by default from DESLOP_PROVIDER. `budget` is USD. `provider_factory`
+    maps a provider name to a `CachingProvider` (tests replay a cache with it).
     """
     catalog = load_catalog(patterns)
     models = build_models(
@@ -525,8 +534,9 @@ def _verify_section(
     voice: Voice,
     opts: Options,
 ) -> list[str]:
-    """The checks that need no judge: shape, length, lexical lock, primary texts, coherence.
-    Returns what a reader noticed (empty when the candidate may go on)."""
+    """The checks that need no judge: shape, length, lexical lock, primary texts, coherence,
+    the citation policy and recitation. Returns what a reader noticed (empty when the
+    candidate may go on)."""
     notes: list[str] = []
     if not candidate.strip() or candidate.strip() == section_text.strip():
         cand.lexical_ok = False
@@ -819,12 +829,12 @@ def _rewrite_section(
 
 
 def _retry_notes(cand: CandidateLog, hard: list[str], linter: list[str]) -> list[str]:
-    """What the retry prompt is told about this candidate. The hard failures (lock, meaning,
-    tense, antecedents, primary texts, recitation) always; the linter's finds, the paragraph
-    band and the connective band only when the judge found something to lose: a candidate
-    the judge rated win or tie on every item hears only its hard failures, and the
-    connective band only when the judge's coherence item was a loss. With no verdict yet,
-    everything."""
+    """What the retry prompt is told about this candidate. The hard failures (lock, length,
+    meaning, tense, antecedents, primary texts, citation policy, continuity, recitation)
+    always; the linter's finds, the paragraph band and the connective band only when the
+    judge found something to lose: a candidate the judge rated win or tie on every item
+    hears only its hard failures, and the connective band only when the judge's coherence
+    item was a loss. With no verdict yet, everything."""
     vs = cand.vs_original
     soft = linter + cand.advisories
     connective = [cand.connective_note] if cand.connective_note else []
@@ -874,9 +884,8 @@ def _edit_loop(
         if not units:
             stopped = "nothing_flagged"
             break
-        provider = writer
         if progress:
-            progress(f"iteration {i + 1}: {len(units)} edit unit(s) via {provider.key}")
+            progress(f"iteration {i + 1}: {len(units)} edit unit(s) via {writer.key}")
         replacements: dict[int, str] = {}
         for unit in units:
             if budget is not None and opts.models.usage.cost_usd > budget:
@@ -893,7 +902,6 @@ def _edit_loop(
                 original=unit.text,
                 final=unit.text,
             )
-            attempt_provider = provider
             for attempt in range(2):
                 system, user = edit_prompt(
                     unit,
@@ -907,14 +915,14 @@ def _edit_loop(
                     rejected_for.get(unit.text, []),
                 )
                 try:
-                    completion = attempt_provider.complete(system, user, temperature=0.7)
+                    completion = writer.complete(system, user, temperature=0.7)
                 except ProviderError as exc:
                     log.candidates.append(
                         CandidateLog(
                             attempt=attempt + 1,
                             text="",
-                            provider=attempt_provider.name,
-                            model=attempt_provider.default_model,
+                            provider=writer.name,
+                            model=writer.default_model,
                             lexical_ok=False,
                             reason=f"provider error: {exc}"[:200],
                         )
@@ -943,7 +951,7 @@ def _edit_loop(
                             str(x) for x in cand.primary.rejected[:3]
                         )
                     elif lock.additions:
-                        props = extract_propositions(unit.text, attempt_provider)
+                        props = extract_propositions(unit.text, writer)
                         log.propositions = props
                         cand.semantic = check_meaning(unit.text, candidate, props, judge)
                         if not cand.semantic.ok:
@@ -971,8 +979,8 @@ def _edit_loop(
         iterations.append(
             IterationLog(
                 index=i + 1,
-                provider=provider.name,
-                model=provider.default_model,
+                provider=writer.name,
+                model=writer.default_model,
                 units=len(units),
                 accepted=len(replacements),
                 distance=report.distance,

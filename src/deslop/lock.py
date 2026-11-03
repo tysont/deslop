@@ -18,7 +18,7 @@ HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s.*$", re.M)
 RULE_RE = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$", re.M)
 LIST_MARKER_RE = re.compile(r"^(\s*)(?:\d{1,3}[.)]|[-*+•])\s+", re.M)
 EMPHASIS_RE = re.compile(r"(\*\*|__|\*|_)(?=\S)(.+?)(?<=\S)\1")
-# Citations to the primary text under discussion may always be added: verse references,
+# Citations to the primary text under discussion are never lexical-lock additions: verse references,
 # bare chapter:verse, Stephanus pages, page and line numbers, act and scene.
 PRIMARY_CITATION_PATTERNS = (
     CITATION_PATTERNS[0],
@@ -42,9 +42,6 @@ class Inventory:
     def by_class(self, name: str) -> Counter[str]:
         counter: Counter[str] = getattr(self, name)
         return counter
-
-    def is_empty(self) -> bool:
-        return not any(self.by_class(c) for c in LOCK_CLASSES)
 
     def describe(self, classes: tuple[str, ...] = LOCK_CLASSES) -> list[str]:
         lines = []

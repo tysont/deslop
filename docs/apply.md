@@ -8,8 +8,8 @@ document is written afresh as a whole several times and each candidate has to pr
    person and address, rhetorical questions, images or figures, exclamations, direct appeals
    to the reader), each quoted briefly. The note is a hint to the writer only: it is never
    locked, required or treated as a proposition, and the semantic lock never sees it.
-2. `--n` candidates (default 3) are sampled at temperature 0.9 from the configured providers in
-   rotation. The writer sees the profile, the rules, the exemplars nearest the piece, the
+2. `--n` candidates (default 3) are sampled from the writer model at temperature 0.9. The
+   writer sees the profile, the rules, the exemplars nearest the piece, the
    full original and the propositions by paragraph (each with "the original paragraph also
    did these things; use them where this writer would"), and is told: write this piece as
    this writer would; keep every proposition and add none; adopt this writer's person and
@@ -20,30 +20,34 @@ document is written afresh as a whole several times and each candidate has to pr
 3. Each candidate is verified without a judge: the content lock (nothing locked removed), the
    length limit (no more than `--max-growth` percent, default 15, longer than the original),
    the primary-text check (below), and the coherence checks: the output's mean sentences per
-   paragraph inside the exemplars' range (their 10th to 90th percentile; without a range the
-   paragraph count must match the original's); the dominant finite-verb tense of each
+   paragraph inside the voice's range (its 10th to 90th percentile; without a range the
+   paragraph count must match the original's; advisory for inputs under ten paragraphs);
+   the dominant finite-verb tense of each
    paragraph unchanged (paired by position, or against the original's dominant tense as a
    whole when the output is re-paragraphed); every sentence-initial pronoun
    (and this, that, it) with a noun phrase in the two sentences before it; and the share of
    sentences opening with a connective (and, but, so, then, because, since, while, yet)
-   inside the voice's band and within half of the original's share.
+   inside the voice's band and within half of the original's share. The connective band is
+   advisory: it never rejects a candidate on its own, and the writer hears about it only
+   when the judge's coherence item is a loss. Tense and antecedents are hard checks.
 4. The semantic lock runs paragraph by paragraph when the paragraphing is kept, else once
-   over the section: a different provider checks that every proposition is kept and nothing
+   over the section: the judge model checks that every proposition is kept and nothing
    material is added. A material addition is a new named entity, number, event, a causal
    claim whose cause the original neither states nor implies, or a scene, object or action
    the original does not present (cattle finding nothing to graze, when the original says
    only that the fields are now sea at high tide); restating a stated fact in other words is
    permitted.
-5. A provider that wrote neither text judges the candidate against the original on four
-   items, each answered separately: reads as the voice; coherent (each sentence follows
+5. The judge model compares the candidate with the original on four items, each answered
+   separately: reads as the voice; coherent (each sentence follows
    from the last); consistent tense and person; preserves the argument's order and emphasis
    (paragraph breaks are not part of it: the same content in the same order, merged or split
    into different paragraphs, is the same order).
    The candidate must win or tie on every item. Survivors are judged round-robin on the same
    items, giving a win rate; the best win rate, then the linter distance, wins.
-6. If no candidate passes, one retry carries what a reader noticed in the earlier drafts:
-   the missing name, the dropped claim, the paragraph that changed tense, the linter's finds
-   with their spans ("a reader noticed ..."), never a metric name. If that fails too, the
+6. If no candidate passes, a second round redrafts each candidate, told only what a reader
+   noticed in that draft: the missing name, the dropped claim, the paragraph that changed
+   tense, the linter's finds with their spans, never a metric name. A draft the judge rated
+   a win or tie on every item hears only its hard failures. If that round fails too, the
    result is the original with the report. A partial rewrite is never produced: with a long
    document, a section that fails reverts the sections already rewritten.
 
@@ -83,8 +87,8 @@ any new claim, for originals already in the target voice. `--report-all` judges 
 every candidate, pass or fail. The lexical lock compares words case-insensitively in both
 directions. The coherence checks exempt first and second person from the antecedent rule,
 report tense drift only between two different dominant tenses, and treat the connective
-band as advisory (it reaches the writer only when the judge's coherence item is a loss) (a paragraph is mixed
-when no tense holds more than half of its finite verbs). `--compare PAGE.html` writes the
+band as advisory (it reaches the writer only when the judge's coherence item is a loss). A
+paragraph is mixed when no tense holds more than half of its finite verbs. `--compare PAGE.html` writes the
 comparison page described under `deslop report`.
 
 ## Recitation
@@ -116,8 +120,8 @@ citation a scheme recognises but no label answers is rejected; one no scheme rec
 listed as unverifiable. Facts drawn from a primary text that the input does not state stay
 material additions unless `--allow-primary-facts` is on. The writer is shown, verbatim, the
 spans the input's own citations resolve to (the whole chapter when it fits under
-`--quote-context-words`), told to quote only from them, and told how each text is cited. Without a primary text everything
-added is listed as unverified and nothing is rejected.
+`--quote-context-words`), told to quote only from them, and told how each text is cited.
+Without a primary text everything added is listed as unverified and nothing is rejected.
 
 ## Sections of a longer work
 
@@ -149,16 +153,15 @@ The judge sees the original and two texts, A and B, in a fixed but arbitrary ord
 exemplars and the profile, and answers four questions separately with A, B or tie: which
 reads more like the writer; in which each sentence follows from the last; which keeps a
 consistent tense and person; which better preserves the original's order and emphasis. The
-provider that wrote a candidate never judges it; a pair of candidates that no provider is
-clear of is not compared. Against the original a candidate must win or tie on every item.
-The win rate counts a net win as 1 and a draw as 0.5 over the comparisons made.
+judge is always a different model from the writer. Against the original a candidate must
+win or tie on every item. The win rate counts a net win as 1 and a draw as 0.5 over the
+comparisons made.
 
-`deslop lab calibrate-judge` measures each provider on 100 pairs of one LLM-reference
+`deslop lab calibrate-judge` measures each judge model on 100 pairs of one LLM-reference
 paragraph and one paragraph by a held-out author of the voice: accuracy is how often the
 corpus paragraph was picked as the writer's. The result is stored in `voice.yaml` and read
-by `apply`: a provider below 80% is not used as a judge (it may still write, judged by the
-other), and when no provider reaches 80% no candidate can pass, the original is kept, and
-the report says so. The absolute 1-to-5 rubric (`deslop score --judge`,
+by `apply`, which prints it in the report header and marks a judge below 80% as unreliable.
+The absolute 1-to-5 rubric (`deslop score --judge`,
 `Result.units[].candidates[].judge` on the winner) is kept as a trend figure only.
 
 ```sh
@@ -167,8 +170,10 @@ deslop apply draft.md --voice essays.voice --mode edit         # only flagged se
 deslop apply --brief brief.yaml --voice essays.voice -o piece.md
 ```
 
-Edit mode keeps the v1 mechanism (flagged sentences only, everything else byte-identical)
-under the new locks. A brief is drafted section by section, then rewritten.
+Edit mode rewrites only the flagged sentences, merging adjacent ones into a passage, and
+leaves everything else byte-identical. Each edit must pass the content lock and the
+primary-text check, with the meaning checked when the lock sees additions. A brief is
+drafted section by section, then rewritten.
 
 ## Writer, judge and provider
 
@@ -189,8 +194,10 @@ caps those runs. OpenAI remains in the provider layer and is used only when name
 
 ## Budget
 
-`--budget` (default $5) caps what one invocation may spend on live calls; past it the run
-stops with the best result so far and says so. Every live call is logged to
+`--budget` (default $5) caps what one invocation may spend on live calls. Past it the run
+stops and says so: rewrite mode returns the original, and edit mode the best text so far.
+`--max-calls` (default 200) caps the number of live calls, which is the only cap on
+subscription runs through `claude-cli`. Every live call is logged to
 `$DESLOP_HOME/spend.jsonl`; `deslop doctor` sums today and the last seven days.
 
 ## The brief

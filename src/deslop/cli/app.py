@@ -173,7 +173,7 @@ def print_apply_summary(result: Any, show_diff: bool, out: Path | None) -> None:
     before, after = result.report_before, result.report_after
     color = "green" if after.verdict == "PASS" else "red"
     rewritten = sum(1 for u in result.units if not u.kept_original)
-    fallbacks = [u for u in result.units if u.kept_original and "already" not in u.reason]
+    fallbacks = [u for u in result.units if u.kept_original]
     unpriced = (
         f" ({result.cost.unpriced_calls} unpriced calls)" if result.cost.unpriced_calls else ""
     )
@@ -280,7 +280,8 @@ def apply_cmd(
     budget: float | None = typer.Option(
         None,
         "--budget",
-        help="Max USD this invocation may spend on live calls (5); returns best-so-far",
+        help="Max USD this invocation may spend on live calls (5); rewrite mode then returns the "
+        "original, edit mode the best text so far",
     ),
     n: int | None = typer.Option(None, "--n", help="Candidates per document in rewrite mode (3)"),
     max_growth: float | None = typer.Option(
@@ -453,7 +454,7 @@ def report_cmd(
     except (OSError, json.JSONDecodeError) as exc:
         fail(f"cannot read {result}: {exc}")
     if not html_out:
-        fail("give --html (the only report format so far)")
+        fail("give --html (the only report format)")
     if out is None:
         fail("--out PATH is required")
     ref_text = split_frontmatter(reference.read_text(encoding="utf-8"))[1] if reference else None

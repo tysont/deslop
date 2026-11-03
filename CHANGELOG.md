@@ -2,6 +2,23 @@
 
 All notable changes to deslop. Dates are release dates; versions are git tags.
 
+## Unreleased
+
+- The README is rewritten as an entry point; the full command reference moves to
+  `docs/reference.md`, the metric and tell tables to `docs/score.md`, and the threshold
+  calibration to `docs/voice.md`. Install instructions point at the GitHub repository: the
+  `deslop` package on PyPI is a different project.
+- `apply.py` and the CLI are split into focused modules (`units`, `prompts`, `result`,
+  `citations`, `providers/roles`; `cli/common`, `cli/voice`, `cli/lab`), with no change to
+  prompts or behaviour. `deslop_home()` resolves `$DESLOP_HOME` in one place.
+- Removed: the versioned run outputs under `reports/` (now ignored output of `make
+  registers`), the retired paraphrase and contaminated fixture sets, `scripts/register_report.py`,
+  and code nothing used (`judge.compare_with`, `win_rate`, `beats_original` and others).
+- `scripts/run_registers.py` runs again and writes JSON plus the comparison page per register.
+- Docstrings and docs no longer claim that a judge below 80% is refused (it is reported as
+  unreliable) or that the connective band rejects (it is advisory).
+- `make clean` and `make corpus-fixtures`; T15 sorts before T16 in the tell catalog.
+
 ## v2.5.0 - 2026-11-02
 
 - T1 text-as-agent covers word, phrase and clause as subjects and turn on, hinge on, center

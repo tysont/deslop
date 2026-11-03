@@ -47,7 +47,7 @@ class DocumentProvenance(BaseModel):
 class VoiceMeta(BaseModel):
     """voice.yaml: identity plus provenance. `checksum` is set when the voice is packed and
     verified whenever the zip is read; `has_exemplars` is False for a voice packed with
-    `--strip-exemplars`; `judge_calibration` holds each provider's
+    `--strip-exemplars`; `judge_calibration` holds each judge model's
     measured accuracy as the comparative judge (see `deslop lab calibrate-judge`)."""
 
     name: str
@@ -69,7 +69,9 @@ class VoiceMeta(BaseModel):
     profile_source: str = "template"
     checksum: str | None = None
     has_exemplars: bool = True
-    judge_calibration: dict[str, Any] = Field(default_factory=dict)  # provider -> JudgeCalibration
+    judge_calibration: dict[str, Any] = Field(
+        default_factory=dict
+    )  # judge model -> JudgeCalibration
     primary_texts: list[Any] = Field(default_factory=list)  # paths or PrimaryTextSpec dicts
 
 
@@ -187,7 +189,7 @@ class Voice(BaseModel):
             yaml.safe_load((root / "voice.yaml").read_text(encoding="utf-8"))
         )
         if not _is_relative(meta.corpus_path):
-            meta.corpus_path = None  # older voices recorded the machine's absolute path
+            meta.corpus_path = None  # a voice never keeps an absolute or home-relative path
         return cls(
             meta=meta,
             metrics=MetricsProfile.model_validate_json(

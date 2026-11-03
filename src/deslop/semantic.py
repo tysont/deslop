@@ -1,5 +1,5 @@
 # ABOUTME: Semantic lock: extracts a unit's propositions (and, apart, its texture: what the
-# ABOUTME: paragraph does beyond asserting), then has a second provider check a rewrite keeps every
+# ABOUTME: paragraph does beyond asserting), then has the judge model check a rewrite keeps every
 # ABOUTME: proposition and adds none, naming any that fails. Texture is a hint, never locked.
 from __future__ import annotations
 
@@ -213,8 +213,8 @@ def check_meaning(
     count (a new entity, number, event, unstated cause, or a scene the stated facts do not
     entail; an inference from them is permitted), and each flagged sentence is re-asked in a
     second pass with the original shown, a majority vote of sampled reviews; only a "yes"
-    survives, the rest are listed as `cleared`, each with its vote split. `strict` is the
-    older rule: any new claim fails. `context` is the original's (previous, next) paragraph
+    survives, the rest are listed as `cleared`, each with its vote split. Under `strict`
+    any new claim fails. `context` is the original's (previous, next) paragraph
     when `original` is one paragraph of a document: both passes see them, and what they
     state is not new. The first pass is deterministic and the review's samples are cached
     as a set, so the cache answers repeats."""

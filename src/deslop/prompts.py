@@ -9,9 +9,7 @@ from deslop.citations import Citations
 from deslop.lock import DocumentLock, inventory
 from deslop.nlp import Analysis
 from deslop.patterns import Catalog
-from deslop.reference import (
-    Passage,
-)
+from deslop.reference import Passage
 from deslop.units import Section, Unit
 from deslop.voice.exemplars import ExemplarIndex
 from deslop.voice.model import Voice
@@ -223,7 +221,7 @@ def document_prompt(
     the passages it may quote verbatim with how the texts are cited (when primary texts are
     declared), and the instruction. A long document adds the section to write with the
     already-rewritten section before it and the original section after it. `noticed` carries
-    what a reader saw in earlier drafts, for the retry."""
+    what a reader saw in this draft's first-round version, for the retry."""
     system = SYSTEM_TEMPLATE.format(profile=voice.profile.strip(), rules=voice.rules.strip())
     whole = section.count == 1
     block = (

@@ -3,7 +3,8 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: install test cov lint fmt typecheck check build docs docs-serve example llm-reference english-generic registers register-fixtures
+.PHONY: install test cov lint fmt typecheck check build docs docs-serve example clean \
+	llm-reference english-generic corpus-fixtures register-fixtures registers
 
 install:
 	uv sync --all-groups
@@ -38,11 +39,20 @@ docs-serve:
 example:
 	uv run python examples/apply_example.py
 
+clean:
+	rm -rf dist site htmlcov .coverage .pytest_cache .ruff_cache .mypy_cache examples/build
+	find . -name __pycache__ -not -path './.venv/*' -prune -exec rm -rf {} +
+
+# Rebuilding shipped data. GUTENBERG_DIR is a directory of raw pg<ID>.txt files.
+
 llm-reference:
 	uv run python scripts/build_llm_reference.py
 
 english-generic:
 	uv run python scripts/build_english_generic.py .cache/gutenberg
+
+corpus-fixtures:
+	uv run python scripts/build_fixtures.py $(GUTENBERG_DIR)
 
 register-fixtures:
 	uv run python scripts/build_registers.py $(GUTENBERG_DIR)

@@ -27,6 +27,8 @@ sys.exit(0 if report.verdict == "PASS" else 2)
 
 ## Building a voice from a crawl
 
-The voices repo's crawler writes `raw/<name>/manifest.jsonl` beside the texts; `deslop voice
-raw/<name> -o name.voice` reads the manifest for author, title, URL and license, so the voice
-records where every document came from.
+A crawler that writes a `manifest.jsonl` beside the texts it fetches (one JSON object per
+line with `file`, `author`, `title`, and optional `url`, `license` and `date`) hands its
+provenance to deslop: `deslop voice raw/<name> -o name.voice` reads the manifest for each
+document's author, title, URL and license, so the voice records where every document came
+from.

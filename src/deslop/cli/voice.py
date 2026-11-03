@@ -34,7 +34,10 @@ class VoiceGroup(TyperGroup):
 
 voice_app = typer.Typer(
     cls=VoiceGroup,
-    help="Build a voice: `deslop voice FILES... -o NAME.voice`. Subcommands inspect one.",
+    help=(
+        "Build a voice with `deslop voice FILES... -o NAME.voice` (options: `deslop voice "
+        "build --help`); the subcommands inspect and maintain one."
+    ),
     no_args_is_help=True,
 )
 
